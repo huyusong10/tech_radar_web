@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Tech Radar | 技术雷达周刊</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+    <!-- Markdown and syntax highlighting libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <style>
+        /* ==================== RESET & BASE ==================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            /* Color System */
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #151515;
+            --bg-card: #1a1a1a;
+            --text-primary: #ededed;
+            --text-secondary: #9ca3af;
+            --accent-cyan: #00f3ff;
+            --accent-pink: #ff00ff;
+            --accent-green: #00ff88;
+            --accent-orange: #ff6b35;
+            --accent-purple: #a855f7;
+            --border-glow: rgba(0, 243, 255, 0.3);
+
+            /* Typography */
+            --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+
+            /* Spacing */
+            --spacing-xs: 0.5rem;
+            --spacing-sm: 1rem;
+            --spacing-md: 1.5rem;
+            --spacing-lg: 2rem;
+            --spacing-xl: 3rem;
+
+            /* Border Radius */
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+            display: flex;
+        }
+
+        /* Cyberpunk Grid Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 var(--spacing-md);
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ==================== SIDEBAR NAVIGATION ==================== */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 280px;
+            height: 100vh;
+            background: var(--bg-secondary);
+            border-right: 1px solid rgba(0, 243, 255, 0.2);
+            padding: var(--spacing-lg);
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            margin-bottom: var(--spacing-lg);
+            padding-bottom: var(--spacing-md);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.1);
+        }
+
+        .sidebar-logo {
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            color: var(--accent-cyan);
+            font-weight: 700;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        .sidebar-title {
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: var(--spacing-xs);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .archive-list {
+            list-style: none;
+        }
+
+        .archive-item {
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .archive-link {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-sm);
+            border-radius: var(--radius-md);
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+
+        .archive-link:hover {
+            background: rgba(0, 243, 255, 0.05);
+            border-color: rgba(0, 243, 255, 0.2);
+            color: var(--accent-cyan);
+            transform: translateX(4px);
+        }
+
+        .archive-link.active {
+            background: rgba(0, 243, 255, 0.1);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+        }
+
+        .archive-vol {
+            font-weight: 600;
+            min-width: 60px;
+        }
+
+        .archive-date {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+        }
+
+        /* Mobile Menu Toggle */
+        .sidebar-toggle {
+            display: none;
+            position: fixed;
+            top: var(--spacing-md);
+            left: var(--spacing-md);
+            z-index: 101;
+            background: var(--bg-secondary);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            color: var(--accent-cyan);
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .sidebar-toggle:hover {
+            background: rgba(0, 243, 255, 0.1);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+        }
+
+        /* ==================== HEADER SECTION ==================== */
+        header {
+            padding: var(--spacing-xl) 0 4rem 0;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+            position: relative;
+            text-align: center;
+        }
+
+        .logo {
+            font-family: var(--font-mono);
+            font-size: 4rem;
+            font-weight: 900;
+            color: var(--accent-cyan);
+            text-shadow:
+                0 0 10px rgba(0, 243, 255, 0.8),
+                0 0 20px rgba(0, 243, 255, 0.6),
+                0 0 30px rgba(0, 243, 255, 0.4),
+                0 0 40px rgba(255, 0, 255, 0.4),
+                0 0 70px rgba(255, 0, 255, 0.2),
+                0 0 100px rgba(255, 0, 255, 0.1);
+            margin-bottom: var(--spacing-md);
+            letter-spacing: 4px;
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% {
+                text-shadow:
+                    0 0 10px rgba(0, 243, 255, 0.8),
+                    0 0 20px rgba(0, 243, 255, 0.6),
+                    0 0 30px rgba(0, 243, 255, 0.4),
+                    0 0 40px rgba(255, 0, 255, 0.4),
+                    0 0 70px rgba(255, 0, 255, 0.2);
+            }
+            50% {
+                text-shadow:
+                    0 0 15px rgba(0, 243, 255, 1),
+                    0 0 30px rgba(0, 243, 255, 0.8),
+                    0 0 45px rgba(0, 243, 255, 0.6),
+                    0 0 60px rgba(255, 0, 255, 0.6),
+                    0 0 90px rgba(255, 0, 255, 0.4),
+                    0 0 120px rgba(255, 0, 255, 0.2);
+            }
+        }
+
+        .logo::before {
+            content: '>_ ';
+            color: var(--accent-pink);
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0.3; }
+        }
+
+        .header-meta {
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-lg);
+            letter-spacing: 4px;
+            font-weight: 600;
+        }
+
+        .header-meta span {
+            color: var(--accent-cyan);
+            margin: 0 var(--spacing-sm);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        .slogan {
+            font-size: 1.375rem;
+            color: var(--text-secondary);
+            font-weight: 300;
+            font-style: italic;
+            border: none;
+            padding: 0;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* Glitch Effect */
+        .glitch {
+            position: relative;
+            display: inline-block;
+        }
+
+        .glitch::before,
+        .glitch::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .glitch::before {
+            left: 2px;
+            text-shadow: -2px 0 var(--accent-pink);
+            clip: rect(24px, 550px, 90px, 0);
+            animation: glitch-anim 3s infinite linear alternate-reverse;
+        }
+
+        .glitch::after {
+            left: -2px;
+            text-shadow: -2px 0 var(--accent-cyan);
+            clip: rect(85px, 550px, 140px, 0);
+            animation: glitch-anim 2.5s infinite linear alternate-reverse;
+        }
+
+        @keyframes glitch-anim {
+            0% { clip: rect(61px, 9999px, 52px, 0); }
+            20% { clip: rect(84px, 9999px, 67px, 0); }
+            40% { clip: rect(14px, 9999px, 31px, 0); }
+            60% { clip: rect(35px, 9999px, 105px, 0); }
+            80% { clip: rect(71px, 9999px, 24px, 0); }
+            100% { clip: rect(46px, 9999px, 88px, 0); }
+        }
+
+        /* ==================== TRENDING SECTION ==================== */
+        .section {
+            padding: var(--spacing-xl) 0;
+        }
+
+        .section-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: var(--spacing-lg);
+            color: var(--text-primary);
+            position: relative;
+            display: inline-block;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 0;
+            width: 60%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-cyan), transparent);
+            box-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        .trending-list {
+            display: grid;
+            gap: var(--spacing-sm);
+        }
+
+        .trending-item {
+            background: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .trending-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, transparent, rgba(0, 243, 255, 0.05), transparent);
+            transform: translateX(-100%);
+            transition: transform 0.6s;
+        }
+
+        .trending-item:hover {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .trending-item:hover::before {
+            transform: translateX(100%);
+        }
+
+        .trending-header {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .badge {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge.architecture { background: rgba(0, 243, 255, 0.2); color: var(--accent-cyan); }
+        .badge.debt { background: rgba(255, 107, 53, 0.2); color: var(--accent-orange); }
+        .badge.tool { background: rgba(0, 255, 136, 0.2); color: var(--accent-green); }
+        .badge.security { background: rgba(255, 0, 255, 0.2); color: var(--accent-pink); }
+
+        .trending-title {
+            font-size: 1rem;
+            color: var(--text-primary);
+            flex: 1;
+        }
+
+        .trending-link {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            transition: all 0.3s;
+        }
+
+        .trending-link::after {
+            content: ' →';
+            transition: transform 0.3s;
+            display: inline-block;
+        }
+
+        .trending-link:hover {
+            text-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        .trending-link:hover::after {
+            transform: translateX(4px);
+        }
+
+        /* ==================== CONTRIBUTION SECTION ==================== */
+        .contributions-grid {
+            display: grid;
+            gap: var(--spacing-xl);
+            grid-template-columns: 1fr;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .contribution-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-lg);
+            position: relative;
+            transition: all 0.4s ease;
+        }
+
+        .contribution-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: var(--radius-lg);
+            padding: 1px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0;
+            transition: opacity 0.4s;
+        }
+
+        .contribution-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px rgba(0, 243, 255, 0.15);
+        }
+
+        .contribution-card:hover::before {
+            opacity: 1;
+        }
+
+        .author-info {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .author-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2px solid var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.4);
+            object-fit: cover;
+        }
+
+        .author-details {
+            flex: 1;
+        }
+
+        .author-name {
+            font-family: var(--font-mono);
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        .author-team {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .contribution-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-sm);
+            line-height: 1.3;
+        }
+
+        .contribution-desc {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-bottom: var(--spacing-md);
+            line-height: 1.6;
+        }
+
+        /* Card Stats and Actions */
+        .card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: var(--spacing-md);
+            padding-top: var(--spacing-md);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .card-stats {
+            display: flex;
+            gap: var(--spacing-md);
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+        }
+
+        .stat-icon {
+            font-size: 1rem;
+        }
+
+        .like-button {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            background: rgba(0, 243, 255, 0.1);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            color: var(--accent-cyan);
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+
+        .like-button:hover {
+            background: rgba(0, 243, 255, 0.2);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .like-button.liked {
+            background: rgba(255, 0, 255, 0.2);
+            border-color: var(--accent-pink);
+            color: var(--accent-pink);
+        }
+
+        .like-button.liked:hover {
+            box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
+        }
+
+        .like-icon {
+            font-size: 1.1rem;
+            transition: transform 0.3s ease;
+        }
+
+        .like-button:active .like-icon {
+            transform: scale(1.3);
+        }
+
+        /* Code Block Styling */
+        .code-block {
+            background: #0d0d0d;
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            margin-top: var(--spacing-md);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.1);
+        }
+
+        .code-header {
+            background: #151515;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+        }
+
+        .code-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .code-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .code-dot.red { background: #ff5f56; }
+        .code-dot.yellow { background: #ffbd2e; }
+        .code-dot.green { background: #27c93f; }
+
+        .code-filename {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-left: auto;
+        }
+
+        .code-content {
+            padding: var(--spacing-md);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            line-height: 1.6;
+            overflow-x: auto;
+        }
+
+        .code-line {
+            display: flex;
+            gap: var(--spacing-md);
+        }
+
+        .line-number {
+            color: rgba(237, 237, 237, 0.3);
+            user-select: none;
+            text-align: right;
+            min-width: 2em;
+        }
+
+        .line-content {
+            flex: 1;
+        }
+
+        /* Syntax Highlighting */
+        .keyword { color: #ff00ff; }
+        .function { color: #00f3ff; }
+        .string { color: #00ff88; }
+        .comment { color: #6272a4; font-style: italic; }
+        .operator { color: #ff6b35; }
+        .variable { color: #f8f8f2; }
+
+        /* Override highlight.js styles */
+        .code-content .hljs {
+            background: transparent;
+            padding: 0;
+        }
+
+        /* Image Content */
+        .content-image {
+            width: 100%;
+            border-radius: var(--radius-md);
+            margin-top: var(--spacing-md);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        /* ==================== FOOTER SECTION ==================== */
+        footer {
+            padding: var(--spacing-xl) 0;
+            border-top: 1px solid rgba(0, 243, 255, 0.2);
+            margin-top: var(--spacing-xl);
+        }
+
+        .cta-section {
+            text-align: center;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 1rem 2.5rem;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            color: var(--bg-primary);
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 1rem;
+            text-decoration: none;
+            border-radius: var(--radius-md);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .cta-button::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, var(--accent-pink), var(--accent-cyan));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(0, 243, 255, 0.6), 0 0 50px rgba(255, 0, 255, 0.4);
+        }
+
+        .cta-button:hover::before {
+            opacity: 1;
+        }
+
+        .cta-button span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: var(--spacing-md);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .footer-links {
+            display: flex;
+            gap: var(--spacing-md);
+        }
+
+        .footer-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.3s;
+            font-family: var(--font-mono);
+        }
+
+        .footer-link:hover {
+            color: var(--accent-cyan);
+            text-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        .copyright {
+            font-family: var(--font-mono);
+        }
+
+        /* ==================== RESPONSIVE DESIGN ==================== */
+        @media (max-width: 1024px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .sidebar-toggle {
+                display: block;
+            }
+
+            .logo {
+                font-size: 2.5rem;
+            }
+
+            .header-meta {
+                font-size: 1rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .logo {
+                font-size: 2rem;
+            }
+
+            .header-meta {
+                font-size: 0.875rem;
+                letter-spacing: 2px;
+            }
+
+            .slogan {
+                font-size: 1rem;
+            }
+
+            .section-title {
+                font-size: 1.5rem;
+            }
+
+            .contributions-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-content {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .code-content {
+                font-size: 0.75rem;
+            }
+
+            .cta-button {
+                padding: 0.875rem 2rem;
+                font-size: 0.9rem;
+            }
+
+            .sidebar {
+                width: 100%;
+            }
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-cyan);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-pink);
+        }
+    </style>
+</head>
+<body>
+    <!-- ==================== MOBILE MENU TOGGLE ==================== -->
+    <button class="sidebar-toggle" onclick="toggleSidebar()">☰ Archive</button>
+
+    <!-- ==================== SIDEBAR NAVIGATION ==================== -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">&gt;_ Tech Radar</div>
+            <div class="sidebar-title">Archive</div>
+        </div>
+        <ul class="archive-list">
+            <li class="archive-item">
+                <a href="#" class="archive-link active">
+                    <span class="archive-vol">VOL.001</span>
+                    <span class="archive-date">2024.05.20</span>
+                </a>
+            </li>
+            <li class="archive-item">
+                <a href="#" class="archive-link">
+                    <span class="archive-vol">VOL.000</span>
+                    <span class="archive-date">2024.05.13</span>
+                </a>
+            </li>
+            <li class="archive-item">
+                <a href="#" class="archive-link">
+                    <span class="archive-vol">VOL.099</span>
+                    <span class="archive-date">2024.05.06</span>
+                </a>
+            </li>
+            <li class="archive-item">
+                <a href="#" class="archive-link">
+                    <span class="archive-vol">VOL.098</span>
+                    <span class="archive-date">2024.04.29</span>
+                </a>
+            </li>
+            <li class="archive-item">
+                <a href="#" class="archive-link">
+                    <span class="archive-vol">VOL.097</span>
+                    <span class="archive-date">2024.04.22</span>
+                </a>
+            </li>
+            <li class="archive-item">
+                <a href="#" class="archive-link">
+                    <span class="archive-vol">VOL.096</span>
+                    <span class="archive-date">2024.04.15</span>
+                </a>
+            </li>
+            <li class="archive-item">
+                <a href="#" class="archive-link">
+                    <span class="archive-vol">VOL.095</span>
+                    <span class="archive-date">2024.04.08</span>
+                </a>
+            </li>
+            <li class="archive-item">
+                <a href="#" class="archive-link">
+                    <span class="archive-vol">VOL.094</span>
+                    <span class="archive-date">2024.04.01</span>
+                </a>
+            </li>
+        </ul>
+    </aside>
+
+    <!-- ==================== MAIN CONTENT ==================== -->
+    <div class="main-content">
+    <!-- ==================== HEADER ==================== -->
+    <header>
+        <div class="container">
+            <div class="logo glitch" data-text="Weekly Tech Radar">Weekly Tech Radar</div>
+            <div class="header-meta">
+                VOL.001<span>|</span>2024.05.20
+            </div>
+            <div class="slogan">
+                "Navigating the bleeding edge of technology, one week at a time."
+            </div>
+        </div>
+    </header>
+
+    <!-- ==================== TRENDING SECTION ==================== -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">⚡ This Week's Radar</h2>
+
+            <div class="trending-list">
+                <div class="trending-item">
+                    <div class="trending-header">
+                        <span class="badge architecture">架构决策</span>
+                        <div class="trending-title">微服务架构迁移至 Event-Driven 模式完成</div>
+                        <a href="#" class="trending-link">详情</a>
+                    </div>
+                </div>
+
+                <div class="trending-item">
+                    <div class="trending-header">
+                        <span class="badge debt">债务预警</span>
+                        <div class="trending-title">遗留 API v1.x 版本将于下月弃用，请尽快迁移</div>
+                        <a href="#" class="trending-link">详情</a>
+                    </div>
+                </div>
+
+                <div class="trending-item">
+                    <div class="trending-header">
+                        <span class="badge tool">工具推荐</span>
+                        <div class="trending-title">团队内部开发的 DevOps CLI 工具已开源</div>
+                        <a href="#" class="trending-link">详情</a>
+                    </div>
+                </div>
+
+                <div class="trending-item">
+                    <div class="trending-header">
+                        <span class="badge security">安全更新</span>
+                        <div class="trending-title">关键依赖包安全漏洞修复，请更新至最新版本</div>
+                        <a href="#" class="trending-link">详情</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== CONTRIBUTIONS SECTION ==================== -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">💎 Featured Contributions</h2>
+
+            <div class="contributions-grid">
+                <!-- Contribution Card 1 - Code Example -->
+                <div class="contribution-card">
+                    <div class="author-info">
+                        <img src="https://i.pravatar.cc/150?img=33" alt="Author Avatar" class="author-avatar">
+                        <div class="author-details">
+                            <div class="author-name">@zhang_wei</div>
+                            <div class="author-team">Core Platform Team</div>
+                        </div>
+                    </div>
+                    <h3 class="contribution-title">优雅的 TypeScript 类型推导技巧</h3>
+                    <p class="contribution-desc">
+                        分享一个在实际项目中使用的高级 TypeScript 类型推导模式，能够大幅提升代码的类型安全性和开发体验。
+                    </p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <div class="code-dots">
+                                <span class="code-dot red"></span>
+                                <span class="code-dot yellow"></span>
+                                <span class="code-dot green"></span>
+                            </div>
+                            <span class="code-filename">types.ts</span>
+                        </div>
+                        <div class="code-content">
+<div class="code-line"><span class="line-number">1</span><span class="line-content"><span class="keyword">type</span> <span class="function">DeepReadonly</span>&lt;T&gt; = {</span></div>
+<div class="code-line"><span class="line-number">2</span><span class="line-content">  <span class="keyword">readonly</span> [P <span class="keyword">in</span> <span class="keyword">keyof</span> T]: T[P] <span class="keyword">extends</span> <span class="keyword">object</span></span></div>
+<div class="code-line"><span class="line-number">3</span><span class="line-content">    ? <span class="function">DeepReadonly</span>&lt;T[P]&gt;</span></div>
+<div class="code-line"><span class="line-number">4</span><span class="line-content">    : T[P];</span></div>
+<div class="code-line"><span class="line-number">5</span><span class="line-content">};</span></div>
+<div class="code-line"><span class="line-number">6</span><span class="line-content">&nbsp;</span></div>
+<div class="code-line"><span class="line-number">7</span><span class="line-content"><span class="comment">// 使用示例</span></span></div>
+<div class="code-line"><span class="line-number">8</span><span class="line-content"><span class="keyword">const</span> <span class="variable">config</span>: <span class="function">DeepReadonly</span>&lt;Config&gt; <span class="operator">=</span> {...};</span></div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="card-stats">
+                            <div class="stat-item">
+                                <span class="stat-icon">👁️</span>
+                                <span class="stat-count">1,234</span>
+                            </div>
+                        </div>
+                        <button class="like-button" onclick="toggleLike(this)">
+                            <span class="like-icon">♥</span>
+                            <span class="like-count">42</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Contribution Card 2 - Code Example -->
+                <div class="contribution-card">
+                    <div class="author-info">
+                        <img src="https://i.pravatar.cc/150?img=47" alt="Author Avatar" class="author-avatar">
+                        <div class="author-details">
+                            <div class="author-name">@lisa_chen</div>
+                            <div class="author-team">Frontend Engineering</div>
+                        </div>
+                    </div>
+                    <h3 class="contribution-title">React 性能优化实战：虚拟滚动</h3>
+                    <p class="contribution-desc">
+                        在处理超大列表时，通过虚拟滚动技术将渲染性能提升了 10 倍以上。这里分享核心实现思路。
+                    </p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <div class="code-dots">
+                                <span class="code-dot red"></span>
+                                <span class="code-dot yellow"></span>
+                                <span class="code-dot green"></span>
+                            </div>
+                            <span class="code-filename">VirtualList.tsx</span>
+                        </div>
+                        <div class="code-content">
+<div class="code-line"><span class="line-number">1</span><span class="line-content"><span class="keyword">const</span> <span class="function">VirtualList</span> <span class="operator">=</span> ({ items, height }: Props) <span class="operator">=&gt;</span> {</span></div>
+<div class="code-line"><span class="line-number">2</span><span class="line-content">  <span class="keyword">const</span> [scrollTop, <span class="function">setScrollTop</span>] <span class="operator">=</span> <span class="function">useState</span>(<span class="string">0</span>);</span></div>
+<div class="code-line"><span class="line-number">3</span><span class="line-content">  <span class="keyword">const</span> startIdx <span class="operator">=</span> Math.<span class="function">floor</span>(scrollTop / ITEM_HEIGHT);</span></div>
+<div class="code-line"><span class="line-number">4</span><span class="line-content">  <span class="keyword">const</span> endIdx <span class="operator">=</span> startIdx <span class="operator">+</span> Math.<span class="function">ceil</span>(height / ITEM_HEIGHT);</span></div>
+<div class="code-line"><span class="line-number">5</span><span class="line-content">  </span></div>
+<div class="code-line"><span class="line-number">6</span><span class="line-content">  <span class="keyword">return</span> (</span></div>
+<div class="code-line"><span class="line-number">7</span><span class="line-content">    <span class="operator">&lt;</span><span class="keyword">div</span> onScroll<span class="operator">=</span>{handleScroll}<span class="operator">&gt;</span></span></div>
+<div class="code-line"><span class="line-number">8</span><span class="line-content">      {items.<span class="function">slice</span>(startIdx, endIdx).<span class="function">map</span>(...)}</span></div>
+<div class="code-line"><span class="line-number">9</span><span class="line-content">    <span class="operator">&lt;/</span><span class="keyword">div</span><span class="operator">&gt;</span></span></div>
+<div class="code-line"><span class="line-number">10</span><span class="line-content">  );</span></div>
+<div class="code-line"><span class="line-number">11</span><span class="line-content">};</span></div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="card-stats">
+                            <div class="stat-item">
+                                <span class="stat-icon">👁️</span>
+                                <span class="stat-count">2,156</span>
+                            </div>
+                        </div>
+                        <button class="like-button" onclick="toggleLike(this)">
+                            <span class="like-icon">♥</span>
+                            <span class="like-count">89</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Contribution Card 3 - Text Content -->
+                <div class="contribution-card">
+                    <div class="author-info">
+                        <img src="https://i.pravatar.cc/150?img=12" alt="Author Avatar" class="author-avatar">
+                        <div class="author-details">
+                            <div class="author-name">@alex_wang</div>
+                            <div class="author-team">DevOps & Infrastructure</div>
+                        </div>
+                    </div>
+                    <h3 class="contribution-title">Kubernetes 集群成本优化策略</h3>
+                    <p class="contribution-desc">
+                        通过合理配置资源请求和限制、使用节点自动伸缩以及 Spot 实例，我们将云基础设施成本降低了 40%。以下是关键配置策略：
+                    </p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <div class="code-dots">
+                                <span class="code-dot red"></span>
+                                <span class="code-dot yellow"></span>
+                                <span class="code-dot green"></span>
+                            </div>
+                            <span class="code-filename">deployment.yaml</span>
+                        </div>
+                        <div class="code-content">
+<div class="code-line"><span class="line-number">1</span><span class="line-content"><span class="keyword">resources</span>:</span></div>
+<div class="code-line"><span class="line-number">2</span><span class="line-content">  <span class="keyword">requests</span>:</span></div>
+<div class="code-line"><span class="line-number">3</span><span class="line-content">    <span class="variable">memory</span>: <span class="string">"256Mi"</span></span></div>
+<div class="code-line"><span class="line-number">4</span><span class="line-content">    <span class="variable">cpu</span>: <span class="string">"100m"</span></span></div>
+<div class="code-line"><span class="line-number">5</span><span class="line-content">  <span class="keyword">limits</span>:</span></div>
+<div class="code-line"><span class="line-number">6</span><span class="line-content">    <span class="variable">memory</span>: <span class="string">"512Mi"</span></span></div>
+<div class="code-line"><span class="line-number">7</span><span class="line-content">    <span class="variable">cpu</span>: <span class="string">"500m"</span></span></div>
+<div class="code-line"><span class="line-number">8</span><span class="line-content"><span class="comment"># 使用 HPA 实现自动伸缩</span></span></div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="card-stats">
+                            <div class="stat-item">
+                                <span class="stat-icon">👁️</span>
+                                <span class="stat-count">987</span>
+                            </div>
+                        </div>
+                        <button class="like-button" onclick="toggleLike(this)">
+                            <span class="like-icon">♥</span>
+                            <span class="like-count">56</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Contribution Card 4 - Code Example -->
+                <div class="contribution-card">
+                    <div class="author-info">
+                        <img src="https://i.pravatar.cc/150?img=28" alt="Author Avatar" class="author-avatar">
+                        <div class="author-details">
+                            <div class="author-name">@sarah_liu</div>
+                            <div class="author-team">Backend Services</div>
+                        </div>
+                    </div>
+                    <h3 class="contribution-title">优雅的 Go 错误处理模式</h3>
+                    <p class="contribution-desc">
+                        在 Go 1.13+ 中，使用错误包装和类型断言可以实现更优雅的错误处理流程，同时保持良好的错误上下文传递。
+                    </p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <div class="code-dots">
+                                <span class="code-dot red"></span>
+                                <span class="code-dot yellow"></span>
+                                <span class="code-dot green"></span>
+                            </div>
+                            <span class="code-filename">errors.go</span>
+                        </div>
+                        <div class="code-content">
+<div class="code-line"><span class="line-number">1</span><span class="line-content"><span class="keyword">func</span> <span class="function">ProcessData</span>(id <span class="keyword">string</span>) <span class="keyword">error</span> {</span></div>
+<div class="code-line"><span class="line-number">2</span><span class="line-content">  data, err :<span class="operator">=</span> <span class="function">FetchData</span>(id)</span></div>
+<div class="code-line"><span class="line-number">3</span><span class="line-content">  <span class="keyword">if</span> err <span class="operator">!=</span> <span class="keyword">nil</span> {</span></div>
+<div class="code-line"><span class="line-number">4</span><span class="line-content">    <span class="keyword">return</span> fmt.<span class="function">Errorf</span>(<span class="string">"fetch data: %w"</span>, err)</span></div>
+<div class="code-line"><span class="line-number">5</span><span class="line-content">  }</span></div>
+<div class="code-line"><span class="line-number">6</span><span class="line-content">  </span></div>
+<div class="code-line"><span class="line-number">7</span><span class="line-content">  <span class="comment">// 错误类型检查</span></span></div>
+<div class="code-line"><span class="line-number">8</span><span class="line-content">  <span class="keyword">var</span> notFoundErr <span class="operator">*</span>NotFoundError</span></div>
+<div class="code-line"><span class="line-number">9</span><span class="line-content">  <span class="keyword">if</span> errors.<span class="function">As</span>(err, &amp;notFoundErr) {</span></div>
+<div class="code-line"><span class="line-number">10</span><span class="line-content">    <span class="keyword">return</span> <span class="function">handleNotFound</span>(notFoundErr)</span></div>
+<div class="code-line"><span class="line-number">11</span><span class="line-content">  }</span></div>
+<div class="code-line"><span class="line-number">12</span><span class="line-content">}</span></div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="card-stats">
+                            <div class="stat-item">
+                                <span class="stat-icon">👁️</span>
+                                <span class="stat-count">1,567</span>
+                            </div>
+                        </div>
+                        <button class="like-button" onclick="toggleLike(this)">
+                            <span class="like-icon">♥</span>
+                            <span class="like-count">73</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== FOOTER ==================== -->
+    <footer>
+        <div class="container">
+            <div class="cta-section">
+                <a href="#" class="cta-button">
+                    <span>📝 Submit Your Contribution</span>
+                </a>
+            </div>
+
+            <div class="footer-content">
+                <div class="copyright">
+                    © 2024 Weekly Tech Radar | Powered by Engineers, for Engineers
+                </div>
+                <div class="footer-links">
+                    <a href="#" class="footer-link">Archive</a>
+                    <a href="#" class="footer-link">Guidelines</a>
+                    <a href="#" class="footer-link">Team</a>
+                    <a href="#" class="footer-link">RSS</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    </div> <!-- End of main-content -->
+
+    <script>
+        // Configure marked with highlight.js
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return hljs.highlightAuto(code).value;
+            }
+        });
+
+        // Parse frontmatter from markdown
+        function parseFrontmatter(content) {
+            const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+            if (!match) return { metadata: {}, content };
+
+            const metadata = jsyaml.load(match[1]);
+            const markdownContent = match[2];
+            return { metadata, content: markdownContent };
+        }
+
+        // Load markdown file
+        async function loadMarkdown(path) {
+            try {
+                const response = await fetch(path);
+                if (!response.ok) throw new Error(`Failed to load ${path}`);
+                return await response.text();
+            } catch (error) {
+                console.error('Error loading markdown:', error);
+                return null;
+            }
+        }
+
+        // Load and render archive list
+        async function loadArchive() {
+            const archiveData = await fetch('content/archive.json').then(r => r.json());
+            const archiveList = document.querySelector('.archive-list');
+
+            archiveList.innerHTML = archiveData.map(item => `
+                <li class="archive-item">
+                    <a href="?vol=${item.vol}" class="archive-link ${item.active ? 'active' : ''}">
+                        <span class="archive-vol">VOL.${item.vol}</span>
+                        <span class="archive-date">${item.date}</span>
+                    </a>
+                </li>
+            `).join('');
+        }
+
+        // Get current volume from URL or default to 001
+        function getCurrentVol() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('vol') || '001';
+        }
+
+        // Render radar items
+        function renderRadar(metadata, content) {
+            // Update header
+            document.querySelector('.logo').textContent = metadata.title || 'Weekly Tech Radar';
+            document.querySelector('.header-meta').innerHTML = `VOL.${metadata.vol}<span>|</span>${metadata.date}`;
+            document.querySelector('.slogan').textContent = metadata.slogan || '';
+
+            // Parse trending items from markdown
+            const trendingSection = document.querySelector('.trending-list');
+            const lines = content.split('\n');
+            const items = [];
+
+            let currentItem = null;
+            lines.forEach(line => {
+                const headerMatch = line.match(/^###\s+\[(.+?)\]\s+(.+)$/);
+                if (headerMatch) {
+                    if (currentItem) items.push(currentItem);
+                    currentItem = {
+                        badge: headerMatch[1],
+                        title: headerMatch[2],
+                        link: '#'
+                    };
+                } else if (currentItem && line.match(/^\[.+\]\(.+\)$/)) {
+                    const linkMatch = line.match(/\[(.+?)\]\((.+?)\)/);
+                    if (linkMatch) {
+                        currentItem.linkText = linkMatch[1];
+                        currentItem.link = linkMatch[2];
+                    }
+                }
+            });
+            if (currentItem) items.push(currentItem);
+
+            // Render trending items
+            trendingSection.innerHTML = items.map(item => {
+                const badgeClass = item.badge.toLowerCase().replace(/[^a-z]/g, '');
+                return `
+                <div class="trending-item">
+                    <div class="trending-header">
+                        <span class="badge ${badgeClass}">${item.badge}</span>
+                        <div class="trending-title">${item.title}</div>
+                        <a href="${item.link}" class="trending-link">详情</a>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // Render contribution card
+        function renderContribution(metadata, content) {
+            const codeMatch = content.match(/```(\w+)?\n([\s\S]*?)```/);
+
+            let contentHtml = '';
+            if (codeMatch) {
+                const lang = codeMatch[1] || '';
+                const code = codeMatch[2].trim();
+                const highlighted = lang && hljs.getLanguage(lang)
+                    ? hljs.highlight(code, { language: lang }).value
+                    : hljs.highlightAuto(code).value;
+
+                // Split into lines for line numbers
+                const lines = highlighted.split('\n');
+                const codeLines = lines.map((line, i) =>
+                    `<div class="code-line"><span class="line-number">${i + 1}</span><span class="line-content">${line || '&nbsp;'}</span></div>`
+                ).join('');
+
+                const filename = lang ? `example.${lang}` : 'code';
+                contentHtml = `
+                    <div class="code-block">
+                        <div class="code-header">
+                            <div class="code-dots">
+                                <span class="code-dot red"></span>
+                                <span class="code-dot yellow"></span>
+                                <span class="code-dot green"></span>
+                            </div>
+                            <span class="code-filename">${filename}</span>
+                        </div>
+                        <div class="code-content">${codeLines}</div>
+                    </div>
+                `;
+            } else {
+                contentHtml = marked.parse(content);
+            }
+
+            return `
+                <div class="contribution-card">
+                    <div class="author-info">
+                        <img src="${metadata.author.avatar}" alt="Author Avatar" class="author-avatar">
+                        <div class="author-details">
+                            <div class="author-name">${metadata.author.name}</div>
+                            <div class="author-team">${metadata.author.team}</div>
+                        </div>
+                    </div>
+                    <h3 class="contribution-title">${metadata.title}</h3>
+                    <p class="contribution-desc">${metadata.description}</p>
+                    ${contentHtml}
+                    <div class="card-footer">
+                        <div class="card-stats">
+                            <div class="stat-item">
+                                <span class="stat-icon">👁️</span>
+                                <span class="stat-count">${metadata.views || 0}</span>
+                            </div>
+                        </div>
+                        <button class="like-button" onclick="toggleLike(this)">
+                            <span class="like-icon">♥</span>
+                            <span class="like-count">${metadata.likes || 0}</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Load and render all contributions
+        async function loadContributions(vol) {
+            const contributionsGrid = document.querySelector('.contributions-grid');
+            contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading contributions...</p>';
+
+            const contributionFiles = [
+                '01-typescript-types.md',
+                '02-react-virtual-list.md',
+                '03-k8s-optimization.md',
+                '04-go-error-handling.md'
+            ];
+
+            const contributions = [];
+            for (const file of contributionFiles) {
+                const content = await loadMarkdown(`content/vol-${vol}/contributions/${file}`);
+                if (content) {
+                    const { metadata, content: markdownContent } = parseFrontmatter(content);
+                    contributions.push(renderContribution(metadata, markdownContent));
+                }
+            }
+
+            contributionsGrid.innerHTML = contributions.join('');
+        }
+
+        // Main initialization
+        async function init() {
+            const vol = getCurrentVol();
+
+            // Load archive list
+            await loadArchive();
+
+            // Load radar content
+            const radarContent = await loadMarkdown(`content/vol-${vol}/radar.md`);
+            if (radarContent) {
+                const { metadata, content } = parseFrontmatter(radarContent);
+                renderRadar(metadata, content);
+            }
+
+            // Load contributions
+            await loadContributions(vol);
+        }
+
+        // Sidebar toggle functionality
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('open');
+        }
+
+        // Like button functionality
+        function toggleLike(button) {
+            const likeCountSpan = button.querySelector('.like-count');
+            let count = parseInt(likeCountSpan.textContent);
+
+            if (button.classList.contains('liked')) {
+                button.classList.remove('liked');
+                count--;
+            } else {
+                button.classList.add('liked');
+                count++;
+            }
+
+            likeCountSpan.textContent = count;
+        }
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
