@@ -1,18 +1,18 @@
 ---
 # 站点配置
 site:
-  title: "Weekly Tech Radar"
+  title: "ESS Weekly Tech Radar"
   slogan: "Navigating the bleeding edge of technology, one week at a time."
-  footer: "© 2024 Weekly Tech Radar | Powered by Engineers, for Engineers"
+  footer: "© 2026 Weekly Tech Radar | Powered by Claude Code"
 
 # 作者/编辑团队
 authors:
-  - name: "@tech_team"
+  - name: "@hys"
     role: "Chief Editor"
-    avatar: "https://i.pravatar.cc/150?img=68"
+    avatar: "/assets/images/avatars/hys.jpg"
   - name: "@dev_ops"
     role: "Technical Reviewer"
-    avatar: "https://i.pravatar.cc/150?img=52"
+    avatar: "/assets/images/avatars/dev_ops.jpg"
 
 # 徽章配置 (可自定义颜色)
 badges:

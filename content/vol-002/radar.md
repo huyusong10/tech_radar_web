@@ -1,11 +1,13 @@
 ---
 vol: "001"
-date: "2026.01.04"
+date: "2024.05.20"
+title: "Weekly Tech Radar"
+slogan: "Navigating the bleeding edge of technology, one week at a time."
 ---
 
 ## Trending
 
-### [重要通知] 微服务架构迁移至 Event-Driven 模式完成
+### [架构决策] 微服务架构迁移至 Event-Driven 模式完成
 本次架构迁移覆盖了核心交易系统的 12 个微服务，采用 Apache Kafka 作为消息中间件。迁移后系统吞吐量提升 3 倍，延迟降低 40%。详细的迁移指南和最佳实践已更新至内部 Wiki。
 
 ### [债务预警] 遗留 API v1.x 版本将于下月弃用，请尽快迁移

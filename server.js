@@ -9,6 +9,9 @@ const DATA_DIR = path.join(__dirname, 'data');
 const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
 const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
 
+// Lock management for concurrent write operations
+const locks = new Map();
+
 // Middleware
 app.use(express.json());
 app.use(express.static(__dirname));
@@ -18,6 +21,20 @@ function ensureDataDir() {
     if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR);
     }
+}
+
+// Acquire lock for a resource
+async function acquireLock(resource) {
+    while (locks.has(resource)) {
+        // Wait for lock to be released
+        await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    locks.set(resource, true);
+}
+
+// Release lock for a resource
+function releaseLock(resource) {
+    locks.delete(resource);
 }
 
 // Generic read/write functions
@@ -84,6 +101,54 @@ app.get('/api/config', (req, res) => {
     }
 });
 
+// GET /api/authors - Get all authors
+app.get('/api/authors', (req, res) => {
+    const authorsDir = path.join(__dirname, 'content', 'authors');
+
+    try {
+        const authors = {};
+
+        if (fs.existsSync(authorsDir)) {
+            const files = fs.readdirSync(authorsDir)
+                .filter(file => file.endsWith('.md'));
+
+            files.forEach(file => {
+                const filePath = path.join(authorsDir, file);
+                const content = fs.readFileSync(filePath, 'utf8');
+                const authorData = parseYamlFrontmatter(content);
+
+                if (authorData.id) {
+                    authors[authorData.id] = authorData;
+                }
+            });
+        }
+
+        res.json(authors);
+    } catch (error) {
+        console.error('Failed to read authors:', error);
+        res.json({});
+    }
+});
+
+// GET /api/authors/:authorId - Get specific author
+app.get('/api/authors/:authorId', (req, res) => {
+    const { authorId } = req.params;
+    const authorPath = path.join(__dirname, 'content', 'authors', `${authorId}.md`);
+
+    try {
+        if (fs.existsSync(authorPath)) {
+            const content = fs.readFileSync(authorPath, 'utf8');
+            const authorData = parseYamlFrontmatter(content);
+            res.json(authorData);
+        } else {
+            res.status(404).json({ error: 'Author not found' });
+        }
+    } catch (error) {
+        console.error('Failed to read author:', error);
+        res.status(500).json({ error: 'Failed to read author' });
+    }
+});
+
 // GET /api/volumes - Get list of available volumes
 app.get('/api/volumes', (req, res) => {
     const contentDir = path.join(__dirname, 'content');
@@ -124,25 +189,38 @@ app.get('/api/likes', (req, res) => {
     res.json(likes);
 });
 
-// POST /api/likes/:articleId - Toggle like for an article
-app.post('/api/likes/:articleId', (req, res) => {
+// POST /api/likes/:articleId - Toggle like for an article (with concurrency control)
+app.post('/api/likes/:articleId', async (req, res) => {
     const { articleId } = req.params;
     const { action } = req.body; // 'like' or 'unlike'
 
-    const likes = readLikes();
+    const lockKey = `likes-${articleId}`;
 
-    if (!likes[articleId]) {
-        likes[articleId] = 0;
+    try {
+        // Acquire lock for this article's likes
+        await acquireLock(lockKey);
+
+        const likes = readLikes();
+
+        if (!likes[articleId]) {
+            likes[articleId] = 0;
+        }
+
+        if (action === 'like') {
+            likes[articleId]++;
+        } else if (action === 'unlike' && likes[articleId] > 0) {
+            likes[articleId]--;
+        }
+
+        writeLikes(likes);
+        res.json({ articleId, likes: likes[articleId] });
+    } catch (error) {
+        console.error('Error updating likes:', error);
+        res.status(500).json({ error: 'Failed to update likes' });
+    } finally {
+        // Always release lock
+        releaseLock(lockKey);
     }
-
-    if (action === 'like') {
-        likes[articleId]++;
-    } else if (action === 'unlike' && likes[articleId] > 0) {
-        likes[articleId]--;
-    }
-
-    writeLikes(likes);
-    res.json({ articleId, likes: likes[articleId] });
 });
 
 // GET /api/views/:vol - Get views for a volume
@@ -152,18 +230,31 @@ app.get('/api/views/:vol', (req, res) => {
     res.json({ vol, views: views[vol] || 0 });
 });
 
-// POST /api/views/:vol - Increment views for a volume
-app.post('/api/views/:vol', (req, res) => {
+// POST /api/views/:vol - Increment views for a volume (with concurrency control)
+app.post('/api/views/:vol', async (req, res) => {
     const { vol } = req.params;
-    const views = readViews();
+    const lockKey = `views-${vol}`;
 
-    if (!views[vol]) {
-        views[vol] = 0;
+    try {
+        // Acquire lock for this volume's views
+        await acquireLock(lockKey);
+
+        const views = readViews();
+
+        if (!views[vol]) {
+            views[vol] = 0;
+        }
+        views[vol]++;
+
+        writeViews(views);
+        res.json({ vol, views: views[vol] });
+    } catch (error) {
+        console.error('Error updating views:', error);
+        res.status(500).json({ error: 'Failed to update views' });
+    } finally {
+        // Always release lock
+        releaseLock(lockKey);
     }
-    views[vol]++;
-
-    writeViews(views);
-    res.json({ vol, views: views[vol] });
 });
 
 app.listen(PORT, () => {

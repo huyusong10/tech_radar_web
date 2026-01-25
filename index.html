@@ -98,13 +98,21 @@
             border-right: 1px solid rgba(0, 243, 255, 0.2);
             padding: var(--spacing-lg);
             overflow-y: auto;
+            overflow-x: hidden;
             z-index: 100;
+            transition: width 0.3s ease, padding 0.3s ease;
+        }
+
+        .sidebar.collapsed {
+            width: 80px;
+            padding: var(--spacing-lg) var(--spacing-xs);
         }
 
         .sidebar-header {
             margin-bottom: var(--spacing-lg);
             padding-bottom: var(--spacing-md);
             border-bottom: 1px solid rgba(0, 243, 255, 0.1);
+            position: relative;
         }
 
         .sidebar-logo {
@@ -113,15 +121,61 @@
             color: var(--accent-cyan);
             font-weight: 700;
             text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: opacity 0.3s ease;
+        }
+
+        .sidebar.collapsed .sidebar-logo {
+            opacity: 0;
+            width: 0;
         }
 
         .sidebar-title {
             font-family: var(--font-mono);
-            font-size: 0.875rem;
+            font-size: 0.75rem;
             color: var(--text-secondary);
             margin-top: var(--spacing-xs);
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: opacity 0.3s ease, max-width 0.3s ease;
+            max-width: 200px;
+        }
+
+        .sidebar.collapsed .sidebar-title {
+            opacity: 0;
+            max-width: 0;
+        }
+
+        .sidebar-collapse-btn {
+            position: absolute;
+            top: 0;
+            right: -12px;
+            width: 24px;
+            height: 24px;
+            background: var(--bg-secondary);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: 50%;
+            color: var(--accent-cyan);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            transition: all 0.3s ease;
+            z-index: 1;
+        }
+
+        .sidebar-collapse-btn:hover {
+            background: rgba(0, 243, 255, 0.1);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
+        }
+
+        .sidebar.collapsed .sidebar-collapse-btn {
+            right: 28px;
         }
 
         .archive-list {
@@ -144,6 +198,15 @@
             font-size: 0.875rem;
             transition: all 0.3s ease;
             border: 1px solid transparent;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .sidebar.collapsed .archive-link {
+            flex-direction: column;
+            gap: 0.2rem;
+            padding: var(--spacing-xs) 0.3rem;
+            font-size: 0.65rem;
         }
 
         .archive-link:hover {
@@ -163,11 +226,24 @@
         .archive-vol {
             font-weight: 600;
             min-width: 60px;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar.collapsed .archive-vol {
+            min-width: auto;
+            font-size: 0.6rem;
+            text-align: center;
         }
 
         .archive-date {
             color: var(--text-secondary);
             font-size: 0.8rem;
+            transition: all 0.3s ease;
+            flex: 1;
+        }
+
+        .sidebar.collapsed .archive-date {
+            display: none;
         }
 
         .archive-views {
@@ -175,12 +251,24 @@
             font-size: 0.75rem;
             color: var(--text-secondary);
             opacity: 0.7;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar.collapsed .archive-views {
+            margin-left: 0;
+            font-size: 0.55rem;
+            opacity: 0.6;
         }
 
         /* Main Content Area */
         .main-content {
             flex: 1;
             margin-left: 280px;
+            transition: margin-left 0.3s ease;
+        }
+
+        .sidebar.collapsed ~ .main-content {
+            margin-left: 80px;
         }
 
         /* Mobile Menu Toggle */
@@ -495,6 +583,8 @@
         .trending-list {
             display: grid;
             gap: var(--spacing-sm);
+            max-width: 1100px;
+            margin: 0 auto;
         }
 
         .trending-item {
@@ -616,7 +706,7 @@
             display: grid;
             gap: var(--spacing-md);
             grid-template-columns: 1fr;
-            max-width: 900px;
+            max-width: 1100px;
             margin: 0 auto;
         }
 
@@ -694,6 +784,24 @@
             font-family: var(--font-mono);
             font-size: 0.75rem;
             color: var(--text-secondary);
+        }
+
+        .card-header .card-stats {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-left: auto;
+            padding-right: var(--spacing-sm);
+        }
+
+        .card-header .stat-likes {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            color: var(--accent-pink);
         }
 
         .card-header .expand-icon {
@@ -967,12 +1075,13 @@
 
         .footer-content {
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
             flex-wrap: wrap;
             gap: var(--spacing-md);
             font-size: 0.875rem;
             color: var(--text-secondary);
+            text-align: center;
         }
 
         .footer-links {
@@ -1092,8 +1201,11 @@
     <!-- ==================== SIDEBAR NAVIGATION ==================== -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-logo">&gt;_ Tech Radar</div>
-            <div class="sidebar-title">Archive</div>
+            <div class="sidebar-logo" id="sidebar-logo">&gt;_ Tech Radar</div>
+            <div class="sidebar-title">Previous 往期</div>
+            <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse/Expand Sidebar">
+                <span id="collapse-icon">◀</span>
+            </button>
         </div>
         <ul class="archive-list">
             <!-- Dynamic content loaded via JavaScript -->
@@ -1197,12 +1309,11 @@
         }
 
         // Load and render archive list from server API
-        async function loadArchive() {
+        async function loadArchive(currentVol) {
             try {
                 const response = await fetch('/api/volumes');
                 const volumes = await response.json();
                 const archiveList = document.querySelector('.archive-list');
-                const currentVol = getCurrentVol();
 
                 archiveList.innerHTML = volumes.map(item => `
                     <li class="archive-item">
@@ -1218,10 +1329,30 @@
             }
         }
 
-        // Get current volume from URL or default to 001
-        function getCurrentVol() {
+        // Get latest volume from API
+        async function getLatestVol() {
+            try {
+                const response = await fetch('/api/volumes');
+                const volumes = await response.json();
+                if (volumes.length > 0) {
+                    return volumes[0].vol; // Volumes are sorted descending, so first is latest
+                }
+                return '001'; // Fallback
+            } catch (error) {
+                console.error('Failed to get latest volume:', error);
+                return '001';
+            }
+        }
+
+        // Get current volume from URL or default to latest
+        async function getCurrentVol() {
             const params = new URLSearchParams(window.location.search);
-            return params.get('vol') || '001';
+            const volParam = params.get('vol');
+            if (volParam) {
+                return volParam;
+            }
+            // If no vol parameter, get the latest volume
+            return await getLatestVol();
         }
 
         // Badge class mapping (Chinese to English)
@@ -1238,6 +1369,9 @@
         // Store site config
         let siteConfig = {};
 
+        // Store authors data
+        let authorsData = {};
+
         // Load site configuration
         async function loadConfig() {
             try {
@@ -1250,6 +1384,18 @@
             }
         }
 
+        // Load all authors
+        async function loadAuthors() {
+            try {
+                const response = await fetch('/api/authors');
+                authorsData = await response.json();
+                return authorsData;
+            } catch (error) {
+                console.error('Failed to load authors:', error);
+                return {};
+            }
+        }
+
         // Apply site configuration to header and footer
         function applySiteConfig() {
             if (siteConfig.site) {
@@ -1257,6 +1403,10 @@
                     const titleEl = document.getElementById('site-title');
                     titleEl.textContent = siteConfig.site.title;
                     titleEl.setAttribute('data-text', siteConfig.site.title);
+
+                    // Also update sidebar logo to match header title
+                    const sidebarLogo = document.getElementById('sidebar-logo');
+                    sidebarLogo.textContent = `>_ ${siteConfig.site.title}`;
                 }
                 if (siteConfig.site.slogan) {
                     document.getElementById('site-slogan').textContent = `"${siteConfig.site.slogan}"`;
@@ -1422,12 +1572,29 @@
 
         // Render contribution card with collapsible structure
         function renderContribution(metadata, content, articleId) {
-            const codeMatch = content.match(/```(\w+)?\n([\s\S]*?)```/);
+            // Get author data from authorsData using author_id
+            const author = metadata.author_id ? authorsData[metadata.author_id] : null;
 
-            let contentHtml = '';
-            if (codeMatch) {
-                const lang = codeMatch[1] || '';
-                const code = codeMatch[2].trim();
+            // Fallback to old format if author is embedded in metadata
+            const authorInfo = author || metadata.author || {
+                name: 'Unknown Author',
+                team: 'Unknown Team',
+                avatar: '/assets/images/avatars/default.jpg'
+            };
+
+            // Parse markdown content
+            let contentHtml = marked.parse(content);
+
+            // Apply syntax highlighting to code blocks
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = contentHtml;
+
+            // Find all code blocks and apply highlighting with line numbers
+            const codeBlocks = tempDiv.querySelectorAll('pre code');
+            codeBlocks.forEach(block => {
+                const lang = block.className.match(/language-(\w+)/)?.[1] || '';
+                const code = block.textContent || '';
+
                 const highlighted = lang && hljs.getLanguage(lang)
                     ? hljs.highlight(code, { language: lang }).value
                     : hljs.highlightAuto(code).value;
@@ -1439,22 +1606,24 @@
                 ).join('');
 
                 const filename = lang ? `example.${lang}` : 'code';
-                contentHtml = `
-                    <div class="code-block">
-                        <div class="code-header">
-                            <div class="code-dots">
-                                <span class="code-dot red"></span>
-                                <span class="code-dot yellow"></span>
-                                <span class="code-dot green"></span>
-                            </div>
-                            <span class="code-filename">${filename}</span>
+                const wrapper = document.createElement('div');
+                wrapper.className = 'code-block';
+                wrapper.innerHTML = `
+                    <div class="code-header">
+                        <div class="code-dots">
+                            <span class="code-dot red"></span>
+                            <span class="code-dot yellow"></span>
+                            <span class="code-dot green"></span>
                         </div>
-                        <div class="code-content">${codeLines}</div>
+                        <span class="code-filename">${filename}</span>
                     </div>
+                    <div class="code-content">${codeLines}</div>
                 `;
-            } else {
-                contentHtml = marked.parse(content);
-            }
+
+                block.parentElement.replaceWith(wrapper);
+            });
+
+            contentHtml = tempDiv.innerHTML;
 
             // Get likes count from server only (no fallback to metadata)
             const likesCount = serverLikes[articleId] || 0;
@@ -1464,10 +1633,16 @@
             return `
                 <div class="contribution-card" data-article-id="${articleId}">
                     <div class="card-header" onclick="toggleContributionCard(this)">
-                        <img src="${metadata.author.avatar}" alt="Author Avatar" class="author-avatar">
+                        <img src="${authorInfo.avatar}" alt="Author Avatar" class="author-avatar">
                         <div class="card-title-area">
                             <h3 class="contribution-title">${metadata.title}</h3>
-                            <div class="author-name">${metadata.author.name} · ${metadata.author.team}</div>
+                            <div class="author-name">${authorInfo.name} · ${authorInfo.team}</div>
+                        </div>
+                        <div class="card-stats">
+                            <span class="stat-likes">
+                                <span>♥</span>
+                                <span class="like-count-header">${likesCount}</span>
+                            </span>
                         </div>
                         <span class="expand-icon">▼</span>
                     </div>
@@ -1498,7 +1673,12 @@
                 '01-typescript-types.md',
                 '02-react-virtual-list.md',
                 '03-k8s-optimization.md',
-                '04-go-error-handling.md'
+                '04-go-error-handling.md',
+                '05-architecture-diagram.md',
+                '06-quick-tip.md',
+                '07-long-article.md',
+                '08-performance-chart.md',
+                '09-screenshot-example.md'
             ];
 
             const contributions = [];
@@ -1517,10 +1697,14 @@
 
         // Main initialization
         async function init() {
-            const vol = getCurrentVol();
+            // Restore sidebar state
+            restoreSidebarState();
 
-            // Load site config first
+            const vol = await getCurrentVol();
+
+            // Load site config and authors data
             await loadConfig();
+            await loadAuthors();
             applySiteConfig();
 
             // Load server likes data
@@ -1531,7 +1715,7 @@
             document.getElementById('page-views').textContent = views.toLocaleString();
 
             // Load archive list
-            await loadArchive();
+            await loadArchive(vol);
 
             // Load radar content
             const radarContent = await loadMarkdown(`content/vol-${vol}/radar.md`);
@@ -1544,10 +1728,38 @@
             await loadContributions(vol);
         }
 
-        // Sidebar toggle functionality
+        // Sidebar toggle functionality (for mobile)
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('open');
+        }
+
+        // Sidebar collapse/expand functionality (for desktop)
+        function toggleSidebarCollapse() {
+            const sidebar = document.getElementById('sidebar');
+            const collapseIcon = document.getElementById('collapse-icon');
+            sidebar.classList.toggle('collapsed');
+
+            // Update icon direction
+            if (sidebar.classList.contains('collapsed')) {
+                collapseIcon.textContent = '▶';
+            } else {
+                collapseIcon.textContent = '◀';
+            }
+
+            // Save preference to localStorage
+            localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+        }
+
+        // Restore sidebar state from localStorage
+        function restoreSidebarState() {
+            const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            if (isCollapsed) {
+                const sidebar = document.getElementById('sidebar');
+                const collapseIcon = document.getElementById('collapse-icon');
+                sidebar.classList.add('collapsed');
+                collapseIcon.textContent = '▶';
+            }
         }
 
         // Like button functionality
@@ -1555,6 +1767,7 @@
             const card = button.closest('.contribution-card');
             const articleId = card.dataset.articleId;
             const likeCountSpan = button.querySelector('.like-count');
+            const likeCountHeader = card.querySelector('.like-count-header');
             const isCurrentlyLiked = button.classList.contains('liked');
 
             // Determine action
@@ -1573,6 +1786,9 @@
                     setUserLiked(articleId, true);
                 }
                 likeCountSpan.textContent = result.likes;
+                if (likeCountHeader) {
+                    likeCountHeader.textContent = result.likes;
+                }
                 serverLikes[articleId] = result.likes;
             }
         }
