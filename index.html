@@ -92,8 +92,8 @@
             position: fixed;
             left: 0;
             top: 0;
-            width: 280px;
-            height: 100vh;
+            width: 320px;
+            height: 120vh;
             background: var(--bg-secondary);
             border-right: 1px solid rgba(0, 243, 255, 0.2);
             padding: var(--spacing-lg);
@@ -104,13 +104,13 @@
         }
 
         .sidebar.collapsed {
-            width: 80px;
+            width: 100px;
             padding: var(--spacing-lg) var(--spacing-xs);
         }
 
         .sidebar-header {
             margin-bottom: var(--spacing-lg);
-            padding-bottom: var(--spacing-md);
+            padding-bottom: 3rem; 
             border-bottom: 1px solid rgba(0, 243, 255, 0.1);
             position: relative;
         }
@@ -153,7 +153,7 @@
 
         .sidebar-collapse-btn {
             position: absolute;
-            top: 50%;
+            top: 66%;
             right: -12px;
             transform: translateY(-50%);
             width: 24px;
@@ -1208,7 +1208,7 @@
     <!-- ==================== SIDEBAR NAVIGATION ==================== -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-logo" id="sidebar-logo"><span style="color: var(--accent-pink);">&gt;_</span> Tech Radar</div>
+            <div class="sidebar-logo" id="sidebar-logo"><span style="color: var(--accent-pink);">&gt;_</span> Previous</div>
             <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse/Expand Sidebar">
                 <span id="collapse-icon">◀</span>
             </button>
@@ -1429,10 +1429,6 @@
                     const titleEl = document.getElementById('site-title');
                     titleEl.textContent = siteConfig.site.title;
                     titleEl.setAttribute('data-text', siteConfig.site.title);
-
-                    // Also update sidebar logo to match header title (keep ">_" prefix)
-                    const sidebarLogo = document.getElementById('sidebar-logo');
-                    sidebarLogo.innerHTML = `<span style="color: var(--accent-pink);">&gt;_</span> ${siteConfig.site.title}`;
                 }
                 if (siteConfig.site.slogan) {
                     document.getElementById('site-slogan').textContent = `"${siteConfig.site.slogan}"`;
