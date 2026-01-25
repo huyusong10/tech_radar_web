@@ -2,7 +2,7 @@
 vol: "002"
 date: "2026.01.20"
 editors:
-  - author_id: "hys"
+  - author_id: "huyusong"
     role: "Chief Editor"
   - author_id: "chen_hao"
     role: "Technical Reviewer"

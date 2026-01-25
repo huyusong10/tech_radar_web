@@ -1,10 +1,10 @@
 ---
 authors:
-  - id: "hys"
-    name: "@hys"
+  - id: "huyusong"
+    name: "胡宇松"
     team: "Engineering Team"
-    avatar: "/assets/images/avatars/hys.jpg"
-    role: "Tech Lead"
+    avatar: "/assets/images/avatars/huyusong.jpg"
+    role: "ES MDGEL/IL MDE"
 
   - id: "zhang_wei"
     name: "@zhang_wei"

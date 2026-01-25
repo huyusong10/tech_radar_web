@@ -87,7 +87,7 @@ tech_radar_web/
 vol: "期数（三位数字）"
 date: "YYYY.MM.DD"
 editors:
-  - author_id: "hys"
+  - author_id: "huyusong"
     role: "Chief Editor"
   - author_id: "dev_ops"
     role: "Technical Reviewer"
@@ -160,10 +160,10 @@ authors:
     avatar: "/assets/images/avatars/zhang_wei.jpg"
     role: "Senior Developer"
 
-  - id: "hys"
-    name: "@hys"
+  - id: "huyusong"
+    name: "胡宇松"
     team: "Engineering Team"
-    avatar: "/assets/images/avatars/hys.jpg"
+    avatar: "/assets/images/avatars/huyusong.jpg"
     role: "Tech Lead"
 ---
 ```
