@@ -1,8 +1,13 @@
 ---
-vol: "001"
-date: "2024.05.20"
-title: "Weekly Tech Radar"
-slogan: "Navigating the bleeding edge of technology, one week at a time."
+vol: "002"
+date: "2024.05.27"
+authors:
+  - name: "@hys"
+    role: "Chief Editor"
+    avatar: "/assets/images/avatars/hys.jpg"
+  - name: "@dev_ops"
+    role: "Technical Reviewer"
+    avatar: "/assets/images/avatars/dev_ops.jpg"
 ---
 
 ## Trending

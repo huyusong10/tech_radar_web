@@ -117,43 +117,45 @@
 
         .sidebar-logo {
             font-family: var(--font-mono);
-            font-size: 1.25rem;
+            font-size: 1rem;
             color: var(--accent-cyan);
             font-weight: 700;
             text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            transition: opacity 0.3s ease;
+            transition: opacity 0.3s ease, font-size 0.3s ease;
         }
 
         .sidebar.collapsed .sidebar-logo {
-            opacity: 0;
-            width: 0;
+            font-size: 0.7rem;
+            text-align: center;
         }
 
         .sidebar-title {
             font-family: var(--font-mono);
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: var(--text-secondary);
-            margin-top: var(--spacing-xs);
+            margin-top: 0.25rem;
             letter-spacing: 0.5px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            transition: opacity 0.3s ease, max-width 0.3s ease;
-            max-width: 200px;
+            transition: opacity 0.3s ease, max-height 0.3s ease;
+            max-height: 20px;
         }
 
         .sidebar.collapsed .sidebar-title {
             opacity: 0;
-            max-width: 0;
+            max-height: 0;
+            margin-top: 0;
         }
 
         .sidebar-collapse-btn {
             position: absolute;
-            top: 0;
+            top: 50%;
             right: -12px;
+            transform: translateY(-50%);
             width: 24px;
             height: 24px;
             background: var(--bg-secondary);
@@ -221,6 +223,11 @@
             border-color: var(--accent-cyan);
             color: var(--accent-cyan);
             box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+        }
+
+        .archive-link.active .archive-views {
+            color: var(--accent-cyan);
+            opacity: 1;
         }
 
         .archive-vol {
@@ -1201,7 +1208,7 @@
     <!-- ==================== SIDEBAR NAVIGATION ==================== -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-logo" id="sidebar-logo">&gt;_ Tech Radar</div>
+            <div class="sidebar-logo" id="sidebar-logo"><span style="color: var(--accent-pink);">&gt;_</span> Tech Radar</div>
             <div class="sidebar-title">Previous 往期</div>
             <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse/Expand Sidebar">
                 <span id="collapse-icon">◀</span>
@@ -1311,16 +1318,26 @@
         // Load and render archive list from server API
         async function loadArchive(currentVol) {
             try {
-                const response = await fetch('/api/volumes');
-                const volumes = await response.json();
-                const archiveList = document.querySelector('.archive-list');
+                let volumes;
+                try {
+                    // Try to load from API first (when using node server.js)
+                    const response = await fetch('/api/volumes');
+                    if (!response.ok) throw new Error('API not available');
+                    volumes = await response.json();
+                } catch (apiError) {
+                    // Fallback to static archive.json (when using npx serve or static hosting)
+                    console.log('API not available, loading static archive.json');
+                    const response = await fetch('/content/archive.json');
+                    volumes = await response.json();
+                }
 
+                const archiveList = document.querySelector('.archive-list');
                 archiveList.innerHTML = volumes.map(item => `
                     <li class="archive-item">
                         <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
                             <span class="archive-vol">VOL.${item.vol}</span>
                             <span class="archive-date">${item.date}</span>
-                            <span class="archive-views">👁 ${item.views}</span>
+                            <span class="archive-views">👁 ${item.views || 0}</span>
                         </a>
                     </li>
                 `).join('');
@@ -1329,13 +1346,23 @@
             }
         }
 
-        // Get latest volume from API
+        // Get latest volume from API or static file
         async function getLatestVol() {
             try {
-                const response = await fetch('/api/volumes');
-                const volumes = await response.json();
+                let volumes;
+                try {
+                    // Try API first
+                    const response = await fetch('/api/volumes');
+                    if (!response.ok) throw new Error('API not available');
+                    volumes = await response.json();
+                } catch (apiError) {
+                    // Fallback to static archive.json
+                    const response = await fetch('/content/archive.json');
+                    volumes = await response.json();
+                }
+
                 if (volumes.length > 0) {
-                    return volumes[0].vol; // Volumes are sorted descending, so first is latest
+                    return volumes[0].vol; // First item is latest
                 }
                 return '001'; // Fallback
             } catch (error) {
@@ -1404,9 +1431,9 @@
                     titleEl.textContent = siteConfig.site.title;
                     titleEl.setAttribute('data-text', siteConfig.site.title);
 
-                    // Also update sidebar logo to match header title
+                    // Also update sidebar logo to match header title (keep ">_" prefix)
                     const sidebarLogo = document.getElementById('sidebar-logo');
-                    sidebarLogo.textContent = `>_ ${siteConfig.site.title}`;
+                    sidebarLogo.innerHTML = `<span style="color: var(--accent-pink);">&gt;_</span> ${siteConfig.site.title}`;
                 }
                 if (siteConfig.site.slogan) {
                     document.getElementById('site-slogan').textContent = `"${siteConfig.site.slogan}"`;
@@ -1415,18 +1442,7 @@
                     document.getElementById('site-footer').textContent = siteConfig.site.footer;
                 }
             }
-
-            // Render authors
-            if (siteConfig.authors && siteConfig.authors.length > 0) {
-                const authorsContainer = document.getElementById('header-authors');
-                authorsContainer.innerHTML = siteConfig.authors.map((author, index) => `
-                    <div class="author-badge" style="animation-delay: ${index * 0.5}s">
-                        <img src="${author.avatar}" alt="${author.name}">
-                        <span class="author-name">${author.name}</span>
-                        <span class="author-role">${author.role}</span>
-                    </div>
-                `).join('');
-            }
+            // Note: Authors are now rendered from individual radar.md files, not from config
         }
 
         // Get badge style from config or use default
@@ -1442,6 +1458,18 @@
         function renderRadar(metadata, content) {
             // Update header with issue-specific VOL and date
             document.getElementById('header-meta').innerHTML = `VOL.${metadata.vol}<span>|</span>${metadata.date}`;
+
+            // Render authors from radar.md metadata (per-issue authors)
+            if (metadata.authors && metadata.authors.length > 0) {
+                const authorsContainer = document.getElementById('header-authors');
+                authorsContainer.innerHTML = metadata.authors.map((author, index) => `
+                    <div class="author-badge" style="animation-delay: ${index * 0.5}s">
+                        <img src="${author.avatar}" alt="${author.name}">
+                        <span class="author-name">${author.name}</span>
+                        <span class="author-role">${author.role}</span>
+                    </div>
+                `).join('');
+            }
 
             // Parse trending items from markdown
             const trendingSection = document.querySelector('.trending-list');

@@ -5,15 +5,6 @@ site:
   slogan: "Navigating the bleeding edge of technology, one week at a time."
   footer: "© 2026 Weekly Tech Radar | Powered by Claude Code"
 
-# 作者/编辑团队
-authors:
-  - name: "@hys"
-    role: "Chief Editor"
-    avatar: "/assets/images/avatars/hys.jpg"
-  - name: "@dev_ops"
-    role: "Technical Reviewer"
-    avatar: "/assets/images/avatars/dev_ops.jpg"
-
 # 徽章配置 (可自定义颜色)
 badges:
   架构决策:

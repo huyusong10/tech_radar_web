@@ -29,22 +29,41 @@ tech_radar_web/
 
 ## 🚀 快速开始
 
-### 本地预览
-
-由于使用了动态加载，需要通过 HTTP 服务器访问：
+### 安装依赖
 
 ```bash
-# 使用 Python
-python3 -m http.server 8000
-
-# 或使用 Node.js
-npx serve
-
-# 或使用 PHP
-php -S localhost:8000
+npm install
 ```
 
-然后访问 `http://localhost:8000`
+### 本地预览
+
+**推荐方式（完整功能）**：
+
+```bash
+npm start
+# 或
+node server.js
+```
+
+然后访问 `http://localhost:3000`
+
+这种方式支持：
+- ✅ 动态阅读量统计
+- ✅ 点赞功能
+- ✅ 往期列表动态加载
+- ✅ 并发控制
+
+**简单预览（静态文件服务器）**：
+
+```bash
+npx serve
+# 或
+python3 -m http.server 8000
+```
+
+然后访问 `http://localhost:3000` 或 `http://localhost:8000`
+
+⚠️ 注意：使用静态服务器时，阅读量和点赞功能将不可用，往期列表从静态 `content/archive.json` 加载。
 
 ### 添加新一期周刊
 
