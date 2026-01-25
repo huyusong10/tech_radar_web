@@ -315,6 +315,62 @@
             color: var(--text-secondary);
         }
 
+        /* Header Authors */
+        .header-authors {
+            display: flex;
+            justify-content: center;
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-md);
+            flex-wrap: wrap;
+        }
+
+        .author-badge {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            padding: 0.4rem 0.8rem;
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.1), rgba(255, 0, 255, 0.1));
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: 20px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+            animation: author-glow 3s ease-in-out infinite;
+        }
+
+        .author-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 243, 255, 0.3);
+        }
+
+        @keyframes author-glow {
+            0%, 100% {
+                border-color: rgba(0, 243, 255, 0.3);
+                box-shadow: 0 0 5px rgba(0, 243, 255, 0.2);
+            }
+            50% {
+                border-color: rgba(255, 0, 255, 0.5);
+                box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
+            }
+        }
+
+        .author-badge img {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 1px solid var(--accent-cyan);
+        }
+
+        .author-badge .author-name {
+            color: var(--accent-cyan);
+            font-weight: 600;
+        }
+
+        .author-badge .author-role {
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+        }
+
         /* Glitch Effect */
         .glitch {
             position: relative;
@@ -495,16 +551,23 @@
         }
 
         .trending-details {
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.4s ease, padding 0.3s ease;
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.4s ease-out;
             color: var(--text-secondary);
             font-size: 0.9rem;
             line-height: 1.7;
         }
 
+        .trending-details > div {
+            overflow: hidden;
+        }
+
         .trending-item.expanded .trending-details {
-            max-height: 500px;
+            grid-template-rows: 1fr;
+        }
+
+        .trending-item.expanded .trending-details > div {
             padding-top: var(--spacing-sm);
             margin-top: var(--spacing-sm);
             border-top: 1px solid rgba(255, 255, 255, 0.05);
@@ -551,7 +614,7 @@
         /* ==================== CONTRIBUTION SECTION ==================== */
         .contributions-grid {
             display: grid;
-            gap: var(--spacing-xl);
+            gap: var(--spacing-md);
             grid-template-columns: 1fr;
             max-width: 900px;
             margin: 0 auto;
@@ -561,9 +624,9 @@
             background: var(--bg-card);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: var(--radius-lg);
-            padding: var(--spacing-lg);
             position: relative;
             transition: all 0.4s ease;
+            overflow: hidden;
         }
 
         .contribution-card::before {
@@ -581,13 +644,86 @@
             pointer-events: none;
         }
 
-        .contribution-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 20px 40px rgba(0, 243, 255, 0.15);
-        }
-
         .contribution-card:hover::before {
             opacity: 1;
+        }
+
+        .contribution-card.expanded {
+            box-shadow: 0 10px 30px rgba(0, 243, 255, 0.15);
+        }
+
+        /* Card Header - Always visible */
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-md);
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .card-header:hover {
+            background: rgba(0, 243, 255, 0.05);
+        }
+
+        .card-header .author-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid var(--accent-cyan);
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .card-header .card-title-area {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .card-header .contribution-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-header .author-name {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .card-header .expand-icon {
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            transition: transform 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .contribution-card.expanded .card-header .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        /* Card Content - Collapsible */
+        .card-body {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.4s ease-out;
+        }
+
+        .card-body > div {
+            overflow: hidden;
+        }
+
+        .contribution-card.expanded .card-body {
+            grid-template-rows: 1fr;
+        }
+
+        .card-body-inner {
+            padding: 0 var(--spacing-lg) var(--spacing-lg);
         }
 
         .author-info {
@@ -969,12 +1105,15 @@
     <!-- ==================== HEADER ==================== -->
     <header>
         <div class="container">
-            <div class="logo glitch" data-text="Weekly Tech Radar">Weekly Tech Radar</div>
-            <div class="header-meta">
+            <div class="logo glitch" data-text="Weekly Tech Radar" id="site-title">Weekly Tech Radar</div>
+            <div class="header-meta" id="header-meta">
                 VOL.001<span>|</span>2024.05.20
             </div>
-            <div class="slogan">
+            <div class="slogan" id="site-slogan">
                 "Navigating the bleeding edge of technology, one week at a time."
+            </div>
+            <div class="header-authors" id="header-authors">
+                <!-- Dynamic authors loaded via JavaScript -->
             </div>
             <div class="header-views">
                 <span class="views-icon">👁️</span>
@@ -1001,18 +1140,13 @@
     <!-- ==================== CONTRIBUTIONS SECTION ==================== -->
     <section class="section" id="contributions-section">
         <div class="container">
-            <div class="section-header collapsed" onclick="toggleSection('contributions')">
-                <h2 class="section-title">
-                    <span class="glow-text">💎 Developer's Space</span>
-                    <span class="cn-text">开发者空间</span>
-                </h2>
-                <span class="toggle-icon">▼</span>
-            </div>
+            <h2 class="section-title">
+                <span class="glow-text">💎 Developer's Space</span>
+                <span class="cn-text">开发者空间</span>
+            </h2>
 
-            <div class="section-content collapsed" id="contributions-content">
-                <div class="contributions-grid">
-                    <!-- Dynamic content loaded via JavaScript -->
-                </div>
+            <div class="contributions-grid">
+                <!-- Dynamic content loaded via JavaScript -->
             </div>
         </div>
     </section>
@@ -1020,21 +1154,9 @@
     <!-- ==================== FOOTER ==================== -->
     <footer>
         <div class="container">
-            <div class="cta-section">
-                <a href="#" class="cta-button">
-                    <span>📝 Submit Your Contribution</span>
-                </a>
-            </div>
-
             <div class="footer-content">
-                <div class="copyright">
+                <div class="copyright" id="site-footer">
                     © 2024 Weekly Tech Radar | Powered by Engineers, for Engineers
-                </div>
-                <div class="footer-links">
-                    <a href="#" class="footer-link">Archive</a>
-                    <a href="#" class="footer-link">Guidelines</a>
-                    <a href="#" class="footer-link">Team</a>
-                    <a href="#" class="footer-link">RSS</a>
                 </div>
             </div>
         </div>
@@ -1113,12 +1235,63 @@
             '重要通知': 'notice'
         };
 
+        // Store site config
+        let siteConfig = {};
+
+        // Load site configuration
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                siteConfig = await response.json();
+                return siteConfig;
+            } catch (error) {
+                console.error('Failed to load config:', error);
+                return {};
+            }
+        }
+
+        // Apply site configuration to header and footer
+        function applySiteConfig() {
+            if (siteConfig.site) {
+                if (siteConfig.site.title) {
+                    const titleEl = document.getElementById('site-title');
+                    titleEl.textContent = siteConfig.site.title;
+                    titleEl.setAttribute('data-text', siteConfig.site.title);
+                }
+                if (siteConfig.site.slogan) {
+                    document.getElementById('site-slogan').textContent = `"${siteConfig.site.slogan}"`;
+                }
+                if (siteConfig.site.footer) {
+                    document.getElementById('site-footer').textContent = siteConfig.site.footer;
+                }
+            }
+
+            // Render authors
+            if (siteConfig.authors && siteConfig.authors.length > 0) {
+                const authorsContainer = document.getElementById('header-authors');
+                authorsContainer.innerHTML = siteConfig.authors.map((author, index) => `
+                    <div class="author-badge" style="animation-delay: ${index * 0.5}s">
+                        <img src="${author.avatar}" alt="${author.name}">
+                        <span class="author-name">${author.name}</span>
+                        <span class="author-role">${author.role}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // Get badge style from config or use default
+        function getBadgeStyle(badgeName) {
+            if (siteConfig.badges && siteConfig.badges[badgeName]) {
+                const config = siteConfig.badges[badgeName];
+                return `background: ${config.bg}; color: ${config.color};`;
+            }
+            return '';
+        }
+
         // Render radar items
         function renderRadar(metadata, content) {
-            // Update header
-            document.querySelector('.logo').textContent = metadata.title || 'Weekly Tech Radar';
-            document.querySelector('.header-meta').innerHTML = `VOL.${metadata.vol}<span>|</span>${metadata.date}`;
-            document.querySelector('.slogan').textContent = metadata.slogan || '';
+            // Update header with issue-specific VOL and date
+            document.getElementById('header-meta').innerHTML = `VOL.${metadata.vol}<span>|</span>${metadata.date}`;
 
             // Parse trending items from markdown
             const trendingSection = document.querySelector('.trending-list');
@@ -1145,15 +1318,16 @@
             // Render trending items with expandable details
             trendingSection.innerHTML = items.map((item, index) => {
                 const badgeClass = badgeClassMap[item.badge] || 'default';
+                const badgeStyle = getBadgeStyle(item.badge);
                 const hasDetails = item.details.trim().length > 0;
                 return `
                 <div class="trending-item ${hasDetails ? 'expandable' : ''}" onclick="${hasDetails ? 'toggleTrendingItem(this)' : ''}">
                     <div class="trending-header">
-                        <span class="badge ${badgeClass}">${item.badge}</span>
+                        <span class="badge ${badgeClass}" ${badgeStyle ? `style="${badgeStyle}"` : ''}>${item.badge}</span>
                         <div class="trending-title">${item.title}</div>
                         ${hasDetails ? '<span class="expand-icon">▼</span>' : ''}
                     </div>
-                    ${hasDetails ? `<div class="trending-details">${marked.parse(item.details)}</div>` : ''}
+                    ${hasDetails ? `<div class="trending-details"><div>${marked.parse(item.details)}</div></div>` : ''}
                 </div>
                 `;
             }).join('');
@@ -1241,7 +1415,12 @@
         // Store server likes data
         let serverLikes = {};
 
-        // Render contribution card
+        // Toggle contribution card expansion
+        function toggleContributionCard(element) {
+            element.closest('.contribution-card').classList.toggle('expanded');
+        }
+
+        // Render contribution card with collapsible structure
         function renderContribution(metadata, content, articleId) {
             const codeMatch = content.match(/```(\w+)?\n([\s\S]*?)```/);
 
@@ -1284,21 +1463,27 @@
 
             return `
                 <div class="contribution-card" data-article-id="${articleId}">
-                    <div class="author-info">
+                    <div class="card-header" onclick="toggleContributionCard(this)">
                         <img src="${metadata.author.avatar}" alt="Author Avatar" class="author-avatar">
-                        <div class="author-details">
-                            <div class="author-name">${metadata.author.name}</div>
-                            <div class="author-team">${metadata.author.team}</div>
+                        <div class="card-title-area">
+                            <h3 class="contribution-title">${metadata.title}</h3>
+                            <div class="author-name">${metadata.author.name} · ${metadata.author.team}</div>
                         </div>
+                        <span class="expand-icon">▼</span>
                     </div>
-                    <h3 class="contribution-title">${metadata.title}</h3>
-                    <p class="contribution-desc">${metadata.description}</p>
-                    ${contentHtml}
-                    <div class="card-footer">
-                        <button class="like-button ${likedClass}" onclick="toggleLike(this)">
-                            <span class="like-icon">♥</span>
-                            <span class="like-count">${likesCount}</span>
-                        </button>
+                    <div class="card-body">
+                        <div>
+                            <div class="card-body-inner">
+                                <p class="contribution-desc">${metadata.description}</p>
+                                ${contentHtml}
+                                <div class="card-footer">
+                                    <button class="like-button ${likedClass}" onclick="event.stopPropagation(); toggleLike(this)">
+                                        <span class="like-icon">♥</span>
+                                        <span class="like-count">${likesCount}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -1334,7 +1519,11 @@
         async function init() {
             const vol = getCurrentVol();
 
-            // Load server likes data first
+            // Load site config first
+            await loadConfig();
+            applySiteConfig();
+
+            // Load server likes data
             serverLikes = await fetchLikes();
 
             // Increment and display page views

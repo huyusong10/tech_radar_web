@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const yaml = require('js-yaml');
 
 const app = express();
 const PORT = 3000;
@@ -51,6 +52,37 @@ function readViews() {
 function writeViews(data) {
     writeJsonFile(VIEWS_FILE, data);
 }
+
+// Parse YAML frontmatter from markdown using js-yaml
+function parseYamlFrontmatter(content) {
+    const match = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!match) return {};
+
+    try {
+        return yaml.load(match[1]) || {};
+    } catch (e) {
+        console.error('Failed to parse YAML:', e);
+        return {};
+    }
+}
+
+// GET /api/config - Get site configuration
+app.get('/api/config', (req, res) => {
+    const configPath = path.join(__dirname, 'content', 'config.md');
+
+    try {
+        if (fs.existsSync(configPath)) {
+            const content = fs.readFileSync(configPath, 'utf8');
+            const config = parseYamlFrontmatter(content);
+            res.json(config);
+        } else {
+            res.json({});
+        }
+    } catch (error) {
+        console.error('Failed to read config:', error);
+        res.json({});
+    }
+});
 
 // GET /api/volumes - Get list of available volumes
 app.get('/api/volumes', (req, res) => {
