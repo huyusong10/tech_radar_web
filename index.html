@@ -170,6 +170,13 @@
             font-size: 0.8rem;
         }
 
+        .archive-views {
+            margin-left: auto;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
         /* Main Content Area */
         .main-content {
             flex: 1;
@@ -358,7 +365,9 @@
             margin-bottom: var(--spacing-lg);
             color: var(--text-primary);
             position: relative;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-sm);
         }
 
         .section-title::after {
@@ -372,6 +381,61 @@
             box-shadow: 0 0 10px var(--accent-cyan);
         }
 
+        .section-title .cn-text {
+            font-size: 0.9rem;
+            color: var(--accent-pink);
+            font-weight: 400;
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+        }
+
+        .section-title .glow-text {
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: text-glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes text-glow {
+            from {
+                filter: drop-shadow(0 0 5px rgba(0, 243, 255, 0.5));
+            }
+            to {
+                filter: drop-shadow(0 0 15px rgba(255, 0, 255, 0.8));
+            }
+        }
+
+        /* Section Header with Toggle */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .section-header .toggle-icon {
+            font-size: 1.25rem;
+            color: var(--accent-cyan);
+            transition: transform 0.3s ease;
+        }
+
+        .section-header.collapsed .toggle-icon {
+            transform: rotate(-90deg);
+        }
+
+        .section-content {
+            max-height: 2000px;
+            overflow: hidden;
+            transition: max-height 0.5s ease-out, opacity 0.3s ease;
+            opacity: 1;
+        }
+
+        .section-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+        }
+
         .trending-list {
             display: grid;
             gap: var(--spacing-sm);
@@ -381,10 +445,14 @@
             background: var(--bg-card);
             border: 1px solid rgba(255, 255, 255, 0.05);
             border-radius: var(--radius-md);
-            padding: var(--spacing-md);
+            padding: var(--spacing-sm) var(--spacing-md);
             transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
+        }
+
+        .trending-item.expandable {
+            cursor: pointer;
         }
 
         .trending-item::before {
@@ -397,12 +465,12 @@
             background: linear-gradient(45deg, transparent, rgba(0, 243, 255, 0.05), transparent);
             transform: translateX(-100%);
             transition: transform 0.6s;
+            pointer-events: none;
         }
 
         .trending-item:hover {
             border-color: var(--accent-cyan);
             box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
-            transform: translateY(-2px);
         }
 
         .trending-item:hover::before {
@@ -413,50 +481,71 @@
             display: flex;
             align-items: center;
             gap: var(--spacing-sm);
-            margin-bottom: var(--spacing-xs);
+        }
+
+        .expand-icon {
+            font-size: 0.75rem;
+            color: var(--accent-cyan);
+            transition: transform 0.3s ease;
+            margin-left: auto;
+        }
+
+        .trending-item.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        .trending-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease, padding 0.3s ease;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.7;
+        }
+
+        .trending-item.expanded .trending-details {
+            max-height: 500px;
+            padding-top: var(--spacing-sm);
+            margin-top: var(--spacing-sm);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .trending-details p {
+            margin: 0;
+        }
+
+        .trending-details code {
+            background: rgba(0, 243, 255, 0.1);
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-family: var(--font-mono);
+            font-size: 0.85em;
+            color: var(--accent-cyan);
         }
 
         .badge {
             font-family: var(--font-mono);
-            font-size: 0.75rem;
-            padding: 0.25rem 0.75rem;
+            font-size: 0.7rem;
+            padding: 0.2rem 0.6rem;
             border-radius: var(--radius-sm);
             font-weight: 600;
-            text-transform: uppercase;
             letter-spacing: 0.5px;
+            white-space: nowrap;
         }
 
         .badge.architecture { background: rgba(0, 243, 255, 0.2); color: var(--accent-cyan); }
         .badge.debt { background: rgba(255, 107, 53, 0.2); color: var(--accent-orange); }
         .badge.tool { background: rgba(0, 255, 136, 0.2); color: var(--accent-green); }
         .badge.security { background: rgba(255, 0, 255, 0.2); color: var(--accent-pink); }
+        .badge.performance { background: rgba(168, 85, 247, 0.2); color: var(--accent-purple); }
+        .badge.feature { background: rgba(0, 255, 136, 0.2); color: var(--accent-green); }
+        .badge.notice { background: rgba(255, 107, 53, 0.2); color: var(--accent-orange); }
+        .badge.default { background: rgba(156, 163, 175, 0.2); color: var(--text-secondary); }
 
         .trending-title {
-            font-size: 1rem;
+            font-size: 0.95rem;
             color: var(--text-primary);
             flex: 1;
-        }
-
-        .trending-link {
-            color: var(--accent-cyan);
-            text-decoration: none;
-            font-family: var(--font-mono);
-            font-size: 0.875rem;
-            transition: all 0.3s;
-        }
-
-        .trending-link::after {
-            content: ' →';
-            transition: transform 0.3s;
-            display: inline-block;
-        }
-
-        .trending-link:hover {
-            text-shadow: 0 0 10px var(--accent-cyan);
-        }
-
-        .trending-link:hover::after {
-            transform: translateX(4px);
         }
 
         /* ==================== CONTRIBUTION SECTION ==================== */
@@ -871,54 +960,7 @@
             <div class="sidebar-title">Archive</div>
         </div>
         <ul class="archive-list">
-            <li class="archive-item">
-                <a href="#" class="archive-link active">
-                    <span class="archive-vol">VOL.001</span>
-                    <span class="archive-date">2024.05.20</span>
-                </a>
-            </li>
-            <li class="archive-item">
-                <a href="#" class="archive-link">
-                    <span class="archive-vol">VOL.000</span>
-                    <span class="archive-date">2024.05.13</span>
-                </a>
-            </li>
-            <li class="archive-item">
-                <a href="#" class="archive-link">
-                    <span class="archive-vol">VOL.099</span>
-                    <span class="archive-date">2024.05.06</span>
-                </a>
-            </li>
-            <li class="archive-item">
-                <a href="#" class="archive-link">
-                    <span class="archive-vol">VOL.098</span>
-                    <span class="archive-date">2024.04.29</span>
-                </a>
-            </li>
-            <li class="archive-item">
-                <a href="#" class="archive-link">
-                    <span class="archive-vol">VOL.097</span>
-                    <span class="archive-date">2024.04.22</span>
-                </a>
-            </li>
-            <li class="archive-item">
-                <a href="#" class="archive-link">
-                    <span class="archive-vol">VOL.096</span>
-                    <span class="archive-date">2024.04.15</span>
-                </a>
-            </li>
-            <li class="archive-item">
-                <a href="#" class="archive-link">
-                    <span class="archive-vol">VOL.095</span>
-                    <span class="archive-date">2024.04.08</span>
-                </a>
-            </li>
-            <li class="archive-item">
-                <a href="#" class="archive-link">
-                    <span class="archive-vol">VOL.094</span>
-                    <span class="archive-date">2024.04.01</span>
-                </a>
-            </li>
+            <!-- Dynamic content loaded via JavaScript -->
         </ul>
     </aside>
 
@@ -943,53 +985,34 @@
     </header>
 
     <!-- ==================== TRENDING SECTION ==================== -->
-    <section class="section">
+    <section class="section" id="trending-section">
         <div class="container">
-            <h2 class="section-title">⚡ This Week's Radar</h2>
+            <h2 class="section-title">
+                <span class="glow-text">⚡ Trending</span>
+                <span class="cn-text">本周趋势</span>
+            </h2>
 
             <div class="trending-list">
-                <div class="trending-item">
-                    <div class="trending-header">
-                        <span class="badge architecture">架构决策</span>
-                        <div class="trending-title">微服务架构迁移至 Event-Driven 模式完成</div>
-                        <a href="#" class="trending-link">详情</a>
-                    </div>
-                </div>
-
-                <div class="trending-item">
-                    <div class="trending-header">
-                        <span class="badge debt">债务预警</span>
-                        <div class="trending-title">遗留 API v1.x 版本将于下月弃用，请尽快迁移</div>
-                        <a href="#" class="trending-link">详情</a>
-                    </div>
-                </div>
-
-                <div class="trending-item">
-                    <div class="trending-header">
-                        <span class="badge tool">工具推荐</span>
-                        <div class="trending-title">团队内部开发的 DevOps CLI 工具已开源</div>
-                        <a href="#" class="trending-link">详情</a>
-                    </div>
-                </div>
-
-                <div class="trending-item">
-                    <div class="trending-header">
-                        <span class="badge security">安全更新</span>
-                        <div class="trending-title">关键依赖包安全漏洞修复，请更新至最新版本</div>
-                        <a href="#" class="trending-link">详情</a>
-                    </div>
-                </div>
+                <!-- Dynamic content loaded via JavaScript -->
             </div>
         </div>
     </section>
 
     <!-- ==================== CONTRIBUTIONS SECTION ==================== -->
-    <section class="section">
+    <section class="section" id="contributions-section">
         <div class="container">
-            <h2 class="section-title">💎 Featured Contributions</h2>
+            <div class="section-header collapsed" onclick="toggleSection('contributions')">
+                <h2 class="section-title">
+                    <span class="glow-text">💎 Developer's Space</span>
+                    <span class="cn-text">开发者空间</span>
+                </h2>
+                <span class="toggle-icon">▼</span>
+            </div>
 
-            <div class="contributions-grid">
-                <!-- Dynamic content loaded via JavaScript -->
+            <div class="section-content collapsed" id="contributions-content">
+                <div class="contributions-grid">
+                    <!-- Dynamic content loaded via JavaScript -->
+                </div>
             </div>
         </div>
     </section>
@@ -1051,19 +1074,26 @@
             }
         }
 
-        // Load and render archive list
+        // Load and render archive list from server API
         async function loadArchive() {
-            const archiveData = await fetch('content/archive.json').then(r => r.json());
-            const archiveList = document.querySelector('.archive-list');
+            try {
+                const response = await fetch('/api/volumes');
+                const volumes = await response.json();
+                const archiveList = document.querySelector('.archive-list');
+                const currentVol = getCurrentVol();
 
-            archiveList.innerHTML = archiveData.map(item => `
-                <li class="archive-item">
-                    <a href="?vol=${item.vol}" class="archive-link ${item.active ? 'active' : ''}">
-                        <span class="archive-vol">VOL.${item.vol}</span>
-                        <span class="archive-date">${item.date}</span>
-                    </a>
-                </li>
-            `).join('');
+                archiveList.innerHTML = volumes.map(item => `
+                    <li class="archive-item">
+                        <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
+                            <span class="archive-vol">VOL.${item.vol}</span>
+                            <span class="archive-date">${item.date}</span>
+                            <span class="archive-views">👁 ${item.views}</span>
+                        </a>
+                    </li>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load archive:', error);
+            }
         }
 
         // Get current volume from URL or default to 001
@@ -1071,6 +1101,17 @@
             const params = new URLSearchParams(window.location.search);
             return params.get('vol') || '001';
         }
+
+        // Badge class mapping (Chinese to English)
+        const badgeClassMap = {
+            '架构决策': 'architecture',
+            '债务预警': 'debt',
+            '工具推荐': 'tool',
+            '安全更新': 'security',
+            '性能优化': 'performance',
+            '新功能': 'feature',
+            '重要通知': 'notice'
+        };
 
         // Render radar items
         function renderRadar(metadata, content) {
@@ -1092,31 +1133,44 @@
                     currentItem = {
                         badge: headerMatch[1],
                         title: headerMatch[2],
-                        link: '#'
+                        details: ''
                     };
-                } else if (currentItem && line.match(/^\[.+\]\(.+\)$/)) {
-                    const linkMatch = line.match(/\[(.+?)\]\((.+?)\)/);
-                    if (linkMatch) {
-                        currentItem.linkText = linkMatch[1];
-                        currentItem.link = linkMatch[2];
-                    }
+                } else if (currentItem && line.trim() && !line.startsWith('#')) {
+                    // Collect detail lines
+                    currentItem.details += (currentItem.details ? '\n' : '') + line;
                 }
             });
             if (currentItem) items.push(currentItem);
 
-            // Render trending items
-            trendingSection.innerHTML = items.map(item => {
-                const badgeClass = item.badge.toLowerCase().replace(/[^a-z]/g, '');
+            // Render trending items with expandable details
+            trendingSection.innerHTML = items.map((item, index) => {
+                const badgeClass = badgeClassMap[item.badge] || 'default';
+                const hasDetails = item.details.trim().length > 0;
                 return `
-                <div class="trending-item">
+                <div class="trending-item ${hasDetails ? 'expandable' : ''}" onclick="${hasDetails ? 'toggleTrendingItem(this)' : ''}">
                     <div class="trending-header">
                         <span class="badge ${badgeClass}">${item.badge}</span>
                         <div class="trending-title">${item.title}</div>
-                        <a href="${item.link}" class="trending-link">详情</a>
+                        ${hasDetails ? '<span class="expand-icon">▼</span>' : ''}
                     </div>
+                    ${hasDetails ? `<div class="trending-details">${marked.parse(item.details)}</div>` : ''}
                 </div>
                 `;
             }).join('');
+        }
+
+        // Toggle trending item expansion
+        function toggleTrendingItem(element) {
+            element.classList.toggle('expanded');
+        }
+
+        // Toggle section collapse/expand
+        function toggleSection(sectionId) {
+            const header = document.querySelector(`#${sectionId}-section .section-header`);
+            const content = document.getElementById(`${sectionId}-content`);
+
+            header.classList.toggle('collapsed');
+            content.classList.toggle('collapsed');
         }
 
         // Views API functions

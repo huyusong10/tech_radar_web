@@ -52,6 +52,40 @@ function writeViews(data) {
     writeJsonFile(VIEWS_FILE, data);
 }
 
+// GET /api/volumes - Get list of available volumes
+app.get('/api/volumes', (req, res) => {
+    const contentDir = path.join(__dirname, 'content');
+    const views = readViews();
+
+    try {
+        const dirs = fs.readdirSync(contentDir, { withFileTypes: true });
+        const volumes = dirs
+            .filter(dir => dir.isDirectory() && dir.name.startsWith('vol-'))
+            .map(dir => {
+                const vol = dir.name.replace('vol-', '');
+                const radarPath = path.join(contentDir, dir.name, 'radar.md');
+                let date = '';
+
+                // Try to read date from radar.md frontmatter
+                if (fs.existsSync(radarPath)) {
+                    const content = fs.readFileSync(radarPath, 'utf8');
+                    const dateMatch = content.match(/date:\s*"?([^"\n]+)"?/);
+                    if (dateMatch) {
+                        date = dateMatch[1].trim();
+                    }
+                }
+
+                return { vol, date, views: views[vol] || 0 };
+            })
+            .sort((a, b) => b.vol.localeCompare(a.vol)); // Sort descending
+
+        res.json(volumes);
+    } catch (error) {
+        console.error('Failed to read volumes:', error);
+        res.json([]);
+    }
+});
+
 // GET /api/likes - Get all likes
 app.get('/api/likes', (req, res) => {
     const likes = readLikes();
