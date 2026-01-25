@@ -1,13 +1,11 @@
 ---
 vol: "002"
-date: "2024.05.27"
-authors:
-  - name: "@hys"
+date: "2026.01.20"
+editors:
+  - author_id: "hys"
     role: "Chief Editor"
-    avatar: "/assets/images/avatars/hys.jpg"
-  - name: "@dev_ops"
+  - author_id: "chen_hao"
     role: "Technical Reviewer"
-    avatar: "/assets/images/avatars/dev_ops.jpg"
 ---
 
 ## Trending

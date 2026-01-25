@@ -1,13 +1,11 @@
 ---
 vol: "001"
 date: "2026.01.04"
-authors:
-  - name: "@hys"
+editors:
+  - author_id: "hys"
     role: "Chief Editor"
-    avatar: "/assets/images/avatars/hys.jpg"
-  - name: "@dev_ops"
+  - author_id: "dev_ops"
     role: "Technical Reviewer"
-    avatar: "/assets/images/avatars/dev_ops.jpg"
 ---
 
 ## Trending

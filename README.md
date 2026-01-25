@@ -78,14 +78,17 @@ mkdir -p content/vol-002/contributions
 ---
 vol: "002"
 date: "2024.05.27"
-title: "Weekly Tech Radar"
-slogan: "Your slogan here"
+editors:
+  - author_id: "hys"
+    role: "Chief Editor"
+  - author_id: "dev_ops"
+    role: "Technical Reviewer"
 ---
 
 ## Trending
 
 ### [分类] 标题
-[查看详情](#)
+详细内容...
 ```
 
 3. **创建投稿文章**
@@ -94,20 +97,17 @@ slogan: "Your slogan here"
 
 ```markdown
 ---
-author:
-  name: "@username"
-  team: "Team Name"
-  avatar: "https://example.com/avatar.jpg"
+author_id: "zhang_wei"
 title: "文章标题"
 description: "简短描述"
-views: 0
-likes: 0
 ---
 
 \```language
 // 你的代码
 \```
 ```
+
+注意：作者信息从 `content/authors/` 目录加载，只需引用 `author_id`。
 
 4. **更新 archive.json**
 
@@ -138,14 +138,17 @@ likes: 0
 ---
 vol: "期数"
 date: "日期"
-title: "标题"
-slogan: "副标题"
+editors:
+  - author_id: "hys"
+    role: "Chief Editor"
+  - author_id: "dev_ops"
+    role: "Technical Reviewer"
 ---
 
 ## Trending
 
 ### [徽章文本] 条目标题
-[链接文本](链接地址)
+详细内容...
 ```
 
 支持的徽章样式：
@@ -158,14 +161,9 @@ slogan: "副标题"
 
 ```markdown
 ---
-author:
-  name: "@作者名"
-  team: "团队名称"
-  avatar: "头像URL"
+author_id: "zhang_wei"
 title: "文章标题"
 description: "文章描述"
-views: 阅读量
-likes: 点赞数
 ---
 
 \```language
@@ -173,6 +171,57 @@ likes: 点赞数
 \```
 
 或者普通的 markdown 文本内容
+```
+
+**说明**：
+- `author_id`：引用 `content/authors/` 中的作者 ID
+- 作者的名字、团队、头像等信息从作者文件中自动加载
+- 阅读量和点赞数由服务器动态管理，不需要在文件中指定
+
+## 👥 作者管理
+
+### 添加新作者
+
+在 `content/authors/` 目录下创建新的 Markdown 文件：
+
+```bash
+# 创建新作者文件
+touch content/authors/new_author.md
+```
+
+文件内容格式：
+
+```markdown
+---
+id: "new_author"
+name: "@new_author"
+team: "Team Name"
+avatar: "/assets/images/avatars/new_author.jpg"
+bio: "Short bio"
+---
+```
+
+**注意**：
+- `id` 必须唯一，用于在 radar.md 和 contributions 中引用
+- `name` 通常以 @ 开头
+- `avatar` 建议使用本地路径，图片放在 `assets/images/avatars/` 目录
+- `team` 是作者所属的团队
+- `bio` 是简短的个人简介
+
+### 使用作者
+
+在 `radar.md` 中引用编辑：
+
+```yaml
+editors:
+  - author_id: "new_author"
+    role: "Contributor"
+```
+
+在投稿文章中引用作者：
+
+```yaml
+author_id: "new_author"
 ```
 
 ## 🎯 自定义样式
