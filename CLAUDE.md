@@ -42,10 +42,7 @@ tech_radar_web/
 └── content/                      # 内容目录（Markdown 文件）
     ├── config.md                 # 全局配置（站点标题、slogan、footer）
     ├── archive.json              # 往期周刊索引（静态服务器使用）
-    ├── authors/                  # 作者档案目录
-    │   ├── hys.md
-    │   ├── zhang_wei.md
-    │   └── ...
+    ├── authors.md                # 统一作者档案文件（所有作者信息）
     └── vol-XXX/                  # 每期周刊独立目录
         ├── radar.md              # This Week's Radar 内容
         └── contributions/        # 投稿文章目录
@@ -64,7 +61,7 @@ tech_radar_web/
    - 所有内容存储在 `content/` 目录
    - 每期周刊独立目录（`vol-001/`, `vol-002/`...）
    - 使用 YAML Frontmatter 存储元数据
-   - 作者信息统一管理在 `content/authors/`
+   - 作者信息统一管理在 `content/authors.md`（单一文件包含所有作者）
    - 全局配置（title, slogan）在 `content/config.md`
    - 每期编辑团队在各期的 `radar.md` 中指定
 
@@ -105,8 +102,8 @@ editors:
 
 **说明：**
 - `vol` 和 `date` 是必填字段
-- `editors` 引用 `content/authors/` 中定义的作者
-- 每个编辑需指定 `author_id` 和 `role`（本期角色）
+- `editors` 引用 `content/authors.md` 中定义的作者
+- 每个编辑需指定 `author_id` 和 `role`（本期角色：主编/副主编/编辑/审核）
 - 全局的 title 和 slogan 在 `content/config.md` 中定义
 
 **徽章样式映射：**
@@ -132,28 +129,49 @@ description: "简短描述（1-2 句话）"
 ```
 
 **说明：**
-- `author_id` 引用 `content/authors/` 中定义的作者
-- 作者的 name, team, avatar 等信息从作者文件自动加载
+- `author_id` 引用 `content/authors.md` 中定义的作者
+- 作者的 name, team, avatar, role 等信息从 authors.md 自动加载
 - views 和 likes 由服务器动态管理，不需要在文件中指定
 
-### 作者文件 (authors/*.md)
+### 统一作者文件 (authors.md)
 
 ```markdown
 ---
-id: "zhang_wei"
-name: "@zhang_wei"
-team: "Core Platform Team"
-avatar: "/assets/images/avatars/zhang_wei.jpg"
-bio: "Senior Full-Stack Developer, TypeScript enthusiast"
+authors:
+  - id: "zhang_wei"
+    name: "@zhang_wei"
+    team: "Core Platform Team"
+    avatar: "/assets/images/avatars/zhang_wei.jpg"
+    role: "Senior Developer"
+
+  - id: "hys"
+    name: "@hys"
+    team: "Engineering Team"
+    avatar: "/assets/images/avatars/hys.jpg"
+    role: "Tech Lead"
 ---
 ```
 
 **说明：**
+- 所有作者信息存储在单一文件 `content/authors.md` 中
 - `id` 是唯一标识符，用于在其他文件中引用
 - `name` 是显示名称，通常以 @ 开头
 - `team` 是作者所属团队
 - `avatar` 建议使用本地路径
-- `bio` 是简短的个人介绍
+- `role` 是作者的职位/角色（如 Tech Lead, Senior Developer 等）
+
+**作者属性说明：**
+| 属性 | 说明 | 示例 |
+|------|------|------|
+| `id` | 唯一标识符 | "zhang_wei" |
+| `name` | 显示名称 | "@zhang_wei" |
+| `team` | 所属团队 | "Core Platform Team" |
+| `avatar` | 头像路径 | "/assets/images/avatars/zhang_wei.jpg" |
+| `role` | 职位/角色 | "Senior Developer" |
+
+**显示位置：**
+- **Header**：显示编辑的名字和本期贡献角色（主编/副主编/编辑/审核）
+- **开发者空间**：显示作者的 name、team、role 和 avatar
 
 **支持的语言标识符示例：**
 - `typescript`, `tsx`

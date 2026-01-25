@@ -793,6 +793,16 @@
             color: var(--text-secondary);
         }
 
+        .card-header .author-role-tag {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--accent-cyan);
+            background: rgba(0, 243, 255, 0.1);
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }
+
         .card-header .card-stats {
             display: flex;
             align-items: center;
@@ -872,6 +882,65 @@
             font-family: var(--font-mono);
             font-size: 0.8rem;
             color: var(--text-secondary);
+        }
+
+        /* Expanded Author Info in Card Body */
+        .author-info-expanded {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-lg);
+            padding: var(--spacing-md);
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.05), rgba(255, 0, 255, 0.05));
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: var(--radius-md);
+        }
+
+        .author-avatar-large {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: 3px solid var(--accent-cyan);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.4);
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .author-details-expanded {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .author-name-large {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--accent-cyan);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+            margin-bottom: 0.3rem;
+        }
+
+        .author-team-role {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            flex-wrap: wrap;
+        }
+
+        .author-team-role .author-team {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .author-role-badge {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent-pink);
+            background: rgba(255, 0, 255, 0.15);
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 0, 255, 0.3);
         }
 
         .contribution-title {
@@ -1668,7 +1737,7 @@
                         <img src="${authorInfo.avatar}" alt="Author Avatar" class="author-avatar">
                         <div class="card-title-area">
                             <h3 class="contribution-title">${metadata.title}</h3>
-                            <div class="author-name">${authorInfo.name} · ${authorInfo.team}</div>
+                            <div class="author-name">${authorInfo.name} · ${authorInfo.team}<span class="author-role-tag">${authorInfo.role || 'Contributor'}</span></div>
                         </div>
                         <div class="card-stats">
                             <span class="stat-likes">
@@ -1681,6 +1750,16 @@
                     <div class="card-body">
                         <div>
                             <div class="card-body-inner">
+                                <div class="author-info-expanded">
+                                    <img src="${authorInfo.avatar}" alt="${authorInfo.name}" class="author-avatar-large">
+                                    <div class="author-details-expanded">
+                                        <div class="author-name-large">${authorInfo.name}</div>
+                                        <div class="author-team-role">
+                                            <span class="author-team">${authorInfo.team}</span>
+                                            <span class="author-role-badge">${authorInfo.role || 'Contributor'}</span>
+                                        </div>
+                                    </div>
+                                </div>
                                 <p class="contribution-desc">${metadata.description}</p>
                                 ${contentHtml}
                                 <div class="card-footer">

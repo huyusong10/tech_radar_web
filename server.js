@@ -101,26 +101,24 @@ app.get('/api/config', (req, res) => {
     }
 });
 
-// GET /api/authors - Get all authors
+// GET /api/authors - Get all authors from unified authors.md
 app.get('/api/authors', (req, res) => {
-    const authorsDir = path.join(__dirname, 'content', 'authors');
+    const authorsPath = path.join(__dirname, 'content', 'authors.md');
 
     try {
         const authors = {};
 
-        if (fs.existsSync(authorsDir)) {
-            const files = fs.readdirSync(authorsDir)
-                .filter(file => file.endsWith('.md'));
+        if (fs.existsSync(authorsPath)) {
+            const content = fs.readFileSync(authorsPath, 'utf8');
+            const data = parseYamlFrontmatter(content);
 
-            files.forEach(file => {
-                const filePath = path.join(authorsDir, file);
-                const content = fs.readFileSync(filePath, 'utf8');
-                const authorData = parseYamlFrontmatter(content);
-
-                if (authorData.id) {
-                    authors[authorData.id] = authorData;
-                }
-            });
+            if (data.authors && Array.isArray(data.authors)) {
+                data.authors.forEach(author => {
+                    if (author.id) {
+                        authors[author.id] = author;
+                    }
+                });
+            }
         }
 
         res.json(authors);
@@ -130,19 +128,25 @@ app.get('/api/authors', (req, res) => {
     }
 });
 
-// GET /api/authors/:authorId - Get specific author
+// GET /api/authors/:authorId - Get specific author from unified authors.md
 app.get('/api/authors/:authorId', (req, res) => {
     const { authorId } = req.params;
-    const authorPath = path.join(__dirname, 'content', 'authors', `${authorId}.md`);
+    const authorsPath = path.join(__dirname, 'content', 'authors.md');
 
     try {
-        if (fs.existsSync(authorPath)) {
-            const content = fs.readFileSync(authorPath, 'utf8');
-            const authorData = parseYamlFrontmatter(content);
-            res.json(authorData);
-        } else {
-            res.status(404).json({ error: 'Author not found' });
+        if (fs.existsSync(authorsPath)) {
+            const content = fs.readFileSync(authorsPath, 'utf8');
+            const data = parseYamlFrontmatter(content);
+
+            if (data.authors && Array.isArray(data.authors)) {
+                const author = data.authors.find(a => a.id === authorId);
+                if (author) {
+                    res.json(author);
+                    return;
+                }
+            }
         }
+        res.status(404).json({ error: 'Author not found' });
     } catch (error) {
         console.error('Failed to read author:', error);
         res.status(500).json({ error: 'Failed to read author' });
