@@ -4,7 +4,7 @@ const path = require('path');
 const yaml = require('js-yaml');
 
 const app = express();
-const PORT = 3000;
+const PORT = 5090;
 const DATA_DIR = path.join(__dirname, 'data');
 const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
 const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
@@ -261,6 +261,42 @@ app.post('/api/views/:vol', async (req, res) => {
     }
 });
 
+// Auto-generate archive.json for static hosting fallback
+function generateArchiveJson() {
+    const contentDir = path.join(__dirname, 'content');
+    const archivePath = path.join(contentDir, 'archive.json');
+    const views = readViews();
+
+    try {
+        const dirs = fs.readdirSync(contentDir, { withFileTypes: true });
+        const volumes = dirs
+            .filter(dir => dir.isDirectory() && dir.name.startsWith('vol-'))
+            .map(dir => {
+                const vol = dir.name.replace('vol-', '');
+                const radarPath = path.join(contentDir, dir.name, 'radar.md');
+                let date = '';
+
+                if (fs.existsSync(radarPath)) {
+                    const content = fs.readFileSync(radarPath, 'utf8');
+                    const dateMatch = content.match(/date:\s*"?([^"\n]+)"?/);
+                    if (dateMatch) {
+                        date = dateMatch[1].trim();
+                    }
+                }
+
+                return { vol, date, views: views[vol] || 0 };
+            })
+            .sort((a, b) => b.vol.localeCompare(a.vol));
+
+        fs.writeFileSync(archivePath, JSON.stringify(volumes, null, 2));
+        console.log('Generated archive.json with', volumes.length, 'volumes');
+    } catch (error) {
+        console.error('Failed to generate archive.json:', error);
+    }
+}
+
 app.listen(PORT, () => {
+    // Generate archive.json on startup for static hosting fallback
+    generateArchiveJson();
     console.log(`Tech Radar server running at http://localhost:${PORT}`);
 });

@@ -38,10 +38,11 @@ tech_radar_web/
 ├── CLAUDE.md                     # AI 助手指南（本文件）
 ├── assets/                       # 静态资源
 │   └── images/
-│       └── avatars/              # 作者头像
+│       ├── avatars/              # 作者头像
+│       └── diagrams/             # 图表和示意图（SVG）
 └── content/                      # 内容目录（Markdown 文件）
     ├── config.md                 # 全局配置（站点标题、slogan、footer）
-    ├── archive.json              # 往期周刊索引（静态服务器使用）
+    ├── archive.json              # 往期周刊索引（服务器自动生成）
     ├── authors.md                # 统一作者档案文件（所有作者信息）
     └── vol-XXX/                  # 每期周刊独立目录
         ├── radar.md              # This Week's Radar 内容
@@ -275,7 +276,7 @@ mkdir -p content/vol-002/contributions
 2. **复制并修改 radar.md**
 ```bash
 cp content/vol-001/radar.md content/vol-002/radar.md
-# 编辑 vol-002/radar.md，更新 frontmatter 和内容
+# 编辑 vol-002/radar.md，更新 frontmatter（vol, date, editors）和内容
 ```
 
 3. **创建投稿文章**
@@ -284,24 +285,16 @@ cp content/vol-001/radar.md content/vol-002/radar.md
 # 遵循命名规范：01-短标题.md, 02-短标题.md
 ```
 
-4. **更新 archive.json**
-```json
-[
-  {"vol": "002", "date": "2024.05.27", "active": true},
-  {"vol": "001", "date": "2024.05.20", "active": false}
-  // ...
-]
+4. **重启服务器**
+```bash
+# 服务器会自动检测 vol-* 目录并生成 archive.json
+node server.js
 ```
 
-5. **更新 index.html（如需要）**
-```javascript
-// 在 loadContributions() 函数中
-const contributionFiles = [
-  '01-new-article.md',
-  '02-another-article.md',
-  // ...
-];
-```
+**注意**：
+- 服务器启动时会自动扫描 `content/vol-*` 目录
+- `archive.json` 会自动生成，无需手动维护
+- 日期信息从各期的 `radar.md` 中读取
 
 ### 添加新的徽章类型
 

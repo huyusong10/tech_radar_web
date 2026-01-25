@@ -6,7 +6,7 @@ description: "一站式配置 VSCode 调试环境，支持 Node.js、Go、Python
 
 ## 调试配置界面
 
-![VSCode Debug Config](https://via.placeholder.com/1000x600/1a1a1a/ff00ff?text=VSCode+Debug+Configuration)
+![VSCode Debug Config](/assets/images/diagrams/vscode-debug.svg)
 
 ## Node.js 调试配置
 

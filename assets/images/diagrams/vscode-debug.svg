@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e1e1e"/>
+      <stop offset="100%" style="stop-color:#252526"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- VSCode Window Frame -->
+  <rect width="1000" height="500" rx="8" fill="url(#bg-grad)" stroke="#3c3c3c" stroke-width="1"/>
+
+  <!-- Title Bar -->
+  <rect width="1000" height="35" rx="8" fill="#323233"/>
+  <rect y="27" width="1000" height="8" fill="#323233"/>
+
+  <!-- Window Controls -->
+  <circle cx="20" cy="17" r="6" fill="#ff5f57"/>
+  <circle cx="42" cy="17" r="6" fill="#ffbd2e"/>
+  <circle cx="64" cy="17" r="6" fill="#28c940"/>
+
+  <!-- Title -->
+  <text x="500" y="23" text-anchor="middle" fill="#9ca3af" font-family="Inter, sans-serif" font-size="12">launch.json - tech-project - Visual Studio Code</text>
+
+  <!-- Activity Bar -->
+  <rect x="0" y="35" width="48" height="465" fill="#333333"/>
+
+  <!-- Activity Bar Icons -->
+  <rect x="12" y="55" width="24" height="24" rx="4" fill="transparent" stroke="#9ca3af" stroke-width="1.5"/>
+  <rect x="12" y="95" width="24" height="24" rx="4" fill="transparent" stroke="#9ca3af" stroke-width="1.5"/>
+  <rect x="12" y="135" width="24" height="24" rx="4" fill="#ff00ff" fill-opacity="0.2" stroke="#ff00ff" stroke-width="1.5"/>
+  <text x="24" y="152" text-anchor="middle" fill="#ff00ff" font-size="14">▶</text>
+  <rect x="12" y="175" width="24" height="24" rx="4" fill="transparent" stroke="#9ca3af" stroke-width="1.5"/>
+
+  <!-- Side Panel -->
+  <rect x="48" y="35" width="200" height="465" fill="#252526"/>
+  <text x="60" y="60" fill="#cccccc" font-family="Inter, sans-serif" font-size="11" font-weight="bold">RUN AND DEBUG</text>
+
+  <!-- Debug Configuration Dropdown -->
+  <rect x="58" y="75" width="180" height="28" rx="4" fill="#3c3c3c"/>
+  <text x="68" y="94" fill="#00ff88" font-family="JetBrains Mono, monospace" font-size="11">Debug Current File</text>
+  <text x="220" y="94" text-anchor="end" fill="#9ca3af" font-size="10">▼</text>
+
+  <!-- Debug Controls -->
+  <g transform="translate(58, 115)">
+    <rect width="30" height="24" rx="4" fill="#00ff88" filter="url(#glow)"/>
+    <text x="15" y="17" text-anchor="middle" fill="#1e1e1e" font-size="12" font-weight="bold">▶</text>
+  </g>
+
+  <!-- Configuration List -->
+  <text x="60" y="165" fill="#9ca3af" font-family="Inter, sans-serif" font-size="10">CONFIGURATIONS</text>
+
+  <rect x="58" y="175" width="180" height="25" rx="3" fill="#094771"/>
+  <text x="75" y="192" fill="#ffffff" font-family="JetBrains Mono, monospace" font-size="10">Debug Current File</text>
+
+  <rect x="58" y="205" width="180" height="25" rx="3" fill="transparent"/>
+  <text x="75" y="222" fill="#cccccc" font-family="JetBrains Mono, monospace" font-size="10">Attach to Process</text>
+
+  <rect x="58" y="235" width="180" height="25" rx="3" fill="transparent"/>
+  <text x="75" y="252" fill="#cccccc" font-family="JetBrains Mono, monospace" font-size="10">Debug Go</text>
+
+  <!-- Breakpoints Section -->
+  <text x="60" y="295" fill="#9ca3af" font-family="Inter, sans-serif" font-size="10">BREAKPOINTS</text>
+  <text x="75" y="315" fill="#cccccc" font-family="JetBrains Mono, monospace" font-size="10">○ index.ts:42</text>
+  <text x="75" y="335" fill="#cccccc" font-family="JetBrains Mono, monospace" font-size="10">○ server.ts:128</text>
+
+  <!-- Editor Panel -->
+  <rect x="248" y="35" width="752" height="30" fill="#2d2d2d"/>
+  <text x="260" y="55" fill="#cccccc" font-family="JetBrains Mono, monospace" font-size="11">launch.json</text>
+  <text x="340" y="55" fill="#9ca3af" font-size="10">×</text>
+
+  <!-- Code Editor -->
+  <rect x="248" y="65" width="752" height="435" fill="#1e1e1e"/>
+
+  <!-- Line Numbers -->
+  <g fill="#858585" font-family="JetBrains Mono, monospace" font-size="12">
+    <text x="265" y="95">1</text>
+    <text x="265" y="115">2</text>
+    <text x="265" y="135">3</text>
+    <text x="265" y="155">4</text>
+    <text x="265" y="175">5</text>
+    <text x="265" y="195">6</text>
+    <text x="265" y="215">7</text>
+    <text x="265" y="235">8</text>
+    <text x="265" y="255">9</text>
+    <text x="258" y="275">10</text>
+    <text x="258" y="295">11</text>
+    <text x="258" y="315">12</text>
+    <text x="258" y="335">13</text>
+    <text x="258" y="355">14</text>
+    <text x="258" y="375">15</text>
+    <text x="258" y="395">16</text>
+    <text x="258" y="415">17</text>
+  </g>
+
+  <!-- JSON Code -->
+  <g font-family="JetBrains Mono, monospace" font-size="12">
+    <text x="295" y="95" fill="#d4d4d4">{</text>
+    <text x="295" y="115"><tspan fill="#9cdcfe">"version"</tspan><tspan fill="#d4d4d4">: </tspan><tspan fill="#ce9178">"0.2.0"</tspan><tspan fill="#d4d4d4">,</tspan></text>
+    <text x="295" y="135"><tspan fill="#9cdcfe">"configurations"</tspan><tspan fill="#d4d4d4">: [</tspan></text>
+    <text x="295" y="155" fill="#d4d4d4">    {</text>
+    <text x="295" y="175"><tspan fill="#d4d4d4">      </tspan><tspan fill="#9cdcfe">"type"</tspan><tspan fill="#d4d4d4">: </tspan><tspan fill="#ce9178">"node"</tspan><tspan fill="#d4d4d4">,</tspan></text>
+    <text x="295" y="195"><tspan fill="#d4d4d4">      </tspan><tspan fill="#9cdcfe">"request"</tspan><tspan fill="#d4d4d4">: </tspan><tspan fill="#ce9178">"launch"</tspan><tspan fill="#d4d4d4">,</tspan></text>
+    <text x="295" y="215"><tspan fill="#d4d4d4">      </tspan><tspan fill="#9cdcfe">"name"</tspan><tspan fill="#d4d4d4">: </tspan><tspan fill="#ce9178">"Debug Current File"</tspan><tspan fill="#d4d4d4">,</tspan></text>
+    <text x="295" y="235"><tspan fill="#d4d4d4">      </tspan><tspan fill="#9cdcfe">"skipFiles"</tspan><tspan fill="#d4d4d4">: [</tspan><tspan fill="#ce9178">"&lt;node_internals&gt;/**"</tspan><tspan fill="#d4d4d4">],</tspan></text>
+    <text x="295" y="255"><tspan fill="#d4d4d4">      </tspan><tspan fill="#9cdcfe">"program"</tspan><tspan fill="#d4d4d4">: </tspan><tspan fill="#ce9178">"${file}"</tspan><tspan fill="#d4d4d4">,</tspan></text>
+    <text x="295" y="275"><tspan fill="#d4d4d4">      </tspan><tspan fill="#9cdcfe">"outFiles"</tspan><tspan fill="#d4d4d4">: [</tspan></text>
+    <text x="295" y="295"><tspan fill="#d4d4d4">        </tspan><tspan fill="#ce9178">"${workspaceFolder}/dist/**/*.js"</tspan></text>
+    <text x="295" y="315" fill="#d4d4d4">      ]</text>
+    <text x="295" y="335" fill="#d4d4d4">    },</text>
+    <text x="295" y="355"><tspan fill="#d4d4d4">    </tspan><tspan fill="#6a9955">// More configurations...</tspan></text>
+    <text x="295" y="375" fill="#d4d4d4">  ]</text>
+    <text x="295" y="395" fill="#d4d4d4">}</text>
+  </g>
+
+  <!-- Status Bar -->
+  <rect y="470" width="1000" height="30" fill="#007acc"/>
+  <text x="15" y="489" fill="#ffffff" font-family="Inter, sans-serif" font-size="11">Debug Mode</text>
+  <text x="150" y="489" fill="#ffffff" font-family="JetBrains Mono, monospace" font-size="11">◉ Node.js</text>
+  <text x="985" y="489" text-anchor="end" fill="#ffffff" font-family="JetBrains Mono, monospace" font-size="11">Ln 7, Col 35</text>
+</svg>

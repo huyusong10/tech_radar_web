@@ -6,7 +6,7 @@ description: "通过添加索引和查询重写，将慢查询从 5 秒优化到
 
 ## 优化前后对比
 
-![Performance Chart](https://via.placeholder.com/1000x400/1a1a1a/00ff88?text=Query+Time:+5000ms+%E2%86%92+50ms+%2899%25+improvement%29)
+![Performance Chart](/assets/images/diagrams/performance-chart.svg)
 
 ## 问题定位
 

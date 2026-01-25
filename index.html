@@ -309,6 +309,10 @@
             text-align: center;
         }
 
+        header .container {
+            position: relative;
+        }
+
         .logo {
             font-family: var(--font-mono);
             font-size: 4rem;
@@ -384,20 +388,22 @@
         }
 
         .header-views {
+            position: absolute;
+            top: 0;
+            right: 0;
             display: inline-flex;
             align-items: center;
             gap: var(--spacing-xs);
-            margin-top: var(--spacing-md);
-            padding: 0.5rem 1rem;
+            padding: 0.4rem 0.8rem;
             background: rgba(0, 243, 255, 0.1);
             border: 1px solid rgba(0, 243, 255, 0.3);
             border-radius: var(--radius-md);
             font-family: var(--font-mono);
-            font-size: 0.9rem;
+            font-size: 0.8rem;
         }
 
         .views-icon {
-            font-size: 1rem;
+            font-size: 0.9rem;
         }
 
         .views-count {
@@ -420,6 +426,7 @@
         }
 
         .author-badge {
+            position: relative;
             display: flex;
             align-items: center;
             gap: var(--spacing-xs);
@@ -431,6 +438,7 @@
             font-size: 0.8rem;
             transition: all 0.3s ease;
             animation: author-glow 3s ease-in-out infinite;
+            cursor: pointer;
         }
 
         .author-badge:hover {
@@ -464,6 +472,89 @@
         .author-badge .author-role {
             color: var(--text-secondary);
             font-size: 0.7rem;
+        }
+
+        /* Author Tooltip */
+        .author-tooltip {
+            position: absolute;
+            bottom: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 243, 255, 0.4);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-sm);
+            min-width: 200px;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 243, 255, 0.2);
+            pointer-events: none;
+        }
+
+        .author-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 8px solid transparent;
+            border-top-color: rgba(0, 243, 255, 0.4);
+        }
+
+        .author-badge:hover .author-tooltip {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .tooltip-header {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-xs);
+            padding-bottom: var(--spacing-xs);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        .tooltip-header img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid var(--accent-cyan);
+        }
+
+        .tooltip-header .tooltip-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .tooltip-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .tooltip-row {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            font-size: 0.75rem;
+        }
+
+        .tooltip-label {
+            color: var(--text-secondary);
+            min-width: 45px;
+        }
+
+        .tooltip-value {
+            color: var(--text-primary);
+        }
+
+        .tooltip-value.highlight {
+            color: var(--accent-pink);
+            font-weight: 600;
         }
 
         /* Glitch Effect */
@@ -1386,6 +1477,26 @@
                             <img src="${author.avatar}" alt="${author.name}">
                             <span class="author-name">${author.name}</span>
                             <span class="author-role">${editor.role}</span>
+                            <div class="author-tooltip">
+                                <div class="tooltip-header">
+                                    <img src="${author.avatar}" alt="${author.name}">
+                                    <span class="tooltip-name">${author.name}</span>
+                                </div>
+                                <div class="tooltip-info">
+                                    <div class="tooltip-row">
+                                        <span class="tooltip-label">Team</span>
+                                        <span class="tooltip-value">${author.team}</span>
+                                    </div>
+                                    <div class="tooltip-row">
+                                        <span class="tooltip-label">Role</span>
+                                        <span class="tooltip-value">${author.role}</span>
+                                    </div>
+                                    <div class="tooltip-row">
+                                        <span class="tooltip-label">本期</span>
+                                        <span class="tooltip-value highlight">${editor.role}</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     `;
                 }).filter(html => html).join('');
