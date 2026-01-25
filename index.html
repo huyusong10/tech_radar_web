@@ -851,98 +851,6 @@
             padding: 0 var(--spacing-lg) var(--spacing-lg);
         }
 
-        .author-info {
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-sm);
-            margin-bottom: var(--spacing-md);
-        }
-
-        .author-avatar {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            border: 2px solid var(--accent-cyan);
-            box-shadow: 0 0 15px rgba(0, 243, 255, 0.4);
-            object-fit: cover;
-        }
-
-        .author-details {
-            flex: 1;
-        }
-
-        .author-name {
-            font-family: var(--font-mono);
-            font-weight: 600;
-            color: var(--text-primary);
-            font-size: 0.95rem;
-        }
-
-        .author-team {
-            font-family: var(--font-mono);
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-        }
-
-        /* Expanded Author Info in Card Body */
-        .author-info-expanded {
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-md);
-            margin-bottom: var(--spacing-lg);
-            padding: var(--spacing-md);
-            background: linear-gradient(135deg, rgba(0, 243, 255, 0.05), rgba(255, 0, 255, 0.05));
-            border: 1px solid rgba(0, 243, 255, 0.2);
-            border-radius: var(--radius-md);
-        }
-
-        .author-avatar-large {
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            border: 3px solid var(--accent-cyan);
-            box-shadow: 0 0 20px rgba(0, 243, 255, 0.4);
-            object-fit: cover;
-            flex-shrink: 0;
-        }
-
-        .author-details-expanded {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .author-name-large {
-            font-family: var(--font-mono);
-            font-weight: 700;
-            font-size: 1.1rem;
-            color: var(--accent-cyan);
-            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
-            margin-bottom: 0.3rem;
-        }
-
-        .author-team-role {
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-sm);
-            flex-wrap: wrap;
-        }
-
-        .author-team-role .author-team {
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-        }
-
-        .author-role-badge {
-            font-family: var(--font-mono);
-            font-size: 0.75rem;
-            color: var(--accent-pink);
-            background: rgba(255, 0, 255, 0.15);
-            padding: 0.2rem 0.6rem;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 0, 255, 0.3);
-        }
-
         .contribution-title {
             font-size: 1.25rem;
             font-weight: 700;
@@ -1104,51 +1012,6 @@
             margin-top: var(--spacing-xl);
         }
 
-        .cta-section {
-            text-align: center;
-            margin-bottom: var(--spacing-lg);
-        }
-
-        .cta-button {
-            display: inline-block;
-            padding: 1rem 2.5rem;
-            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
-            color: var(--bg-primary);
-            font-family: var(--font-mono);
-            font-weight: 700;
-            font-size: 1rem;
-            text-decoration: none;
-            border-radius: var(--radius-md);
-            position: relative;
-            overflow: hidden;
-            transition: all 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .cta-button::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, var(--accent-pink), var(--accent-cyan));
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .cta-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 0 30px rgba(0, 243, 255, 0.6), 0 0 50px rgba(255, 0, 255, 0.4);
-        }
-
-        .cta-button:hover::before {
-            opacity: 1;
-        }
-
-        .cta-button span {
-            position: relative;
-            z-index: 1;
-        }
-
         .footer-content {
             display: flex;
             justify-content: center;
@@ -1238,11 +1101,6 @@
 
             .code-content {
                 font-size: 0.75rem;
-            }
-
-            .cta-button {
-                padding: 0.875rem 2rem;
-                font-size: 0.9rem;
             }
 
             .sidebar {
@@ -1383,22 +1241,25 @@
             }
         }
 
-        // Load and render archive list from server API
+        // Fetch volumes from API or static file (shared logic)
+        async function fetchVolumes() {
+            try {
+                // Try to load from API first (when using node server.js)
+                const response = await fetch('/api/volumes');
+                if (!response.ok) throw new Error('API not available');
+                return await response.json();
+            } catch (apiError) {
+                // Fallback to static archive.json (when using npx serve or static hosting)
+                console.log('API not available, loading static archive.json');
+                const response = await fetch('/content/archive.json');
+                return await response.json();
+            }
+        }
+
+        // Load and render archive list
         async function loadArchive(currentVol) {
             try {
-                let volumes;
-                try {
-                    // Try to load from API first (when using node server.js)
-                    const response = await fetch('/api/volumes');
-                    if (!response.ok) throw new Error('API not available');
-                    volumes = await response.json();
-                } catch (apiError) {
-                    // Fallback to static archive.json (when using npx serve or static hosting)
-                    console.log('API not available, loading static archive.json');
-                    const response = await fetch('/content/archive.json');
-                    volumes = await response.json();
-                }
-
+                const volumes = await fetchVolumes();
                 const archiveList = document.querySelector('.archive-list');
                 archiveList.innerHTML = volumes.map(item => `
                     <li class="archive-item">
@@ -1414,25 +1275,11 @@
             }
         }
 
-        // Get latest volume from API or static file
+        // Get latest volume
         async function getLatestVol() {
             try {
-                let volumes;
-                try {
-                    // Try API first
-                    const response = await fetch('/api/volumes');
-                    if (!response.ok) throw new Error('API not available');
-                    volumes = await response.json();
-                } catch (apiError) {
-                    // Fallback to static archive.json
-                    const response = await fetch('/content/archive.json');
-                    volumes = await response.json();
-                }
-
-                if (volumes.length > 0) {
-                    return volumes[0].vol; // First item is latest
-                }
-                return '001'; // Fallback
+                const volumes = await fetchVolumes();
+                return volumes.length > 0 ? volumes[0].vol : '001';
             } catch (error) {
                 console.error('Failed to get latest volume:', error);
                 return '001';
@@ -1524,7 +1371,7 @@
             document.getElementById('header-meta').innerHTML = `VOL.${metadata.vol}<span>|</span>${metadata.date}`;
 
             // Render editors from radar.md metadata (per-issue editors)
-            // Editors reference authors from content/authors/ by author_id
+            // Editors reference authors from content/authors.md by author_id
             if (metadata.editors && metadata.editors.length > 0) {
                 const authorsContainer = document.getElementById('header-authors');
                 authorsContainer.innerHTML = metadata.editors.map((editor, index) => {
@@ -1589,27 +1436,7 @@
             element.classList.toggle('expanded');
         }
 
-        // Toggle section collapse/expand
-        function toggleSection(sectionId) {
-            const header = document.querySelector(`#${sectionId}-section .section-header`);
-            const content = document.getElementById(`${sectionId}-content`);
-
-            header.classList.toggle('collapsed');
-            content.classList.toggle('collapsed');
-        }
-
-        // Views API functions
-        async function fetchViews(vol) {
-            try {
-                const response = await fetch(`/api/views/${vol}`);
-                const data = await response.json();
-                return data.views || 0;
-            } catch (error) {
-                console.error('Failed to fetch views:', error);
-                return 0;
-            }
-        }
-
+        // Views API function
         async function incrementViews(vol) {
             try {
                 const response = await fetch(`/api/views/${vol}`, { method: 'POST' });
@@ -1750,16 +1577,6 @@
                     <div class="card-body">
                         <div>
                             <div class="card-body-inner">
-                                <div class="author-info-expanded">
-                                    <img src="${authorInfo.avatar}" alt="${authorInfo.name}" class="author-avatar-large">
-                                    <div class="author-details-expanded">
-                                        <div class="author-name-large">${authorInfo.name}</div>
-                                        <div class="author-team-role">
-                                            <span class="author-team">${authorInfo.team}</span>
-                                            <span class="author-role-badge">${authorInfo.role || 'Contributor'}</span>
-                                        </div>
-                                    </div>
-                                </div>
                                 <p class="contribution-desc">${metadata.description}</p>
                                 ${contentHtml}
                                 <div class="card-footer">
