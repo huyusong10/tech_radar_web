@@ -38,17 +38,18 @@ tech_radar_web/
 ├── CLAUDE.md                     # AI 助手指南（本文件）
 ├── assets/                       # 静态资源
 │   └── images/
-│       ├── avatars/              # 作者头像
-│       └── diagrams/             # 图表和示意图（SVG）
+│       └── avatars/              # 作者头像
 └── content/                      # 内容目录（Markdown 文件）
     ├── config.md                 # 全局配置（站点标题、slogan、footer）
     ├── archive.json              # 往期周刊索引（服务器自动生成）
     ├── authors.md                # 统一作者档案文件（所有作者信息）
+    ├── submit-guide.md           # 投稿指南（弹窗内容）
     └── vol-XXX/                  # 每期周刊独立目录
         ├── radar.md              # This Week's Radar 内容
         └── contributions/        # 投稿文章目录
-            ├── 01-*.md
-            ├── 02-*.md
+            ├── 01-article-name/  # 每个投稿是独立文件夹
+            │   ├── index.md      # 文章入口
+            │   └── *.svg/png     # 相关图片资源
             └── ...
 ```
 
@@ -113,7 +114,18 @@ editors:
 - `[工具推荐]` → `.badge.tool` → 绿色
 - `[安全更新]` → `.badge.security` → 粉色
 
-### 投稿文件 (contributions/*.md)
+### 投稿文件夹 (contributions/文章名/)
+
+每个投稿是一个独立的自包含文件夹：
+
+```
+01-typescript-types/
+├── index.md              # 必需：文章入口
+├── diagram.svg           # 可选：图表
+└── screenshot.png        # 可选：截图
+```
+
+**index.md 格式：**
 
 ```markdown
 ---
@@ -122,16 +134,19 @@ title: "文章标题"
 description: "简短描述（1-2 句话）"
 ---
 
+这里是正文内容...
+
+![示意图](./diagram.svg)
+
 \```语言标识符
 代码内容
 \```
-
-或者纯文本内容（支持完整 Markdown 语法）
 ```
 
 **说明：**
 - `author_id` 引用 `content/authors.md` 中定义的作者
 - 作者的 name, team, avatar, role 等信息从 authors.md 自动加载
+- 图片使用**相对路径**引用（如 `./image.svg`）
 - views 和 likes 由服务器动态管理，不需要在文件中指定
 
 ### 统一作者文件 (authors.md)

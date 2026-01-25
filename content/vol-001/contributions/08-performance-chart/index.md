@@ -6,7 +6,7 @@ description: "通过添加索引和查询重写，将慢查询从 5 秒优化到
 
 ## 优化前后对比
 
-![Performance Chart](/assets/images/diagrams/performance-chart.svg)
+![Performance Chart](./performance-chart.svg)
 
 ## 问题定位
 

@@ -1135,6 +1135,260 @@
             font-family: var(--font-mono);
         }
 
+        /* ==================== SUBMIT BUTTON ==================== */
+        .submit-section {
+            text-align: center;
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .submit-button {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: 1rem 2.5rem;
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.2), rgba(255, 0, 255, 0.2));
+            border: 2px solid transparent;
+            border-radius: 50px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            overflow: hidden;
+            transition: all 0.4s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .submit-button::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50px;
+            padding: 2px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink), var(--accent-cyan));
+            background-size: 200% 200%;
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            animation: gradient-rotate 3s linear infinite;
+        }
+
+        @keyframes gradient-rotate {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .submit-button::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at center, rgba(0, 243, 255, 0.3), transparent 70%);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .submit-button:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow:
+                0 10px 40px rgba(0, 243, 255, 0.4),
+                0 0 60px rgba(255, 0, 255, 0.3),
+                inset 0 0 20px rgba(0, 243, 255, 0.1);
+        }
+
+        .submit-button:hover::after {
+            opacity: 1;
+        }
+
+        .submit-button .btn-icon {
+            font-size: 1.3rem;
+            animation: pulse-icon 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-icon {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+
+        .submit-button .btn-text-en {
+            color: var(--accent-cyan);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        .submit-button .btn-text-cn {
+            font-size: 0.85rem;
+            color: var(--accent-pink);
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+        }
+
+        /* ==================== MODAL ==================== */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            position: relative;
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: var(--radius-lg);
+            max-width: 800px;
+            max-height: 85vh;
+            width: 90%;
+            overflow: hidden;
+            transform: scale(0.9) translateY(20px);
+            transition: transform 0.3s ease;
+            box-shadow:
+                0 20px 60px rgba(0, 0, 0, 0.5),
+                0 0 40px rgba(0, 243, 255, 0.2);
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: scale(1) translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--spacing-md) var(--spacing-lg);
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.1), rgba(255, 0, 255, 0.1));
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        .modal-title {
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            line-height: 1;
+            transition: all 0.3s ease;
+        }
+
+        .modal-close:hover {
+            color: var(--accent-pink);
+            transform: rotate(90deg);
+        }
+
+        .modal-body {
+            padding: var(--spacing-lg);
+            overflow-y: auto;
+            max-height: calc(85vh - 70px);
+        }
+
+        .modal-body h2 {
+            font-size: 1.5rem;
+            color: var(--accent-cyan);
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-xs);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        .modal-body h3 {
+            font-size: 1.1rem;
+            color: var(--accent-pink);
+            margin-top: var(--spacing-lg);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .modal-body p {
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-sm);
+            line-height: 1.7;
+        }
+
+        .modal-body ul, .modal-body ol {
+            color: var(--text-secondary);
+            margin-left: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .modal-body li {
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .modal-body code {
+            background: rgba(0, 243, 255, 0.1);
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-family: var(--font-mono);
+            font-size: 0.9em;
+            color: var(--accent-cyan);
+        }
+
+        .modal-body pre {
+            background: #0d0d0d;
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+            overflow-x: auto;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .modal-body pre code {
+            background: none;
+            padding: 0;
+            color: var(--text-primary);
+        }
+
+        .modal-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .modal-body th, .modal-body td {
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            text-align: left;
+        }
+
+        .modal-body th {
+            background: rgba(0, 243, 255, 0.1);
+            color: var(--accent-cyan);
+            font-family: var(--font-mono);
+        }
+
+        .modal-body td {
+            color: var(--text-secondary);
+        }
+
+        .modal-body hr {
+            border: none;
+            border-top: 1px solid rgba(0, 243, 255, 0.2);
+            margin: var(--spacing-lg) 0;
+        }
+
+        .modal-body strong {
+            color: var(--text-primary);
+        }
+
         /* ==================== RESPONSIVE DESIGN ==================== */
         @media (max-width: 1024px) {
             .sidebar {
@@ -1226,7 +1480,7 @@
     <!-- ==================== SIDEBAR NAVIGATION ==================== -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-logo" id="sidebar-logo"><span style="color: var(--accent-pink);">&gt;_</span> Previous</div>
+            <div class="sidebar-logo" id="sidebar-logo"><span style="color: var(--accent-pink);">&gt;_</span> Contents</div>
             <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse/Expand Sidebar">
                 <span id="collapse-icon">◀</span>
             </button>
@@ -1264,7 +1518,7 @@
         <div class="container">
             <h2 class="section-title">
                 <span class="glow-text">⚡ Trending</span>
-                <span class="cn-text">本周趋势</span>
+                <span class="cn-text">本周热点</span>
             </h2>
 
             <div class="trending-list">
@@ -1290,6 +1544,13 @@
     <!-- ==================== FOOTER ==================== -->
     <footer>
         <div class="container">
+            <div class="submit-section">
+                <button class="submit-button" onclick="openSubmitModal()">
+                    <span class="btn-icon">✨</span>
+                    <span class="btn-text-en">Submit Your Work!</span>
+                    <span class="btn-text-cn">提交你的作品</span>
+                </button>
+            </div>
             <div class="footer-content">
                 <div class="copyright" id="site-footer">
                     © 2024 Weekly Tech Radar | Powered by Engineers, for Engineers
@@ -1298,6 +1559,19 @@
         </div>
     </footer>
     </div> <!-- End of main-content -->
+
+    <!-- ==================== SUBMIT MODAL ==================== -->
+    <div class="modal-overlay" id="submit-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">📝 How to Submit Your Work</span>
+                <button class="modal-close" onclick="closeSubmitModal()">×</button>
+            </div>
+            <div class="modal-body" id="submit-modal-body">
+                Loading...
+            </div>
+        </div>
+    </div>
 
     <script>
         // Configure marked with highlight.js
@@ -1610,7 +1884,7 @@
         }
 
         // Render contribution card with collapsible structure
-        function renderContribution(metadata, content, articleId) {
+        function renderContribution(metadata, content, articleId, folderPath = '') {
             // Get author data from authorsData using author_id
             const author = metadata.author_id ? authorsData[metadata.author_id] : null;
 
@@ -1621,8 +1895,21 @@
                 avatar: '/assets/images/avatars/default.jpg'
             };
 
+            // Convert relative image paths to absolute paths
+            let processedContent = content;
+            if (folderPath) {
+                // Replace relative image paths like ./image.svg or image.svg
+                processedContent = content.replace(
+                    /!\[([^\]]*)\]\(\.\/([^)]+)\)/g,
+                    `![$1](/${folderPath}/$2)`
+                ).replace(
+                    /!\[([^\]]*)\]\((?!\/|https?:\/\/)([^)]+)\)/g,
+                    `![$1](/${folderPath}/$2)`
+                );
+            }
+
             // Parse markdown content
-            let contentHtml = marked.parse(content);
+            let contentHtml = marked.parse(processedContent);
 
             // Apply syntax highlighting to code blocks
             const tempDiv = document.createElement('div');
@@ -1703,31 +1990,40 @@
             `;
         }
 
+        // Get list of contribution folders from API or fallback
+        async function getContributionFolders(vol) {
+            try {
+                const response = await fetch(`/api/contributions/${vol}`);
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (e) {
+                console.log('API not available, using fallback');
+            }
+            // Fallback for static hosting - try common folder names
+            return ['01-typescript-types', '02-react-virtual-list', '03-k8s-optimization',
+                    '04-go-error-handling', '05-architecture-diagram', '06-quick-tip',
+                    '07-long-article', '08-performance-chart', '09-screenshot-example'];
+        }
+
         // Load and render all contributions
         async function loadContributions(vol) {
             const contributionsGrid = document.querySelector('.contributions-grid');
             contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading contributions...</p>';
 
-            const contributionFiles = [
-                '01-typescript-types.md',
-                '02-react-virtual-list.md',
-                '03-k8s-optimization.md',
-                '04-go-error-handling.md',
-                '05-architecture-diagram.md',
-                '06-quick-tip.md',
-                '07-long-article.md',
-                '08-performance-chart.md',
-                '09-screenshot-example.md'
-            ];
+            const folders = await getContributionFolders(vol);
+            const basePath = `content/vol-${vol}/contributions`;
 
             const contributions = [];
-            for (const file of contributionFiles) {
-                const content = await loadMarkdown(`content/vol-${vol}/contributions/${file}`);
+            for (const folder of folders) {
+                const content = await loadMarkdown(`${basePath}/${folder}/index.md`);
                 if (content) {
                     const { metadata, content: markdownContent } = parseFrontmatter(content);
-                    // Use vol + filename as unique article ID
-                    const articleId = `${vol}-${file.replace('.md', '')}`;
-                    contributions.push(renderContribution(metadata, markdownContent, articleId));
+                    // Use vol + folder name as unique article ID
+                    const articleId = `${vol}-${folder}`;
+                    // Pass the base path for resolving relative image URLs
+                    const folderPath = `${basePath}/${folder}`;
+                    contributions.push(renderContribution(metadata, markdownContent, articleId, folderPath));
                 }
             }
 
@@ -1831,6 +2127,51 @@
                 serverLikes[articleId] = result.likes;
             }
         }
+
+        // Submit modal functions
+        let submitGuideLoaded = false;
+
+        async function openSubmitModal() {
+            const modal = document.getElementById('submit-modal');
+            const modalBody = document.getElementById('submit-modal-body');
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+
+            // Load content only once
+            if (!submitGuideLoaded) {
+                try {
+                    const content = await loadMarkdown('/content/submit-guide.md');
+                    if (content) {
+                        const { content: markdownContent } = parseFrontmatter(content);
+                        modalBody.innerHTML = marked.parse(markdownContent);
+                        submitGuideLoaded = true;
+                    }
+                } catch (error) {
+                    modalBody.innerHTML = '<p style="color: var(--accent-pink);">Failed to load guide. Please try again.</p>';
+                }
+            }
+        }
+
+        function closeSubmitModal() {
+            const modal = document.getElementById('submit-modal');
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        // Close modal on overlay click
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeSubmitModal();
+            }
+        });
+
+        // Close modal on ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeSubmitModal();
+            }
+        });
 
         // Initialize when DOM is ready
         document.addEventListener('DOMContentLoaded', init);

@@ -187,6 +187,29 @@ app.get('/api/volumes', (req, res) => {
     }
 });
 
+// GET /api/contributions/:vol - Get list of contributions for a volume
+app.get('/api/contributions/:vol', (req, res) => {
+    const { vol } = req.params;
+    const contributionsDir = path.join(__dirname, 'content', `vol-${vol}`, 'contributions');
+
+    try {
+        if (!fs.existsSync(contributionsDir)) {
+            return res.json([]);
+        }
+
+        const dirs = fs.readdirSync(contributionsDir, { withFileTypes: true });
+        const contributions = dirs
+            .filter(dir => dir.isDirectory())
+            .map(dir => dir.name)
+            .sort(); // Sort alphabetically (01-, 02-, etc.)
+
+        res.json(contributions);
+    } catch (error) {
+        console.error('Failed to read contributions:', error);
+        res.json([]);
+    }
+});
+
 // GET /api/likes - Get all likes
 app.get('/api/likes', (req, res) => {
     const likes = readLikes();

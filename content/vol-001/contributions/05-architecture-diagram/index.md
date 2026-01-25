@@ -4,7 +4,7 @@ title: "微服务架构演进路线图"
 description: "从单体应用到微服务的完整演进路径，包含关键技术选型和实践经验。"
 ---
 
-![Architecture Evolution](/assets/images/diagrams/architecture-evolution.svg)
+![Architecture Evolution](./architecture-evolution.svg)
 
 ## 演进阶段
 
