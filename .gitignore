@@ -1,0 +1,11 @@
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+
+# Runtime data (likes and views are stored here)
+data/
+
+# Lock files
+package-lock.json

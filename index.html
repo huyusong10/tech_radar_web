@@ -281,6 +281,33 @@
             margin: 0 auto;
         }
 
+        .header-views {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            margin-top: var(--spacing-md);
+            padding: 0.5rem 1rem;
+            background: rgba(0, 243, 255, 0.1);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: var(--radius-md);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+        }
+
+        .views-icon {
+            font-size: 1rem;
+        }
+
+        .views-count {
+            color: var(--accent-cyan);
+            font-weight: 600;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        .views-label {
+            color: var(--text-secondary);
+        }
+
         /* Glitch Effect */
         .glitch {
             position: relative;
@@ -462,6 +489,7 @@
             mask-composite: exclude;
             opacity: 0;
             transition: opacity 0.4s;
+            pointer-events: none;
         }
 
         .contribution-card:hover {
@@ -524,29 +552,11 @@
         /* Card Stats and Actions */
         .card-footer {
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
             margin-top: var(--spacing-md);
             padding-top: var(--spacing-md);
             border-top: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .card-stats {
-            display: flex;
-            gap: var(--spacing-md);
-            font-family: var(--font-mono);
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-        }
-
-        .stat-item {
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-xs);
-        }
-
-        .stat-icon {
-            font-size: 1rem;
         }
 
         .like-button {
@@ -924,6 +934,11 @@
             <div class="slogan">
                 "Navigating the bleeding edge of technology, one week at a time."
             </div>
+            <div class="header-views">
+                <span class="views-icon">👁️</span>
+                <span class="views-count" id="page-views">0</span>
+                <span class="views-label">views</span>
+            </div>
         </div>
     </header>
 
@@ -974,200 +989,7 @@
             <h2 class="section-title">💎 Featured Contributions</h2>
 
             <div class="contributions-grid">
-                <!-- Contribution Card 1 - Code Example -->
-                <div class="contribution-card">
-                    <div class="author-info">
-                        <img src="https://i.pravatar.cc/150?img=33" alt="Author Avatar" class="author-avatar">
-                        <div class="author-details">
-                            <div class="author-name">@zhang_wei</div>
-                            <div class="author-team">Core Platform Team</div>
-                        </div>
-                    </div>
-                    <h3 class="contribution-title">优雅的 TypeScript 类型推导技巧</h3>
-                    <p class="contribution-desc">
-                        分享一个在实际项目中使用的高级 TypeScript 类型推导模式，能够大幅提升代码的类型安全性和开发体验。
-                    </p>
-                    <div class="code-block">
-                        <div class="code-header">
-                            <div class="code-dots">
-                                <span class="code-dot red"></span>
-                                <span class="code-dot yellow"></span>
-                                <span class="code-dot green"></span>
-                            </div>
-                            <span class="code-filename">types.ts</span>
-                        </div>
-                        <div class="code-content">
-<div class="code-line"><span class="line-number">1</span><span class="line-content"><span class="keyword">type</span> <span class="function">DeepReadonly</span>&lt;T&gt; = {</span></div>
-<div class="code-line"><span class="line-number">2</span><span class="line-content">  <span class="keyword">readonly</span> [P <span class="keyword">in</span> <span class="keyword">keyof</span> T]: T[P] <span class="keyword">extends</span> <span class="keyword">object</span></span></div>
-<div class="code-line"><span class="line-number">3</span><span class="line-content">    ? <span class="function">DeepReadonly</span>&lt;T[P]&gt;</span></div>
-<div class="code-line"><span class="line-number">4</span><span class="line-content">    : T[P];</span></div>
-<div class="code-line"><span class="line-number">5</span><span class="line-content">};</span></div>
-<div class="code-line"><span class="line-number">6</span><span class="line-content">&nbsp;</span></div>
-<div class="code-line"><span class="line-number">7</span><span class="line-content"><span class="comment">// 使用示例</span></span></div>
-<div class="code-line"><span class="line-number">8</span><span class="line-content"><span class="keyword">const</span> <span class="variable">config</span>: <span class="function">DeepReadonly</span>&lt;Config&gt; <span class="operator">=</span> {...};</span></div>
-                        </div>
-                    </div>
-                    <div class="card-footer">
-                        <div class="card-stats">
-                            <div class="stat-item">
-                                <span class="stat-icon">👁️</span>
-                                <span class="stat-count">1,234</span>
-                            </div>
-                        </div>
-                        <button class="like-button" onclick="toggleLike(this)">
-                            <span class="like-icon">♥</span>
-                            <span class="like-count">42</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Contribution Card 2 - Code Example -->
-                <div class="contribution-card">
-                    <div class="author-info">
-                        <img src="https://i.pravatar.cc/150?img=47" alt="Author Avatar" class="author-avatar">
-                        <div class="author-details">
-                            <div class="author-name">@lisa_chen</div>
-                            <div class="author-team">Frontend Engineering</div>
-                        </div>
-                    </div>
-                    <h3 class="contribution-title">React 性能优化实战：虚拟滚动</h3>
-                    <p class="contribution-desc">
-                        在处理超大列表时，通过虚拟滚动技术将渲染性能提升了 10 倍以上。这里分享核心实现思路。
-                    </p>
-                    <div class="code-block">
-                        <div class="code-header">
-                            <div class="code-dots">
-                                <span class="code-dot red"></span>
-                                <span class="code-dot yellow"></span>
-                                <span class="code-dot green"></span>
-                            </div>
-                            <span class="code-filename">VirtualList.tsx</span>
-                        </div>
-                        <div class="code-content">
-<div class="code-line"><span class="line-number">1</span><span class="line-content"><span class="keyword">const</span> <span class="function">VirtualList</span> <span class="operator">=</span> ({ items, height }: Props) <span class="operator">=&gt;</span> {</span></div>
-<div class="code-line"><span class="line-number">2</span><span class="line-content">  <span class="keyword">const</span> [scrollTop, <span class="function">setScrollTop</span>] <span class="operator">=</span> <span class="function">useState</span>(<span class="string">0</span>);</span></div>
-<div class="code-line"><span class="line-number">3</span><span class="line-content">  <span class="keyword">const</span> startIdx <span class="operator">=</span> Math.<span class="function">floor</span>(scrollTop / ITEM_HEIGHT);</span></div>
-<div class="code-line"><span class="line-number">4</span><span class="line-content">  <span class="keyword">const</span> endIdx <span class="operator">=</span> startIdx <span class="operator">+</span> Math.<span class="function">ceil</span>(height / ITEM_HEIGHT);</span></div>
-<div class="code-line"><span class="line-number">5</span><span class="line-content">  </span></div>
-<div class="code-line"><span class="line-number">6</span><span class="line-content">  <span class="keyword">return</span> (</span></div>
-<div class="code-line"><span class="line-number">7</span><span class="line-content">    <span class="operator">&lt;</span><span class="keyword">div</span> onScroll<span class="operator">=</span>{handleScroll}<span class="operator">&gt;</span></span></div>
-<div class="code-line"><span class="line-number">8</span><span class="line-content">      {items.<span class="function">slice</span>(startIdx, endIdx).<span class="function">map</span>(...)}</span></div>
-<div class="code-line"><span class="line-number">9</span><span class="line-content">    <span class="operator">&lt;/</span><span class="keyword">div</span><span class="operator">&gt;</span></span></div>
-<div class="code-line"><span class="line-number">10</span><span class="line-content">  );</span></div>
-<div class="code-line"><span class="line-number">11</span><span class="line-content">};</span></div>
-                        </div>
-                    </div>
-                    <div class="card-footer">
-                        <div class="card-stats">
-                            <div class="stat-item">
-                                <span class="stat-icon">👁️</span>
-                                <span class="stat-count">2,156</span>
-                            </div>
-                        </div>
-                        <button class="like-button" onclick="toggleLike(this)">
-                            <span class="like-icon">♥</span>
-                            <span class="like-count">89</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Contribution Card 3 - Text Content -->
-                <div class="contribution-card">
-                    <div class="author-info">
-                        <img src="https://i.pravatar.cc/150?img=12" alt="Author Avatar" class="author-avatar">
-                        <div class="author-details">
-                            <div class="author-name">@alex_wang</div>
-                            <div class="author-team">DevOps & Infrastructure</div>
-                        </div>
-                    </div>
-                    <h3 class="contribution-title">Kubernetes 集群成本优化策略</h3>
-                    <p class="contribution-desc">
-                        通过合理配置资源请求和限制、使用节点自动伸缩以及 Spot 实例，我们将云基础设施成本降低了 40%。以下是关键配置策略：
-                    </p>
-                    <div class="code-block">
-                        <div class="code-header">
-                            <div class="code-dots">
-                                <span class="code-dot red"></span>
-                                <span class="code-dot yellow"></span>
-                                <span class="code-dot green"></span>
-                            </div>
-                            <span class="code-filename">deployment.yaml</span>
-                        </div>
-                        <div class="code-content">
-<div class="code-line"><span class="line-number">1</span><span class="line-content"><span class="keyword">resources</span>:</span></div>
-<div class="code-line"><span class="line-number">2</span><span class="line-content">  <span class="keyword">requests</span>:</span></div>
-<div class="code-line"><span class="line-number">3</span><span class="line-content">    <span class="variable">memory</span>: <span class="string">"256Mi"</span></span></div>
-<div class="code-line"><span class="line-number">4</span><span class="line-content">    <span class="variable">cpu</span>: <span class="string">"100m"</span></span></div>
-<div class="code-line"><span class="line-number">5</span><span class="line-content">  <span class="keyword">limits</span>:</span></div>
-<div class="code-line"><span class="line-number">6</span><span class="line-content">    <span class="variable">memory</span>: <span class="string">"512Mi"</span></span></div>
-<div class="code-line"><span class="line-number">7</span><span class="line-content">    <span class="variable">cpu</span>: <span class="string">"500m"</span></span></div>
-<div class="code-line"><span class="line-number">8</span><span class="line-content"><span class="comment"># 使用 HPA 实现自动伸缩</span></span></div>
-                        </div>
-                    </div>
-                    <div class="card-footer">
-                        <div class="card-stats">
-                            <div class="stat-item">
-                                <span class="stat-icon">👁️</span>
-                                <span class="stat-count">987</span>
-                            </div>
-                        </div>
-                        <button class="like-button" onclick="toggleLike(this)">
-                            <span class="like-icon">♥</span>
-                            <span class="like-count">56</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Contribution Card 4 - Code Example -->
-                <div class="contribution-card">
-                    <div class="author-info">
-                        <img src="https://i.pravatar.cc/150?img=28" alt="Author Avatar" class="author-avatar">
-                        <div class="author-details">
-                            <div class="author-name">@sarah_liu</div>
-                            <div class="author-team">Backend Services</div>
-                        </div>
-                    </div>
-                    <h3 class="contribution-title">优雅的 Go 错误处理模式</h3>
-                    <p class="contribution-desc">
-                        在 Go 1.13+ 中，使用错误包装和类型断言可以实现更优雅的错误处理流程，同时保持良好的错误上下文传递。
-                    </p>
-                    <div class="code-block">
-                        <div class="code-header">
-                            <div class="code-dots">
-                                <span class="code-dot red"></span>
-                                <span class="code-dot yellow"></span>
-                                <span class="code-dot green"></span>
-                            </div>
-                            <span class="code-filename">errors.go</span>
-                        </div>
-                        <div class="code-content">
-<div class="code-line"><span class="line-number">1</span><span class="line-content"><span class="keyword">func</span> <span class="function">ProcessData</span>(id <span class="keyword">string</span>) <span class="keyword">error</span> {</span></div>
-<div class="code-line"><span class="line-number">2</span><span class="line-content">  data, err :<span class="operator">=</span> <span class="function">FetchData</span>(id)</span></div>
-<div class="code-line"><span class="line-number">3</span><span class="line-content">  <span class="keyword">if</span> err <span class="operator">!=</span> <span class="keyword">nil</span> {</span></div>
-<div class="code-line"><span class="line-number">4</span><span class="line-content">    <span class="keyword">return</span> fmt.<span class="function">Errorf</span>(<span class="string">"fetch data: %w"</span>, err)</span></div>
-<div class="code-line"><span class="line-number">5</span><span class="line-content">  }</span></div>
-<div class="code-line"><span class="line-number">6</span><span class="line-content">  </span></div>
-<div class="code-line"><span class="line-number">7</span><span class="line-content">  <span class="comment">// 错误类型检查</span></span></div>
-<div class="code-line"><span class="line-number">8</span><span class="line-content">  <span class="keyword">var</span> notFoundErr <span class="operator">*</span>NotFoundError</span></div>
-<div class="code-line"><span class="line-number">9</span><span class="line-content">  <span class="keyword">if</span> errors.<span class="function">As</span>(err, &amp;notFoundErr) {</span></div>
-<div class="code-line"><span class="line-number">10</span><span class="line-content">    <span class="keyword">return</span> <span class="function">handleNotFound</span>(notFoundErr)</span></div>
-<div class="code-line"><span class="line-number">11</span><span class="line-content">  }</span></div>
-<div class="code-line"><span class="line-number">12</span><span class="line-content">}</span></div>
-                        </div>
-                    </div>
-                    <div class="card-footer">
-                        <div class="card-stats">
-                            <div class="stat-item">
-                                <span class="stat-icon">👁️</span>
-                                <span class="stat-count">1,567</span>
-                            </div>
-                        </div>
-                        <button class="like-button" onclick="toggleLike(this)">
-                            <span class="like-icon">♥</span>
-                            <span class="like-count">73</span>
-                        </button>
-                    </div>
-                </div>
+                <!-- Dynamic content loaded via JavaScript -->
             </div>
         </div>
     </section>
@@ -1297,8 +1119,76 @@
             }).join('');
         }
 
+        // Views API functions
+        async function fetchViews(vol) {
+            try {
+                const response = await fetch(`/api/views/${vol}`);
+                const data = await response.json();
+                return data.views || 0;
+            } catch (error) {
+                console.error('Failed to fetch views:', error);
+                return 0;
+            }
+        }
+
+        async function incrementViews(vol) {
+            try {
+                const response = await fetch(`/api/views/${vol}`, { method: 'POST' });
+                const data = await response.json();
+                return data.views || 0;
+            } catch (error) {
+                console.error('Failed to increment views:', error);
+                return 0;
+            }
+        }
+
+        // Likes API functions
+        async function fetchLikes() {
+            try {
+                const response = await fetch('/api/likes');
+                return await response.json();
+            } catch (error) {
+                console.error('Failed to fetch likes:', error);
+                return {};
+            }
+        }
+
+        async function updateLike(articleId, action) {
+            try {
+                const response = await fetch(`/api/likes/${articleId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action })
+                });
+                return await response.json();
+            } catch (error) {
+                console.error('Failed to update like:', error);
+                return null;
+            }
+        }
+
+        // Check if current user has liked an article (stored in localStorage)
+        function hasUserLiked(articleId) {
+            const likedArticles = JSON.parse(localStorage.getItem('likedArticles') || '{}');
+            return !!likedArticles[articleId];
+        }
+
+        // Save user's like status to localStorage
+        function setUserLiked(articleId, liked) {
+            const likedArticles = JSON.parse(localStorage.getItem('likedArticles') || '{}');
+            if (liked) {
+                likedArticles[articleId] = true;
+            } else {
+                delete likedArticles[articleId];
+            }
+            localStorage.setItem('likedArticles', JSON.stringify(likedArticles));
+        }
+
+        // Store server likes data
+        let serverLikes = {};
+
         // Render contribution card
-        function renderContribution(metadata, content) {
+        function renderContribution(metadata, content, articleId) {
             const codeMatch = content.match(/```(\w+)?\n([\s\S]*?)```/);
 
             let contentHtml = '';
@@ -1333,8 +1223,13 @@
                 contentHtml = marked.parse(content);
             }
 
+            // Get likes count from server only (no fallback to metadata)
+            const likesCount = serverLikes[articleId] || 0;
+            const userLiked = hasUserLiked(articleId);
+            const likedClass = userLiked ? 'liked' : '';
+
             return `
-                <div class="contribution-card">
+                <div class="contribution-card" data-article-id="${articleId}">
                     <div class="author-info">
                         <img src="${metadata.author.avatar}" alt="Author Avatar" class="author-avatar">
                         <div class="author-details">
@@ -1346,15 +1241,9 @@
                     <p class="contribution-desc">${metadata.description}</p>
                     ${contentHtml}
                     <div class="card-footer">
-                        <div class="card-stats">
-                            <div class="stat-item">
-                                <span class="stat-icon">👁️</span>
-                                <span class="stat-count">${metadata.views || 0}</span>
-                            </div>
-                        </div>
-                        <button class="like-button" onclick="toggleLike(this)">
+                        <button class="like-button ${likedClass}" onclick="toggleLike(this)">
                             <span class="like-icon">♥</span>
-                            <span class="like-count">${metadata.likes || 0}</span>
+                            <span class="like-count">${likesCount}</span>
                         </button>
                     </div>
                 </div>
@@ -1378,7 +1267,9 @@
                 const content = await loadMarkdown(`content/vol-${vol}/contributions/${file}`);
                 if (content) {
                     const { metadata, content: markdownContent } = parseFrontmatter(content);
-                    contributions.push(renderContribution(metadata, markdownContent));
+                    // Use vol + filename as unique article ID
+                    const articleId = `${vol}-${file.replace('.md', '')}`;
+                    contributions.push(renderContribution(metadata, markdownContent, articleId));
                 }
             }
 
@@ -1388,6 +1279,13 @@
         // Main initialization
         async function init() {
             const vol = getCurrentVol();
+
+            // Load server likes data first
+            serverLikes = await fetchLikes();
+
+            // Increment and display page views
+            const views = await incrementViews(vol);
+            document.getElementById('page-views').textContent = views.toLocaleString();
 
             // Load archive list
             await loadArchive();
@@ -1410,19 +1308,30 @@
         }
 
         // Like button functionality
-        function toggleLike(button) {
+        async function toggleLike(button) {
+            const card = button.closest('.contribution-card');
+            const articleId = card.dataset.articleId;
             const likeCountSpan = button.querySelector('.like-count');
-            let count = parseInt(likeCountSpan.textContent);
+            const isCurrentlyLiked = button.classList.contains('liked');
 
-            if (button.classList.contains('liked')) {
-                button.classList.remove('liked');
-                count--;
-            } else {
-                button.classList.add('liked');
-                count++;
+            // Determine action
+            const action = isCurrentlyLiked ? 'unlike' : 'like';
+
+            // Update server
+            const result = await updateLike(articleId, action);
+
+            if (result) {
+                // Update UI
+                if (isCurrentlyLiked) {
+                    button.classList.remove('liked');
+                    setUserLiked(articleId, false);
+                } else {
+                    button.classList.add('liked');
+                    setUserLiked(articleId, true);
+                }
+                likeCountSpan.textContent = result.likes;
+                serverLikes[articleId] = result.likes;
             }
-
-            likeCountSpan.textContent = count;
         }
 
         // Initialize when DOM is ready

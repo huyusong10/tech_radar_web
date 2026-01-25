@@ -5,8 +5,6 @@ author:
   avatar: "https://i.pravatar.cc/150?img=47"
 title: "React 性能优化实战：虚拟滚动"
 description: "在处理超大列表时，通过虚拟滚动技术将渲染性能提升了 10 倍以上。这里分享核心实现思路。"
-views: 2156
-likes: 89
 ---
 
 ```tsx

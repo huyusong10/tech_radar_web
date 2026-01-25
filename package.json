@@ -1,0 +1,12 @@
+{
+  "name": "tech-radar-web",
+  "version": "1.0.0",
+  "description": "Weekly Tech Radar - Cyberpunk style tech newsletter",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
