@@ -9,3 +9,4 @@ data/
 
 # Lock files
 package-lock.json
+content/archive.json
