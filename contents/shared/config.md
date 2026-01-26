@@ -1,9 +1,9 @@
 ---
 # 站点配置
 site:
-  title: "ESS Weekly Tech Radar"
+  title: "ESS Tech Radar Weekly"
   slogan: "Navigating the bleeding edge of technology, one week at a time."
-  footer: "© 2026 Weekly Tech Radar | Powered by huyusong's poor Claude Code Pro, please donate!"
+  footer: "© 2026 Tech Radar Weekly | Powered by huyusong's poor Claude Code Pro, please donate!"
 
 # 徽章配置 (可自定义颜色)
 badges:

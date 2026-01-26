@@ -1,4 +1,4 @@
-# Weekly Tech Radar | 技术雷达周刊
+# Tech Radar Weekly | 技术雷达周刊
 
 一个极具科技感的技术周刊单页模板，支持 Markdown 内容管理。
 
