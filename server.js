@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 const yaml = require('js-yaml');
 
@@ -25,85 +26,265 @@ const DATA_DIR = path.join(CONTENTS_DIR, 'data');
 const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
 const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
 
-// Lock management for concurrent write operations
-const locks = new Map();
+// ==================== CONCURRENCY CONFIGURATION ====================
+const CONFIG = {
+    // Cache TTL in milliseconds
+    CACHE_TTL: {
+        config: 60000,      // 1 minute for site config
+        authors: 60000,     // 1 minute for authors
+        volumes: 30000,     // 30 seconds for volumes list
+        contributions: 30000 // 30 seconds for contributions
+    },
+    // Rate limiting
+    RATE_LIMIT: {
+        windowMs: 60000,    // 1 minute window
+        maxRequests: {
+            read: 100,      // 100 read requests per minute per IP
+            write: 20       // 20 write requests per minute per IP
+        }
+    },
+    // Lock timeout in milliseconds
+    LOCK_TIMEOUT: 5000,
+    // Write debounce interval
+    WRITE_DEBOUNCE: 100,
+    // Maximum concurrent file writes
+    MAX_CONCURRENT_WRITES: 10
+};
 
-// Middleware
-app.use(express.json());
+// ==================== IN-MEMORY CACHE ====================
+class Cache {
+    constructor() {
+        this.store = new Map();
+    }
 
-// IMPORTANT: Serve contents directories BEFORE generic static middleware
-// This ensures external contents directories work correctly
-app.use('/contents/published', express.static(PUBLISHED_DIR));
-app.use('/contents/draft', express.static(DRAFT_DIR));
-app.use('/contents/shared', express.static(SHARED_DIR));
-app.use('/contents/assets', express.static(ASSETS_DIR));
+    get(key) {
+        const item = this.store.get(key);
+        if (!item) return null;
+        if (Date.now() > item.expiry) {
+            this.store.delete(key);
+            return null;
+        }
+        return item.value;
+    }
 
-// Generic static files (HTML, JS, CSS from project directory)
-// Exclude the local contents folder to prevent conflicts with external contents
-app.use(express.static(__dirname, {
-    index: 'index.html',
-    // Don't serve local contents folder - use explicit routes above
-    setHeaders: (res, filePath) => {
-        // Add cache headers for static assets
-        if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
-            res.setHeader('Cache-Control', 'public, max-age=3600');
+    set(key, value, ttl) {
+        this.store.set(key, {
+            value,
+            expiry: Date.now() + ttl
+        });
+    }
+
+    invalidate(key) {
+        this.store.delete(key);
+    }
+
+    invalidatePattern(pattern) {
+        for (const key of this.store.keys()) {
+            if (key.includes(pattern)) {
+                this.store.delete(key);
+            }
         }
     }
-}));
+}
 
-// Ensure data directory exists (with recursive creation)
-function ensureDataDir() {
-    if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
+const cache = new Cache();
+
+// ==================== ASYNC MUTEX IMPLEMENTATION ====================
+class AsyncMutex {
+    constructor() {
+        this.locks = new Map();
+    }
+
+    async acquire(resource, timeout = CONFIG.LOCK_TIMEOUT) {
+        const startTime = Date.now();
+
+        while (this.locks.has(resource)) {
+            if (Date.now() - startTime > timeout) {
+                throw new Error(`Lock timeout for resource: ${resource}`);
+            }
+            // Wait for the existing lock's promise to resolve
+            await this.locks.get(resource).promise;
+        }
+
+        // Create a new lock with a resolvable promise
+        let resolve;
+        const promise = new Promise(r => { resolve = r; });
+        this.locks.set(resource, { promise, resolve });
+
+        return () => {
+            const lock = this.locks.get(resource);
+            if (lock) {
+                this.locks.delete(resource);
+                lock.resolve();
+            }
+        };
     }
 }
 
-// Acquire lock for a resource
-async function acquireLock(resource) {
-    while (locks.has(resource)) {
-        // Wait for lock to be released
-        await new Promise(resolve => setTimeout(resolve, 10));
+const mutex = new AsyncMutex();
+
+// ==================== RATE LIMITER ====================
+class RateLimiter {
+    constructor() {
+        this.requests = new Map();
+        // Clean up old entries every minute
+        setInterval(() => this.cleanup(), 60000);
     }
-    locks.set(resource, true);
-}
 
-// Release lock for a resource
-function releaseLock(resource) {
-    locks.delete(resource);
-}
+    isAllowed(ip, type = 'read') {
+        const key = `${ip}:${type}`;
+        const now = Date.now();
+        const windowStart = now - CONFIG.RATE_LIMIT.windowMs;
 
-// Generic read/write functions
-function readJsonFile(filePath) {
-    ensureDataDir();
-    if (!fs.existsSync(filePath)) {
-        fs.writeFileSync(filePath, JSON.stringify({}));
+        if (!this.requests.has(key)) {
+            this.requests.set(key, []);
+        }
+
+        const timestamps = this.requests.get(key);
+        // Remove old timestamps
+        const recent = timestamps.filter(t => t > windowStart);
+        this.requests.set(key, recent);
+
+        const maxRequests = CONFIG.RATE_LIMIT.maxRequests[type] || CONFIG.RATE_LIMIT.maxRequests.read;
+
+        if (recent.length >= maxRequests) {
+            return false;
+        }
+
+        recent.push(now);
+        return true;
     }
-    const data = fs.readFileSync(filePath, 'utf8');
-    return JSON.parse(data);
+
+    cleanup() {
+        const now = Date.now();
+        const windowStart = now - CONFIG.RATE_LIMIT.windowMs;
+
+        for (const [key, timestamps] of this.requests.entries()) {
+            const recent = timestamps.filter(t => t > windowStart);
+            if (recent.length === 0) {
+                this.requests.delete(key);
+            } else {
+                this.requests.set(key, recent);
+            }
+        }
+    }
 }
 
-function writeJsonFile(filePath, data) {
-    ensureDataDir();
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+const rateLimiter = new RateLimiter();
+
+// ==================== DEBOUNCED WRITE QUEUE ====================
+class WriteQueue {
+    constructor() {
+        this.pendingWrites = new Map();
+        this.writeCount = 0;
+    }
+
+    async scheduleWrite(filePath, data) {
+        // Cancel any pending write for this file
+        if (this.pendingWrites.has(filePath)) {
+            clearTimeout(this.pendingWrites.get(filePath).timeout);
+        }
+
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(async () => {
+                this.pendingWrites.delete(filePath);
+                try {
+                    // Wait if too many concurrent writes
+                    while (this.writeCount >= CONFIG.MAX_CONCURRENT_WRITES) {
+                        await new Promise(r => setTimeout(r, 10));
+                    }
+                    this.writeCount++;
+                    await fsPromises.writeFile(filePath, JSON.stringify(data, null, 2));
+                    this.writeCount--;
+                    resolve();
+                } catch (error) {
+                    this.writeCount--;
+                    reject(error);
+                }
+            }, CONFIG.WRITE_DEBOUNCE);
+
+            this.pendingWrites.set(filePath, { timeout, resolve, reject });
+        });
+    }
 }
 
-// Read/Write likes data
-function readLikes() {
-    return readJsonFile(LIKES_FILE);
+const writeQueue = new WriteQueue();
+
+// ==================== ASYNC FILE OPERATIONS ====================
+
+// In-memory data store (loaded on startup, persisted periodically)
+let likesData = {};
+let viewsData = {};
+let dataLoaded = false;
+
+async function ensureDataDir() {
+    try {
+        await fsPromises.access(DATA_DIR);
+    } catch {
+        await fsPromises.mkdir(DATA_DIR, { recursive: true });
+    }
 }
 
-function writeLikes(data) {
-    writeJsonFile(LIKES_FILE, data);
+async function loadDataFiles() {
+    await ensureDataDir();
+
+    try {
+        const likesContent = await fsPromises.readFile(LIKES_FILE, 'utf8');
+        likesData = JSON.parse(likesContent);
+    } catch {
+        likesData = {};
+    }
+
+    try {
+        const viewsContent = await fsPromises.readFile(VIEWS_FILE, 'utf8');
+        viewsData = JSON.parse(viewsContent);
+    } catch {
+        viewsData = {};
+    }
+
+    dataLoaded = true;
+    console.log('Data files loaded into memory');
 }
 
-// Read/Write views data
-function readViews() {
-    return readJsonFile(VIEWS_FILE);
+// Periodic persistence (every 5 seconds if dirty)
+let likesDirty = false;
+let viewsDirty = false;
+
+async function persistData() {
+    if (likesDirty) {
+        try {
+            await writeQueue.scheduleWrite(LIKES_FILE, likesData);
+            likesDirty = false;
+        } catch (error) {
+            console.error('Failed to persist likes:', error);
+        }
+    }
+
+    if (viewsDirty) {
+        try {
+            await writeQueue.scheduleWrite(VIEWS_FILE, viewsData);
+            viewsDirty = false;
+        } catch (error) {
+            console.error('Failed to persist views:', error);
+        }
+    }
 }
 
-function writeViews(data) {
-    writeJsonFile(VIEWS_FILE, data);
-}
+// Start periodic persistence
+setInterval(persistData, 5000);
+
+// Graceful shutdown - persist data before exit
+process.on('SIGTERM', async () => {
+    console.log('Shutting down, persisting data...');
+    await persistData();
+    process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+    console.log('Shutting down, persisting data...');
+    await persistData();
+    process.exit(0);
+});
 
 // Parse YAML frontmatter from markdown using js-yaml
 function parseYamlFrontmatter(content) {
@@ -123,9 +304,81 @@ function getVolumesDir(isDraft) {
     return isDraft ? DRAFT_DIR : PUBLISHED_DIR;
 }
 
+// Get client IP (handles proxies)
+function getClientIP(req) {
+    return req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+           req.connection.remoteAddress ||
+           'unknown';
+}
+
+// ==================== MIDDLEWARE ====================
+
+// JSON body parser with size limit
+app.use(express.json({ limit: '10kb' }));
+
+// Rate limiting middleware
+function rateLimitMiddleware(type = 'read') {
+    return (req, res, next) => {
+        const ip = getClientIP(req);
+        if (!rateLimiter.isAllowed(ip, type)) {
+            return res.status(429).json({
+                error: 'Too many requests',
+                retryAfter: Math.ceil(CONFIG.RATE_LIMIT.windowMs / 1000)
+            });
+        }
+        next();
+    };
+}
+
+// Request timeout middleware
+app.use((req, res, next) => {
+    res.setTimeout(30000, () => {
+        res.status(408).json({ error: 'Request timeout' });
+    });
+    next();
+});
+
+// IMPORTANT: Serve contents directories BEFORE generic static middleware
+// This ensures external contents directories work correctly
+app.use('/contents/published', express.static(PUBLISHED_DIR, {
+    maxAge: '5m',
+    etag: true,
+    lastModified: true
+}));
+app.use('/contents/draft', express.static(DRAFT_DIR, {
+    maxAge: '1m',
+    etag: true
+}));
+app.use('/contents/shared', express.static(SHARED_DIR, {
+    maxAge: '5m',
+    etag: true
+}));
+app.use('/contents/assets', express.static(ASSETS_DIR, {
+    maxAge: '1h',
+    etag: true,
+    immutable: true
+}));
+
+// Generic static files (HTML, JS, CSS from project directory)
+app.use(express.static(__dirname, {
+    index: 'index.html',
+    maxAge: '1h',
+    etag: true,
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+            res.setHeader('Cache-Control', 'public, max-age=3600');
+        }
+        if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'public, max-age=300');
+        }
+    }
+}));
+
+// ==================== API ROUTES ====================
+
 // GET /api/site-config - Get site paths configuration for frontend
-app.get('/api/site-config', (req, res) => {
-    // Return URL paths (standardized structure)
+app.get('/api/site-config', rateLimitMiddleware('read'), (req, res) => {
+    res.set('Cache-Control', 'public, max-age=300');
     res.json({
         contentsDir: '/contents',
         publishedDir: '/contents/published',
@@ -136,32 +389,36 @@ app.get('/api/site-config', (req, res) => {
 });
 
 // GET /api/config - Get site configuration (from shared directory)
-app.get('/api/config', (req, res) => {
-    const configPath = path.join(SHARED_DIR, 'config.md');
+app.get('/api/config', rateLimitMiddleware('read'), async (req, res) => {
+    const cacheKey = 'config';
+    let config = cache.get(cacheKey);
 
-    try {
-        if (fs.existsSync(configPath)) {
-            const content = fs.readFileSync(configPath, 'utf8');
-            const config = parseYamlFrontmatter(content);
-            res.json(config);
-        } else {
-            res.json({});
+    if (!config) {
+        const configPath = path.join(SHARED_DIR, 'config.md');
+        try {
+            const content = await fsPromises.readFile(configPath, 'utf8');
+            config = parseYamlFrontmatter(content);
+            cache.set(cacheKey, config, CONFIG.CACHE_TTL.config);
+        } catch {
+            config = {};
         }
-    } catch (error) {
-        console.error('Failed to read config:', error);
-        res.json({});
     }
+
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json(config);
 });
 
 // GET /api/authors - Get all authors from shared authors.md
-app.get('/api/authors', (req, res) => {
-    const authorsPath = path.join(SHARED_DIR, 'authors.md');
+app.get('/api/authors', rateLimitMiddleware('read'), async (req, res) => {
+    const cacheKey = 'authors';
+    let authors = cache.get(cacheKey);
 
-    try {
-        const authors = {};
+    if (!authors) {
+        const authorsPath = path.join(SHARED_DIR, 'authors.md');
+        authors = {};
 
-        if (fs.existsSync(authorsPath)) {
-            const content = fs.readFileSync(authorsPath, 'utf8');
+        try {
+            const content = await fsPromises.readFile(authorsPath, 'utf8');
             const data = parseYamlFrontmatter(content);
 
             if (data.authors && Array.isArray(data.authors)) {
@@ -171,220 +428,281 @@ app.get('/api/authors', (req, res) => {
                     }
                 });
             }
+            cache.set(cacheKey, authors, CONFIG.CACHE_TTL.authors);
+        } catch (error) {
+            console.error('Failed to read authors:', error);
         }
-
-        res.json(authors);
-    } catch (error) {
-        console.error('Failed to read authors:', error);
-        res.json({});
     }
+
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json(authors);
 });
 
 // GET /api/authors/:authorId - Get specific author from shared authors.md
-app.get('/api/authors/:authorId', (req, res) => {
+app.get('/api/authors/:authorId', rateLimitMiddleware('read'), async (req, res) => {
     const { authorId } = req.params;
-    const authorsPath = path.join(SHARED_DIR, 'authors.md');
 
-    try {
-        if (fs.existsSync(authorsPath)) {
-            const content = fs.readFileSync(authorsPath, 'utf8');
+    // Use the cached authors data
+    let authors = cache.get('authors');
+    if (!authors) {
+        const authorsPath = path.join(SHARED_DIR, 'authors.md');
+        authors = {};
+
+        try {
+            const content = await fsPromises.readFile(authorsPath, 'utf8');
             const data = parseYamlFrontmatter(content);
 
             if (data.authors && Array.isArray(data.authors)) {
-                const author = data.authors.find(a => a.id === authorId);
-                if (author) {
-                    res.json(author);
-                    return;
-                }
+                data.authors.forEach(author => {
+                    if (author.id) {
+                        authors[author.id] = author;
+                    }
+                });
             }
+            cache.set('authors', authors, CONFIG.CACHE_TTL.authors);
+        } catch (error) {
+            console.error('Failed to read authors:', error);
+            return res.status(500).json({ error: 'Failed to read authors' });
         }
+    }
+
+    const author = authors[authorId];
+    if (author) {
+        res.set('Cache-Control', 'public, max-age=60');
+        res.json(author);
+    } else {
         res.status(404).json({ error: 'Author not found' });
-    } catch (error) {
-        console.error('Failed to read author:', error);
-        res.status(500).json({ error: 'Failed to read author' });
     }
 });
 
 // GET /api/volumes - Get list of available volumes
-app.get('/api/volumes', (req, res) => {
+app.get('/api/volumes', rateLimitMiddleware('read'), async (req, res) => {
     const isDraft = req.query.draft === 'true';
-    const volumesDir = getVolumesDir(isDraft);
-    const views = readViews();
+    const cacheKey = `volumes:${isDraft}`;
 
-    try {
-        if (!fs.existsSync(volumesDir)) {
+    let volumes = cache.get(cacheKey);
+
+    if (!volumes) {
+        const volumesDir = getVolumesDir(isDraft);
+
+        try {
+            await fsPromises.access(volumesDir);
+        } catch {
             console.log(`Volumes directory ${volumesDir} does not exist`);
             return res.json([]);
         }
 
-        const dirs = fs.readdirSync(volumesDir, { withFileTypes: true });
-        const volumes = dirs
-            .filter(dir => dir.isDirectory() && dir.name.startsWith('vol-'))
-            .map(dir => {
-                const vol = dir.name.replace('vol-', '');
-                const radarPath = path.join(volumesDir, dir.name, 'radar.md');
-                let date = '';
+        try {
+            const dirs = await fsPromises.readdir(volumesDir, { withFileTypes: true });
+            const volumePromises = dirs
+                .filter(dir => dir.isDirectory() && dir.name.startsWith('vol-'))
+                .map(async dir => {
+                    const vol = dir.name.replace('vol-', '');
+                    const radarPath = path.join(volumesDir, dir.name, 'radar.md');
+                    let date = '';
 
-                // Try to read date from radar.md frontmatter
-                if (fs.existsSync(radarPath)) {
-                    const content = fs.readFileSync(radarPath, 'utf8');
-                    const dateMatch = content.match(/date:\s*"?([^"\n]+)"?/);
-                    if (dateMatch) {
-                        date = dateMatch[1].trim();
+                    try {
+                        const content = await fsPromises.readFile(radarPath, 'utf8');
+                        const dateMatch = content.match(/date:\s*"?([^"\n]+)"?/);
+                        if (dateMatch) {
+                            date = dateMatch[1].trim();
+                        }
+                    } catch {
+                        // File doesn't exist or can't be read
                     }
-                }
 
-                // Draft mode doesn't track views
-                return { vol, date, views: isDraft ? 0 : (views[vol] || 0) };
-            })
-            .sort((a, b) => b.vol.localeCompare(a.vol)); // Sort descending
+                    return { vol, date, views: isDraft ? 0 : (viewsData[vol] || 0) };
+                });
 
-        res.json(volumes);
-    } catch (error) {
-        console.error('Failed to read volumes:', error);
-        res.json([]);
+            volumes = await Promise.all(volumePromises);
+            volumes.sort((a, b) => b.vol.localeCompare(a.vol));
+            cache.set(cacheKey, volumes, CONFIG.CACHE_TTL.volumes);
+        } catch (error) {
+            console.error('Failed to read volumes:', error);
+            return res.json([]);
+        }
     }
+
+    res.set('Cache-Control', 'public, max-age=30');
+    res.json(volumes);
 });
 
 // GET /api/contributions/:vol - Get list of contributions for a volume
-app.get('/api/contributions/:vol', (req, res) => {
+app.get('/api/contributions/:vol', rateLimitMiddleware('read'), async (req, res) => {
     const { vol } = req.params;
     const isDraft = req.query.draft === 'true';
-    const contributionsDir = path.join(getVolumesDir(isDraft), `vol-${vol}`, 'contributions');
+    const cacheKey = `contributions:${vol}:${isDraft}`;
 
-    try {
-        if (!fs.existsSync(contributionsDir)) {
-            return res.json([]);
+    let contributions = cache.get(cacheKey);
+
+    if (!contributions) {
+        const contributionsDir = path.join(getVolumesDir(isDraft), `vol-${vol}`, 'contributions');
+
+        try {
+            const dirs = await fsPromises.readdir(contributionsDir, { withFileTypes: true });
+            contributions = dirs
+                .filter(dir => dir.isDirectory())
+                .map(dir => dir.name)
+                .sort();
+            cache.set(cacheKey, contributions, CONFIG.CACHE_TTL.contributions);
+        } catch {
+            contributions = [];
         }
-
-        const dirs = fs.readdirSync(contributionsDir, { withFileTypes: true });
-        const contributions = dirs
-            .filter(dir => dir.isDirectory())
-            .map(dir => dir.name)
-            .sort(); // Sort alphabetically (01-, 02-, etc.)
-
-        res.json(contributions);
-    } catch (error) {
-        console.error('Failed to read contributions:', error);
-        res.json([]);
     }
+
+    res.set('Cache-Control', 'public, max-age=30');
+    res.json(contributions);
 });
 
 // GET /api/likes - Get all likes
-app.get('/api/likes', (req, res) => {
-    const likes = readLikes();
-    res.json(likes);
+app.get('/api/likes', rateLimitMiddleware('read'), (req, res) => {
+    res.set('Cache-Control', 'private, max-age=5');
+    res.json(likesData);
 });
 
 // POST /api/likes/:articleId - Toggle like for an article (with concurrency control)
-app.post('/api/likes/:articleId', async (req, res) => {
+app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res) => {
     const { articleId } = req.params;
-    const { action } = req.body; // 'like' or 'unlike'
+    const { action } = req.body;
 
-    const lockKey = `likes-${articleId}`;
+    // Validate input
+    if (!action || !['like', 'unlike'].includes(action)) {
+        return res.status(400).json({ error: 'Invalid action' });
+    }
+
+    if (!articleId || articleId.length > 100) {
+        return res.status(400).json({ error: 'Invalid article ID' });
+    }
+
+    const lockKey = `likes:${articleId}`;
+    let releaseLock;
 
     try {
-        // Acquire lock for this article's likes
-        await acquireLock(lockKey);
+        releaseLock = await mutex.acquire(lockKey);
 
-        const likes = readLikes();
-
-        if (!likes[articleId]) {
-            likes[articleId] = 0;
+        if (!likesData[articleId]) {
+            likesData[articleId] = 0;
         }
 
         if (action === 'like') {
-            likes[articleId]++;
-        } else if (action === 'unlike' && likes[articleId] > 0) {
-            likes[articleId]--;
+            likesData[articleId]++;
+        } else if (action === 'unlike' && likesData[articleId] > 0) {
+            likesData[articleId]--;
         }
 
-        writeLikes(likes);
-        res.json({ articleId, likes: likes[articleId] });
+        likesDirty = true;
+        res.json({ articleId, likes: likesData[articleId] });
     } catch (error) {
+        if (error.message.includes('Lock timeout')) {
+            return res.status(503).json({ error: 'Service busy, please retry' });
+        }
         console.error('Error updating likes:', error);
         res.status(500).json({ error: 'Failed to update likes' });
     } finally {
-        // Always release lock
-        releaseLock(lockKey);
+        if (releaseLock) releaseLock();
     }
 });
 
 // GET /api/views/:vol - Get views for a volume
-app.get('/api/views/:vol', (req, res) => {
+app.get('/api/views/:vol', rateLimitMiddleware('read'), (req, res) => {
     const { vol } = req.params;
-    const views = readViews();
-    res.json({ vol, views: views[vol] || 0 });
+    res.set('Cache-Control', 'private, max-age=5');
+    res.json({ vol, views: viewsData[vol] || 0 });
 });
 
 // POST /api/views/:vol - Increment views for a volume (with concurrency control)
-app.post('/api/views/:vol', async (req, res) => {
+app.post('/api/views/:vol', rateLimitMiddleware('write'), async (req, res) => {
     const { vol } = req.params;
-    const lockKey = `views-${vol}`;
+
+    // Validate input
+    if (!vol || vol.length > 10 || !/^\d+$/.test(vol)) {
+        return res.status(400).json({ error: 'Invalid volume ID' });
+    }
+
+    const lockKey = `views:${vol}`;
+    let releaseLock;
 
     try {
-        // Acquire lock for this volume's views
-        await acquireLock(lockKey);
+        releaseLock = await mutex.acquire(lockKey);
 
-        const views = readViews();
-
-        if (!views[vol]) {
-            views[vol] = 0;
+        if (!viewsData[vol]) {
+            viewsData[vol] = 0;
         }
-        views[vol]++;
+        viewsData[vol]++;
 
-        writeViews(views);
-        res.json({ vol, views: views[vol] });
+        viewsDirty = true;
+
+        // Invalidate volumes cache since views changed
+        cache.invalidatePattern('volumes');
+
+        res.json({ vol, views: viewsData[vol] });
     } catch (error) {
+        if (error.message.includes('Lock timeout')) {
+            return res.status(503).json({ error: 'Service busy, please retry' });
+        }
         console.error('Error updating views:', error);
         res.status(500).json({ error: 'Failed to update views' });
     } finally {
-        // Always release lock
-        releaseLock(lockKey);
+        if (releaseLock) releaseLock();
     }
 });
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        dataLoaded,
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage()
+    });
+});
+
 // Auto-generate archive.json for static hosting fallback
-function generateArchiveJson(isDraft = false) {
+async function generateArchiveJson(isDraft = false) {
     const volumesDir = getVolumesDir(isDraft);
     const archivePath = path.join(volumesDir, 'archive.json');
-    const views = readViews();
 
     try {
-        if (!fs.existsSync(volumesDir)) {
-            console.log(`Volumes directory ${volumesDir} does not exist, skipping archive.json generation`);
-            return;
-        }
+        await fsPromises.access(volumesDir);
+    } catch {
+        console.log(`Volumes directory ${volumesDir} does not exist, skipping archive.json generation`);
+        return;
+    }
 
-        const dirs = fs.readdirSync(volumesDir, { withFileTypes: true });
-        const volumes = dirs
+    try {
+        const dirs = await fsPromises.readdir(volumesDir, { withFileTypes: true });
+        const volumePromises = dirs
             .filter(dir => dir.isDirectory() && dir.name.startsWith('vol-'))
-            .map(dir => {
+            .map(async dir => {
                 const vol = dir.name.replace('vol-', '');
                 const radarPath = path.join(volumesDir, dir.name, 'radar.md');
                 let date = '';
 
-                if (fs.existsSync(radarPath)) {
-                    const content = fs.readFileSync(radarPath, 'utf8');
+                try {
+                    const content = await fsPromises.readFile(radarPath, 'utf8');
                     const dateMatch = content.match(/date:\s*"?([^"\n]+)"?/);
                     if (dateMatch) {
                         date = dateMatch[1].trim();
                     }
+                } catch {
+                    // File doesn't exist
                 }
 
-                // Draft mode doesn't track views
-                return { vol, date, views: isDraft ? 0 : (views[vol] || 0) };
-            })
-            .sort((a, b) => b.vol.localeCompare(a.vol));
+                return { vol, date, views: isDraft ? 0 : (viewsData[vol] || 0) };
+            });
 
-        fs.writeFileSync(archivePath, JSON.stringify(volumes, null, 2));
+        const volumes = await Promise.all(volumePromises);
+        volumes.sort((a, b) => b.vol.localeCompare(a.vol));
+
+        await fsPromises.writeFile(archivePath, JSON.stringify(volumes, null, 2));
         console.log(`Generated ${isDraft ? 'draft ' : ''}archive.json with ${volumes.length} volumes`);
     } catch (error) {
         console.error('Failed to generate archive.json:', error);
     }
 }
 
-app.listen(PORT, () => {
+// ==================== SERVER STARTUP ====================
+async function startServer() {
     // Log configuration
     console.log('Site Configuration:');
     console.log(`  Contents Dir: ${CONTENTS_DIR}`);
@@ -394,11 +712,31 @@ app.listen(PORT, () => {
     console.log(`    - Assets: ${ASSETS_DIR}`);
     console.log(`    - Data: ${DATA_DIR}`);
 
-    // Ensure data directory exists
-    ensureDataDir();
+    // Load data files into memory
+    await loadDataFiles();
 
-    // Generate archive.json on startup for static hosting fallback
-    generateArchiveJson(false); // For published/
-    generateArchiveJson(true);  // For draft/
-    console.log(`Tech Radar server running at http://localhost:${PORT}`);
+    // Generate archive.json
+    await generateArchiveJson(false);
+    await generateArchiveJson(true);
+
+    // Start the server
+    const server = app.listen(PORT, () => {
+        console.log(`Tech Radar server running at http://localhost:${PORT}`);
+        console.log(`Concurrency optimizations enabled:`);
+        console.log(`  - In-memory caching with TTL`);
+        console.log(`  - Async file I/O`);
+        console.log(`  - Rate limiting (${CONFIG.RATE_LIMIT.maxRequests.read} read, ${CONFIG.RATE_LIMIT.maxRequests.write} write per minute)`);
+        console.log(`  - Proper mutex-based locking`);
+        console.log(`  - Debounced writes`);
+    });
+
+    // Configure server for high concurrency
+    server.keepAliveTimeout = 65000;
+    server.headersTimeout = 66000;
+    server.maxConnections = 2000;
+}
+
+startServer().catch(err => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
 });

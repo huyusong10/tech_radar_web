@@ -1688,6 +1688,72 @@
             }
         });
 
+        // ==================== CONCURRENCY UTILITIES ====================
+
+        // Retry with exponential backoff
+        async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+            let lastError;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+
+                    // Handle rate limiting
+                    if (response.status === 429) {
+                        const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
+                        await new Promise(r => setTimeout(r, retryAfter * 1000));
+                        continue;
+                    }
+
+                    // Handle server busy
+                    if (response.status === 503) {
+                        await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+                        continue;
+                    }
+
+                    return response;
+                } catch (error) {
+                    lastError = error;
+                    // Exponential backoff: 1s, 2s, 4s
+                    await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+                }
+            }
+            throw lastError || new Error('Max retries exceeded');
+        }
+
+        // Debounce utility
+        function debounce(fn, delay) {
+            let timeoutId;
+            return function (...args) {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => fn.apply(this, args), delay);
+            };
+        }
+
+        // Track in-flight requests to prevent duplicates
+        const pendingRequests = new Map();
+
+        // Deduplicated fetch - prevents duplicate concurrent requests
+        async function fetchDedupe(url, options = {}) {
+            const key = `${options.method || 'GET'}:${url}`;
+
+            // For POST requests, don't dedupe (each is intentional)
+            if (options.method === 'POST') {
+                return fetchWithRetry(url, options);
+            }
+
+            // Return existing promise if request is in flight
+            if (pendingRequests.has(key)) {
+                return pendingRequests.get(key);
+            }
+
+            const promise = fetchWithRetry(url, options).finally(() => {
+                pendingRequests.delete(key);
+            });
+
+            pendingRequests.set(key, promise);
+            return promise;
+        }
+
         // Site paths configuration (standardized structure)
         // These are URL paths, not filesystem paths
         let PUBLISHED_DIR = '/contents/published';
@@ -1697,7 +1763,7 @@
         // Load site paths from API (for dynamic configuration)
         async function loadSitePaths() {
             try {
-                const response = await fetch('/api/site-config');
+                const response = await fetchDedupe('/api/site-config');
                 if (response.ok) {
                     const config = await response.json();
                     PUBLISHED_DIR = config.publishedDir || '/contents/published';
@@ -1751,7 +1817,7 @@
             volumesCachePromise = (async () => {
                 try {
                     // Try to load from API first (when using node server.js)
-                    const response = await fetch('/api/volumes');
+                    const response = await fetchWithRetry('/api/volumes');
                     if (!response.ok) throw new Error('API not available');
                     volumesCache = await response.json();
                     return volumesCache;
@@ -1905,7 +1971,7 @@
         // Load site configuration
         async function loadConfig() {
             try {
-                const response = await fetch('/api/config');
+                const response = await fetchDedupe('/api/config');
                 siteConfig = await response.json();
                 return siteConfig;
             } catch (error) {
@@ -1917,7 +1983,7 @@
         // Load all authors
         async function loadAuthors() {
             try {
-                const response = await fetch('/api/authors');
+                const response = await fetchDedupe('/api/authors');
                 authorsData = await response.json();
                 return authorsData;
             } catch (error) {
@@ -2048,7 +2114,11 @@
         // Increment views and return new count
         async function incrementViews(vol) {
             try {
-                const response = await fetch(`/api/views/${vol}`, { method: 'POST' });
+                const response = await fetchWithRetry(`/api/views/${vol}`, { method: 'POST' });
+                if (!response.ok) {
+                    console.warn('Views increment returned non-OK status:', response.status);
+                    return 0;
+                }
                 const data = await response.json();
                 return data.views || 0;
             } catch (error) {
@@ -2060,7 +2130,7 @@
         // Likes API functions
         async function fetchLikes() {
             try {
-                const response = await fetch('/api/likes');
+                const response = await fetchDedupe('/api/likes');
                 return await response.json();
             } catch (error) {
                 console.error('Failed to fetch likes:', error);
@@ -2070,11 +2140,15 @@
 
         async function updateLike(articleId, action) {
             try {
-                const response = await fetch(`/api/likes/${articleId}`, {
+                const response = await fetchWithRetry(`/api/likes/${articleId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action })
                 });
+                if (!response.ok) {
+                    console.warn('Like update returned non-OK status:', response.status);
+                    return null;
+                }
                 return await response.json();
             } catch (error) {
                 console.error('Failed to update like:', error);
@@ -2219,7 +2293,7 @@
         // Get list of contribution folders from API or fallback
         async function getContributionFolders(vol) {
             try {
-                const response = await fetch(`/api/contributions/${vol}`);
+                const response = await fetchWithRetry(`/api/contributions/${vol}`);
                 if (response.ok) {
                     return await response.json();
                 }
@@ -2529,34 +2603,54 @@
             }
         }
 
-        // Like button functionality
+        // Like button functionality with debounce protection
+        const likeInProgress = new Set();
+
         async function toggleLike(button) {
             const card = button.closest('.contribution-card');
             const articleId = card.dataset.articleId;
+
+            // Prevent rapid clicking - check if request is already in progress
+            if (likeInProgress.has(articleId)) {
+                return;
+            }
+
             const likeCountSpan = button.querySelector('.like-count');
             const likeCountHeader = card.querySelector('.like-count-header');
             const isCurrentlyLiked = button.classList.contains('liked');
 
+            // Mark as in progress
+            likeInProgress.add(articleId);
+            button.style.opacity = '0.6';
+            button.style.pointerEvents = 'none';
+
             // Determine action
             const action = isCurrentlyLiked ? 'unlike' : 'like';
 
-            // Update server
-            const result = await updateLike(articleId, action);
+            try {
+                // Update server
+                const result = await updateLike(articleId, action);
 
-            if (result) {
-                // Update UI
-                if (isCurrentlyLiked) {
-                    button.classList.remove('liked');
-                    setUserLiked(articleId, false);
-                } else {
-                    button.classList.add('liked');
-                    setUserLiked(articleId, true);
+                if (result) {
+                    // Update UI
+                    if (isCurrentlyLiked) {
+                        button.classList.remove('liked');
+                        setUserLiked(articleId, false);
+                    } else {
+                        button.classList.add('liked');
+                        setUserLiked(articleId, true);
+                    }
+                    likeCountSpan.textContent = result.likes;
+                    if (likeCountHeader) {
+                        likeCountHeader.textContent = result.likes;
+                    }
+                    serverLikes[articleId] = result.likes;
                 }
-                likeCountSpan.textContent = result.likes;
-                if (likeCountHeader) {
-                    likeCountHeader.textContent = result.likes;
-                }
-                serverLikes[articleId] = result.likes;
+            } finally {
+                // Restore button state
+                likeInProgress.delete(articleId);
+                button.style.opacity = '';
+                button.style.pointerEvents = '';
             }
         }
 
