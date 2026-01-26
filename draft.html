@@ -1,0 +1,2230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[DRAFT] Weekly Tech Radar | 技术雷达周刊</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+    <!-- Markdown and syntax highlighting libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <style>
+        /* ==================== RESET & BASE ==================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            /* Color System */
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #151515;
+            --bg-card: #1a1a1a;
+            --text-primary: #ededed;
+            --text-secondary: #9ca3af;
+            --accent-cyan: #00f3ff;
+            --accent-pink: #ff00ff;
+            --accent-green: #00ff88;
+            --accent-orange: #ff6b35;
+            --accent-purple: #a855f7;
+            --accent-yellow: #fbbf24;
+            --border-glow: rgba(0, 243, 255, 0.3);
+
+            /* Typography */
+            --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+
+            /* Spacing */
+            --spacing-xs: 0.5rem;
+            --spacing-sm: 1rem;
+            --spacing-md: 1.5rem;
+            --spacing-lg: 2rem;
+            --spacing-xl: 3rem;
+
+            /* Border Radius */
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+            display: flex;
+        }
+
+        /* Cyberpunk Grid Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 var(--spacing-md);
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ==================== SIDEBAR NAVIGATION ==================== */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 320px;
+            height: 120vh;
+            background: var(--bg-secondary);
+            border-right: 1px solid rgba(0, 243, 255, 0.2);
+            padding: var(--spacing-lg);
+            overflow-y: auto;
+            overflow-x: hidden;
+            z-index: 100;
+            transition: width 0.3s ease, padding 0.3s ease;
+        }
+
+        .sidebar.collapsed {
+            width: 100px;
+            padding: var(--spacing-lg) var(--spacing-xs);
+        }
+
+        .sidebar-header {
+            margin-bottom: var(--spacing-lg);
+            padding-bottom: 3rem;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.1);
+            position: relative;
+        }
+
+        .sidebar-logo {
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            color: var(--accent-cyan);
+            font-weight: 700;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: opacity 0.3s ease, font-size 0.3s ease;
+        }
+
+        .sidebar.collapsed .sidebar-logo {
+            font-size: 0.7rem;
+            text-align: center;
+        }
+
+        .sidebar-title {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: opacity 0.3s ease, max-height 0.3s ease;
+            max-height: 20px;
+        }
+
+        .sidebar.collapsed .sidebar-title {
+            opacity: 0;
+            max-height: 0;
+            margin-top: 0;
+        }
+
+        .sidebar-collapse-btn {
+            position: absolute;
+            top: 66%;
+            right: -12px;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 24px;
+            background: var(--bg-secondary);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: 50%;
+            color: var(--accent-cyan);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            transition: all 0.3s ease;
+            z-index: 1;
+        }
+
+        .sidebar-collapse-btn:hover {
+            background: rgba(0, 243, 255, 0.1);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
+        }
+
+        .sidebar.collapsed .sidebar-collapse-btn {
+            right: 28px;
+        }
+
+        .archive-list {
+            list-style: none;
+        }
+
+        .archive-item {
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .archive-link {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-sm);
+            border-radius: var(--radius-md);
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .sidebar.collapsed .archive-link {
+            flex-direction: column;
+            gap: 0.2rem;
+            padding: var(--spacing-xs) 0.3rem;
+            font-size: 0.65rem;
+        }
+
+        .archive-link:hover {
+            background: rgba(0, 243, 255, 0.05);
+            border-color: rgba(0, 243, 255, 0.2);
+            color: var(--accent-cyan);
+            transform: translateX(4px);
+        }
+
+        .archive-link.active {
+            background: rgba(0, 243, 255, 0.1);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+        }
+
+        .archive-link.active .archive-views {
+            color: var(--accent-cyan);
+            opacity: 1;
+        }
+
+        .archive-vol {
+            font-weight: 600;
+            min-width: 60px;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar.collapsed .archive-vol {
+            min-width: auto;
+            font-size: 0.6rem;
+            text-align: center;
+        }
+
+        .archive-date {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+            flex: 1;
+        }
+
+        .sidebar.collapsed .archive-date {
+            display: none;
+        }
+
+        .archive-views {
+            margin-left: auto;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            opacity: 0.7;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar.collapsed .archive-views {
+            margin-left: 0;
+            font-size: 0.55rem;
+            opacity: 0.6;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+            transition: margin-left 0.3s ease;
+        }
+
+        .sidebar.collapsed ~ .main-content {
+            margin-left: 80px;
+        }
+
+        /* Mobile Menu Toggle */
+        .sidebar-toggle {
+            display: none;
+            position: fixed;
+            top: var(--spacing-md);
+            left: var(--spacing-md);
+            z-index: 101;
+            background: var(--bg-secondary);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            color: var(--accent-cyan);
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .sidebar-toggle:hover {
+            background: rgba(0, 243, 255, 0.1);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+        }
+
+        /* ==================== HEADER SECTION ==================== */
+        header {
+            padding: var(--spacing-xl) 0 4rem 0;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+            position: relative;
+            text-align: center;
+        }
+
+        header .container {
+            position: relative;
+        }
+
+        /* ==================== DRAFT BADGE ==================== */
+        .draft-badge {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            padding: 0.5rem 1rem;
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(255, 107, 53, 0.2));
+            border: 2px solid var(--accent-yellow);
+            border-radius: var(--radius-md);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--accent-yellow);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            animation: draft-pulse 2s ease-in-out infinite;
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+        }
+
+        .draft-badge::before {
+            content: '⚠';
+            font-size: 1.1rem;
+        }
+
+        @keyframes draft-pulse {
+            0%, 100% {
+                box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+                border-color: var(--accent-yellow);
+            }
+            50% {
+                box-shadow: 0 0 30px rgba(251, 191, 36, 0.5), 0 0 60px rgba(255, 107, 53, 0.3);
+                border-color: var(--accent-orange);
+            }
+        }
+
+        .logo {
+            font-family: var(--font-mono);
+            font-size: 4rem;
+            font-weight: 900;
+            color: var(--accent-cyan);
+            text-shadow:
+                0 0 10px rgba(0, 243, 255, 0.8),
+                0 0 20px rgba(0, 243, 255, 0.6),
+                0 0 30px rgba(0, 243, 255, 0.4),
+                0 0 40px rgba(255, 0, 255, 0.4),
+                0 0 70px rgba(255, 0, 255, 0.2),
+                0 0 100px rgba(255, 0, 255, 0.1);
+            margin-bottom: var(--spacing-md);
+            letter-spacing: 4px;
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% {
+                text-shadow:
+                    0 0 10px rgba(0, 243, 255, 0.8),
+                    0 0 20px rgba(0, 243, 255, 0.6),
+                    0 0 30px rgba(0, 243, 255, 0.4),
+                    0 0 40px rgba(255, 0, 255, 0.4),
+                    0 0 70px rgba(255, 0, 255, 0.2);
+            }
+            50% {
+                text-shadow:
+                    0 0 15px rgba(0, 243, 255, 1),
+                    0 0 30px rgba(0, 243, 255, 0.8),
+                    0 0 45px rgba(0, 243, 255, 0.6),
+                    0 0 60px rgba(255, 0, 255, 0.6),
+                    0 0 90px rgba(255, 0, 255, 0.4),
+                    0 0 120px rgba(255, 0, 255, 0.2);
+            }
+        }
+
+        .logo::before {
+            content: 'Pre';
+            color: var(--accent-pink);
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0.3; }
+        }
+
+        .header-meta {
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-lg);
+            letter-spacing: 4px;
+            font-weight: 600;
+        }
+
+        .header-meta span {
+            color: var(--accent-cyan);
+            margin: 0 var(--spacing-sm);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        .slogan {
+            font-size: 1.375rem;
+            color: var(--text-secondary);
+            font-weight: 300;
+            font-style: italic;
+            border: none;
+            padding: 0;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header-views {
+            position: absolute;
+            top: 0;
+            right: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            padding: 0.4rem 0.8rem;
+            background: rgba(0, 243, 255, 0.1);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: var(--radius-md);
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+        }
+
+        .views-icon {
+            font-size: 0.9rem;
+        }
+
+        .views-count {
+            color: var(--accent-cyan);
+            font-weight: 600;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        .views-label {
+            color: var(--text-secondary);
+        }
+
+        /* Header Authors */
+        .header-authors {
+            display: flex;
+            justify-content: center;
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-md);
+            flex-wrap: wrap;
+        }
+
+        .author-badge {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            padding: 0.4rem 0.8rem;
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.1), rgba(255, 0, 255, 0.1));
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: 20px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+            animation: author-glow 3s ease-in-out infinite;
+            cursor: pointer;
+        }
+
+        .author-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 243, 255, 0.3);
+        }
+
+        @keyframes author-glow {
+            0%, 100% {
+                border-color: rgba(0, 243, 255, 0.3);
+                box-shadow: 0 0 5px rgba(0, 243, 255, 0.2);
+            }
+            50% {
+                border-color: rgba(255, 0, 255, 0.5);
+                box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
+            }
+        }
+
+        .author-badge img {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 1px solid var(--accent-cyan);
+        }
+
+        .author-badge .author-name {
+            color: var(--accent-cyan);
+            font-weight: 600;
+        }
+
+        .author-badge .author-role {
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+        }
+
+        /* Author Tooltip */
+        .author-tooltip {
+            position: absolute;
+            bottom: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 243, 255, 0.4);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-sm);
+            min-width: 200px;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 243, 255, 0.2);
+            pointer-events: none;
+        }
+
+        .author-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 8px solid transparent;
+            border-top-color: rgba(0, 243, 255, 0.4);
+        }
+
+        .author-badge:hover .author-tooltip {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .tooltip-header {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-xs);
+            padding-bottom: var(--spacing-xs);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        .tooltip-header img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid var(--accent-cyan);
+        }
+
+        .tooltip-header .tooltip-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .tooltip-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .tooltip-row {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            font-size: 0.75rem;
+        }
+
+        .tooltip-label {
+            color: var(--text-secondary);
+            min-width: 45px;
+        }
+
+        .tooltip-value {
+            color: var(--text-primary);
+        }
+
+        .tooltip-value.highlight {
+            color: var(--accent-pink);
+            font-weight: 600;
+        }
+
+        /* Glitch Effect */
+        .glitch {
+            position: relative;
+            display: inline-block;
+        }
+
+        .glitch::before,
+        .glitch::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .glitch::before {
+            left: 2px;
+            text-shadow: -2px 0 var(--accent-pink);
+            clip: rect(24px, 550px, 90px, 0);
+            animation: glitch-anim 3s infinite linear alternate-reverse;
+        }
+
+        .glitch::after {
+            left: -2px;
+            text-shadow: -2px 0 var(--accent-cyan);
+            clip: rect(85px, 550px, 140px, 0);
+            animation: glitch-anim 2.5s infinite linear alternate-reverse;
+        }
+
+        @keyframes glitch-anim {
+            0% { clip: rect(61px, 9999px, 52px, 0); }
+            20% { clip: rect(84px, 9999px, 67px, 0); }
+            40% { clip: rect(14px, 9999px, 31px, 0); }
+            60% { clip: rect(35px, 9999px, 105px, 0); }
+            80% { clip: rect(71px, 9999px, 24px, 0); }
+            100% { clip: rect(46px, 9999px, 88px, 0); }
+        }
+
+        /* ==================== TRENDING SECTION ==================== */
+        .section {
+            padding: var(--spacing-xl) 0;
+        }
+
+        .section-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: var(--spacing-lg);
+            color: var(--text-primary);
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 0;
+            width: 60%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-cyan), transparent);
+            box-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        .section-title .cn-text {
+            font-size: 0.9rem;
+            color: var(--accent-pink);
+            font-weight: 400;
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+        }
+
+        .section-title .glow-text {
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: text-glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes text-glow {
+            from {
+                filter: drop-shadow(0 0 5px rgba(0, 243, 255, 0.5));
+            }
+            to {
+                filter: drop-shadow(0 0 15px rgba(255, 0, 255, 0.8));
+            }
+        }
+
+        /* Section Header with Toggle */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .section-header .toggle-icon {
+            font-size: 1.25rem;
+            color: var(--accent-cyan);
+            transition: transform 0.3s ease;
+        }
+
+        .section-header.collapsed .toggle-icon {
+            transform: rotate(-90deg);
+        }
+
+        .section-content {
+            max-height: 2000px;
+            overflow: hidden;
+            transition: max-height 0.5s ease-out, opacity 0.3s ease;
+            opacity: 1;
+        }
+
+        .section-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+        }
+
+        .trending-list {
+            display: grid;
+            gap: var(--spacing-sm);
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .trending-item {
+            background: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-sm) var(--spacing-md);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .trending-item.expandable {
+            cursor: pointer;
+        }
+
+        .trending-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, transparent, rgba(0, 243, 255, 0.05), transparent);
+            transform: translateX(-100%);
+            transition: transform 0.6s;
+            pointer-events: none;
+        }
+
+        .trending-item:hover {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+        }
+
+        .trending-item:hover::before {
+            transform: translateX(100%);
+        }
+
+        .trending-header {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+
+        .expand-icon {
+            font-size: 0.75rem;
+            color: var(--accent-cyan);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-left: auto;
+        }
+
+        .trending-item.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        .trending-item {
+            will-change: auto;
+        }
+
+        .trending-item.expandable:active {
+            will-change: transform;
+        }
+
+        .trending-details {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.7;
+        }
+
+        .trending-details > div {
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        .trending-details-inner {
+            padding-top: var(--spacing-sm);
+            margin-top: var(--spacing-sm);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            opacity: 0;
+            transform: translateY(-8px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .trending-item.expanded .trending-details {
+            grid-template-rows: 1fr;
+        }
+
+        .trending-item.expanded .trending-details-inner {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .trending-details p {
+            margin: 0;
+        }
+
+        .trending-details code {
+            background: rgba(0, 243, 255, 0.1);
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-family: var(--font-mono);
+            font-size: 0.85em;
+            color: var(--accent-cyan);
+        }
+
+        .badge {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .badge.architecture { background: rgba(0, 243, 255, 0.2); color: var(--accent-cyan); }
+        .badge.debt { background: rgba(255, 107, 53, 0.2); color: var(--accent-orange); }
+        .badge.tool { background: rgba(0, 255, 136, 0.2); color: var(--accent-green); }
+        .badge.security { background: rgba(255, 0, 255, 0.2); color: var(--accent-pink); }
+        .badge.performance { background: rgba(168, 85, 247, 0.2); color: var(--accent-purple); }
+        .badge.feature { background: rgba(0, 255, 136, 0.2); color: var(--accent-green); }
+        .badge.notice { background: rgba(255, 107, 53, 0.2); color: var(--accent-orange); }
+        .badge.default { background: rgba(156, 163, 175, 0.2); color: var(--text-secondary); }
+
+        .trending-title {
+            font-size: 0.95rem;
+            color: var(--text-primary);
+            flex: 1;
+        }
+
+        /* ==================== CONTRIBUTION SECTION ==================== */
+        .contributions-grid {
+            display: grid;
+            gap: var(--spacing-md);
+            grid-template-columns: 1fr;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .contribution-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-lg);
+            position: relative;
+            transition: all 0.4s ease;
+            overflow: hidden;
+        }
+
+        .contribution-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: var(--radius-lg);
+            padding: 1px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0;
+            transition: opacity 0.4s;
+            pointer-events: none;
+        }
+
+        .contribution-card:hover::before {
+            opacity: 1;
+        }
+
+        .contribution-card.expanded {
+            box-shadow: 0 10px 30px rgba(0, 243, 255, 0.15);
+        }
+
+        /* Card Header - Always visible */
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-md);
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .card-header:hover {
+            background: rgba(0, 243, 255, 0.05);
+        }
+
+        .card-header .author-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid var(--accent-cyan);
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .card-header .card-title-area {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .card-header .contribution-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-header .author-name {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .card-header .author-role-tag {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--accent-cyan);
+            background: rgba(0, 243, 255, 0.1);
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }
+
+        .card-header .card-stats {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-left: auto;
+            padding-right: var(--spacing-sm);
+        }
+
+        .card-header .stat-likes {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            color: var(--accent-pink);
+        }
+
+        .card-header .expand-icon {
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            transition: transform 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .contribution-card.expanded .card-header .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        /* Card Content - Collapsible */
+        .card-body {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.4s ease-out;
+        }
+
+        .card-body > div {
+            overflow: hidden;
+        }
+
+        .contribution-card.expanded .card-body {
+            grid-template-rows: 1fr;
+        }
+
+        .card-body-inner {
+            padding: 0 var(--spacing-lg) var(--spacing-lg);
+        }
+
+        .contribution-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-sm);
+            line-height: 1.3;
+        }
+
+        .contribution-desc {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-bottom: var(--spacing-md);
+            line-height: 1.6;
+        }
+
+        /* Card Stats and Actions */
+        .card-footer {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            margin-top: var(--spacing-md);
+            padding-top: var(--spacing-md);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .like-button {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            background: rgba(0, 243, 255, 0.1);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            color: var(--accent-cyan);
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+
+        .like-button:hover {
+            background: rgba(0, 243, 255, 0.2);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .like-button.liked {
+            background: rgba(255, 0, 255, 0.2);
+            border-color: var(--accent-pink);
+            color: var(--accent-pink);
+        }
+
+        .like-button.liked:hover {
+            box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
+        }
+
+        .like-icon {
+            font-size: 1.1rem;
+            transition: transform 0.3s ease;
+        }
+
+        .like-button:active .like-icon {
+            transform: scale(1.3);
+        }
+
+        /* Code Block Styling */
+        .code-block {
+            background: #0d0d0d;
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            margin-top: var(--spacing-md);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.1);
+        }
+
+        .code-header {
+            background: #151515;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+        }
+
+        .code-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .code-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .code-dot.red { background: #ff5f56; }
+        .code-dot.yellow { background: #ffbd2e; }
+        .code-dot.green { background: #27c93f; }
+
+        .code-filename {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-left: auto;
+        }
+
+        .code-content {
+            padding: var(--spacing-md);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            line-height: 1.6;
+            overflow-x: auto;
+        }
+
+        .code-line {
+            display: flex;
+            gap: var(--spacing-md);
+        }
+
+        .line-number {
+            color: rgba(237, 237, 237, 0.3);
+            user-select: none;
+            text-align: right;
+            min-width: 2em;
+        }
+
+        .line-content {
+            flex: 1;
+        }
+
+        /* Syntax Highlighting */
+        .keyword { color: #ff00ff; }
+        .function { color: #00f3ff; }
+        .string { color: #00ff88; }
+        .comment { color: #6272a4; font-style: italic; }
+        .operator { color: #ff6b35; }
+        .variable { color: #f8f8f2; }
+
+        /* Override highlight.js styles */
+        .code-content .hljs {
+            background: transparent;
+            padding: 0;
+        }
+
+        /* Image Content */
+        .content-image {
+            width: 100%;
+            border-radius: var(--radius-md);
+            margin-top: var(--spacing-md);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        /* ==================== FOOTER SECTION ==================== */
+        footer {
+            padding: var(--spacing-xl) 0;
+            border-top: 1px solid rgba(0, 243, 255, 0.2);
+            margin-top: var(--spacing-xl);
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: var(--spacing-md);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: var(--spacing-md);
+        }
+
+        .footer-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.3s;
+            font-family: var(--font-mono);
+        }
+
+        .footer-link:hover {
+            color: var(--accent-cyan);
+            text-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        .copyright {
+            font-family: var(--font-mono);
+        }
+
+        /* ==================== SUBMIT BUTTON ==================== */
+        .submit-section {
+            text-align: center;
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .submit-button {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: 1rem 2.5rem;
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.2), rgba(255, 0, 255, 0.2));
+            border: 2px solid transparent;
+            border-radius: 50px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            overflow: hidden;
+            transition: all 0.4s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .submit-button::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50px;
+            padding: 2px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink), var(--accent-cyan));
+            background-size: 200% 200%;
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            animation: gradient-rotate 3s linear infinite;
+        }
+
+        @keyframes gradient-rotate {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .submit-button::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at center, rgba(0, 243, 255, 0.3), transparent 70%);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .submit-button:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow:
+                0 10px 40px rgba(0, 243, 255, 0.4),
+                0 0 60px rgba(255, 0, 255, 0.3),
+                inset 0 0 20px rgba(0, 243, 255, 0.1);
+        }
+
+        .submit-button:hover::after {
+            opacity: 1;
+        }
+
+        .submit-button .btn-icon {
+            font-size: 1.3rem;
+            animation: pulse-icon 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-icon {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+
+        .submit-button .btn-text-en {
+            color: var(--accent-cyan);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        .submit-button .btn-text-cn {
+            font-size: 0.85rem;
+            color: var(--accent-pink);
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+        }
+
+        /* ==================== MODAL ==================== */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            position: relative;
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: var(--radius-lg);
+            max-width: 800px;
+            max-height: 85vh;
+            width: 90%;
+            overflow: hidden;
+            transform: scale(0.9) translateY(20px);
+            transition: transform 0.3s ease;
+            box-shadow:
+                0 20px 60px rgba(0, 0, 0, 0.5),
+                0 0 40px rgba(0, 243, 255, 0.2);
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: scale(1) translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--spacing-md) var(--spacing-lg);
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.1), rgba(255, 0, 255, 0.1));
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        .modal-title {
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            line-height: 1;
+            transition: all 0.3s ease;
+        }
+
+        .modal-close:hover {
+            color: var(--accent-pink);
+            transform: rotate(90deg);
+        }
+
+        .modal-body {
+            padding: var(--spacing-lg);
+            overflow-y: auto;
+            max-height: calc(85vh - 70px);
+        }
+
+        .modal-body h2 {
+            font-size: 1.5rem;
+            color: var(--accent-cyan);
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-xs);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        .modal-body h3 {
+            font-size: 1.1rem;
+            color: var(--accent-pink);
+            margin-top: var(--spacing-lg);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .modal-body p {
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-sm);
+            line-height: 1.7;
+        }
+
+        .modal-body ul, .modal-body ol {
+            color: var(--text-secondary);
+            margin-left: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .modal-body li {
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .modal-body code {
+            background: rgba(0, 243, 255, 0.1);
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-family: var(--font-mono);
+            font-size: 0.9em;
+            color: var(--accent-cyan);
+        }
+
+        .modal-body pre {
+            background: #0d0d0d;
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+            overflow-x: auto;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .modal-body pre code {
+            background: none;
+            padding: 0;
+            color: var(--text-primary);
+        }
+
+        .modal-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .modal-body th, .modal-body td {
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            text-align: left;
+        }
+
+        .modal-body th {
+            background: rgba(0, 243, 255, 0.1);
+            color: var(--accent-cyan);
+            font-family: var(--font-mono);
+        }
+
+        .modal-body td {
+            color: var(--text-secondary);
+        }
+
+        .modal-body hr {
+            border: none;
+            border-top: 1px solid rgba(0, 243, 255, 0.2);
+            margin: var(--spacing-lg) 0;
+        }
+
+        .modal-body strong {
+            color: var(--text-primary);
+        }
+
+        /* ==================== RESPONSIVE DESIGN ==================== */
+        @media (max-width: 1024px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .sidebar-toggle {
+                display: block;
+            }
+
+            .logo {
+                font-size: 2.5rem;
+            }
+
+            .header-meta {
+                font-size: 1rem;
+            }
+
+            .draft-badge {
+                position: relative;
+                margin-bottom: var(--spacing-md);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .logo {
+                font-size: 2rem;
+            }
+
+            .header-meta {
+                font-size: 0.875rem;
+                letter-spacing: 2px;
+            }
+
+            .slogan {
+                font-size: 1rem;
+            }
+
+            .section-title {
+                font-size: 1.5rem;
+            }
+
+            .contributions-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-content {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .code-content {
+                font-size: 0.75rem;
+            }
+
+            .sidebar {
+                width: 100%;
+            }
+
+            .draft-badge {
+                font-size: 0.75rem;
+                padding: 0.4rem 0.8rem;
+            }
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-cyan);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-pink);
+        }
+    </style>
+</head>
+<body>
+    <!-- ==================== MOBILE MENU TOGGLE ==================== -->
+    <button class="sidebar-toggle" onclick="toggleSidebar()">☰ Archive</button>
+
+    <!-- ==================== SIDEBAR NAVIGATION ==================== -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo" id="sidebar-logo"><span style="color: var(--accent-pink);">&gt;_</span> Contents</div>
+            <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse/Expand Sidebar">
+                <span id="collapse-icon">◀</span>
+            </button>
+        </div>
+        <ul class="archive-list">
+            <!-- Dynamic content loaded via JavaScript -->
+        </ul>
+    </aside>
+
+    <!-- ==================== MAIN CONTENT ==================== -->
+    <div class="main-content">
+    <!-- ==================== HEADER ==================== -->
+    <header>
+        <div class="container">
+            <!-- Draft Badge -->
+            <div class="draft-badge">DRAFT</div>
+
+            <div class="logo glitch" data-text="Weekly Tech Radar" id="site-title">Weekly Tech Radar</div>
+            <div class="header-meta" id="header-meta">
+                VOL.001<span>|</span>2024.05.20
+            </div>
+            <div class="slogan" id="site-slogan">
+                "Navigating the bleeding edge of technology, one week at a time."
+            </div>
+            <div class="header-authors" id="header-authors">
+                <!-- Dynamic authors loaded via JavaScript -->
+            </div>
+            <div class="header-views">
+                <span class="views-icon">👁️</span>
+                <span class="views-count" id="page-views">0</span>
+                <span class="views-label">views</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ==================== TRENDING SECTION ==================== -->
+    <section class="section" id="trending-section">
+        <div class="container">
+            <h2 class="section-title">
+                <span class="glow-text">⚡ Trending</span>
+                <span class="cn-text">本周热点</span>
+            </h2>
+
+            <div class="trending-list">
+                <!-- Dynamic content loaded via JavaScript -->
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== CONTRIBUTIONS SECTION ==================== -->
+    <section class="section" id="contributions-section">
+        <div class="container">
+            <h2 class="section-title">
+                <span class="glow-text">💎 Developer's Space</span>
+                <span class="cn-text">开发者空间</span>
+            </h2>
+
+            <div class="contributions-grid">
+                <!-- Dynamic content loaded via JavaScript -->
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== FOOTER ==================== -->
+    <footer>
+        <div class="container">
+            <div class="submit-section">
+                <button class="submit-button" onclick="openSubmitModal()">
+                    <span class="btn-icon">✨</span>
+                    <span class="btn-text-en">Submit Your Work!</span>
+                    <span class="btn-text-cn">提交你的作品</span>
+                </button>
+            </div>
+            <div class="footer-content">
+                <div class="copyright" id="site-footer">
+                    © 2024 Weekly Tech Radar | Powered by Engineers, for Engineers
+                </div>
+            </div>
+        </div>
+    </footer>
+    </div> <!-- End of main-content -->
+
+    <!-- ==================== SUBMIT MODAL ==================== -->
+    <div class="modal-overlay" id="submit-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">📝 How to Submit Your Work</span>
+                <button class="modal-close" onclick="closeSubmitModal()">×</button>
+            </div>
+            <div class="modal-body" id="submit-modal-body">
+                Loading...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== DRAFT MODE CONFIGURATION ====================
+        // Content directory for draft mode
+        const CONTENT_DIR = 'content-draft';
+        const IS_DRAFT_MODE = true;
+
+        // Configure marked with highlight.js
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return hljs.highlightAuto(code).value;
+            }
+        });
+
+        // Parse frontmatter from markdown
+        function parseFrontmatter(content) {
+            const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+            if (!match) return { metadata: {}, content };
+
+            const metadata = jsyaml.load(match[1]);
+            const markdownContent = match[2];
+            return { metadata, content: markdownContent };
+        }
+
+        // Load markdown file
+        async function loadMarkdown(path) {
+            try {
+                const response = await fetch(path);
+                if (!response.ok) throw new Error(`Failed to load ${path}`);
+                return await response.text();
+            } catch (error) {
+                console.error('Error loading markdown:', error);
+                return null;
+            }
+        }
+
+        // Fetch volumes from API or static file (shared logic)
+        async function fetchVolumes() {
+            try {
+                // Try to load from API first (when using node server.js)
+                const response = await fetch(`/api/volumes?draft=${IS_DRAFT_MODE}`);
+                if (!response.ok) throw new Error('API not available');
+                return await response.json();
+            } catch (apiError) {
+                // Fallback to static archive.json (when using npx serve or static hosting)
+                console.log('API not available, loading static archive.json');
+                const response = await fetch(`/${CONTENT_DIR}/archive.json`);
+                return await response.json();
+            }
+        }
+
+        // Load and render archive list
+        async function loadArchive(currentVol) {
+            try {
+                const volumes = await fetchVolumes();
+                const archiveList = document.querySelector('.archive-list');
+                archiveList.innerHTML = volumes.map(item => `
+                    <li class="archive-item">
+                        <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
+                            <span class="archive-vol">VOL.${item.vol}</span>
+                            <span class="archive-date">${item.date}</span>
+                            <span class="archive-views">👁 ${item.views || 0}</span>
+                        </a>
+                    </li>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load archive:', error);
+            }
+        }
+
+        // Get latest volume
+        async function getLatestVol() {
+            try {
+                const volumes = await fetchVolumes();
+                return volumes.length > 0 ? volumes[0].vol : '001';
+            } catch (error) {
+                console.error('Failed to get latest volume:', error);
+                return '001';
+            }
+        }
+
+        // Get current volume from URL or default to latest
+        async function getCurrentVol() {
+            const params = new URLSearchParams(window.location.search);
+            const volParam = params.get('vol');
+            if (volParam) {
+                return volParam;
+            }
+            // If no vol parameter, get the latest volume
+            return await getLatestVol();
+        }
+
+        // Badge class mapping (Chinese to English)
+        const badgeClassMap = {
+            '架构决策': 'architecture',
+            '债务预警': 'debt',
+            '工具推荐': 'tool',
+            '安全更新': 'security',
+            '性能优化': 'performance',
+            '新功能': 'feature',
+            '重要通知': 'notice'
+        };
+
+        // Store site config
+        let siteConfig = {};
+
+        // Store authors data
+        let authorsData = {};
+
+        // Load site configuration
+        async function loadConfig() {
+            try {
+                const response = await fetch(`/api/config?draft=${IS_DRAFT_MODE}`);
+                siteConfig = await response.json();
+                return siteConfig;
+            } catch (error) {
+                console.error('Failed to load config:', error);
+                return {};
+            }
+        }
+
+        // Load all authors
+        async function loadAuthors() {
+            try {
+                const response = await fetch(`/api/authors?draft=${IS_DRAFT_MODE}`);
+                authorsData = await response.json();
+                return authorsData;
+            } catch (error) {
+                console.error('Failed to load authors:', error);
+                return {};
+            }
+        }
+
+        // Apply site configuration to header and footer
+        function applySiteConfig() {
+            if (siteConfig.site) {
+                if (siteConfig.site.title) {
+                    const titleEl = document.getElementById('site-title');
+                    titleEl.textContent = siteConfig.site.title;
+                    titleEl.setAttribute('data-text', siteConfig.site.title);
+                }
+                if (siteConfig.site.slogan) {
+                    document.getElementById('site-slogan').textContent = `"${siteConfig.site.slogan}"`;
+                }
+                if (siteConfig.site.footer) {
+                    document.getElementById('site-footer').textContent = siteConfig.site.footer;
+                }
+            }
+            // Note: Authors are now rendered from individual radar.md files, not from config
+        }
+
+        // Get badge style from config or use default
+        function getBadgeStyle(badgeName) {
+            if (siteConfig.badges && siteConfig.badges[badgeName]) {
+                const config = siteConfig.badges[badgeName];
+                return `background: ${config.bg}; color: ${config.color};`;
+            }
+            return '';
+        }
+
+        // Render radar items
+        function renderRadar(metadata, content) {
+            // Update header with issue-specific VOL and date
+            document.getElementById('header-meta').innerHTML = `VOL.${metadata.vol}<span>|</span>${metadata.date}`;
+
+            // Render editors from radar.md metadata (per-issue editors)
+            // Editors reference authors from content/authors.md by author_id
+            if (metadata.editors && metadata.editors.length > 0) {
+                const authorsContainer = document.getElementById('header-authors');
+                authorsContainer.innerHTML = metadata.editors.map((editor, index) => {
+                    // Get author data from authorsData using author_id
+                    const author = authorsData[editor.author_id];
+                    if (!author) {
+                        console.warn(`Author not found: ${editor.author_id}`);
+                        return '';
+                    }
+                    return `
+                        <div class="author-badge" style="animation-delay: ${index * 0.5}s">
+                            <img src="${author.avatar}" alt="${author.name}">
+                            <span class="author-name">${author.name}</span>
+                            <span class="author-role">${editor.role}</span>
+                            <div class="author-tooltip">
+                                <div class="tooltip-header">
+                                    <img src="${author.avatar}" alt="${author.name}">
+                                    <span class="tooltip-name">${author.name}</span>
+                                </div>
+                                <div class="tooltip-info">
+                                    <div class="tooltip-row">
+                                        <span class="tooltip-label">Team</span>
+                                        <span class="tooltip-value">${author.team}</span>
+                                    </div>
+                                    <div class="tooltip-row">
+                                        <span class="tooltip-label">Role</span>
+                                        <span class="tooltip-value">${author.role}</span>
+                                    </div>
+                                    <div class="tooltip-row">
+                                        <span class="tooltip-label">本期</span>
+                                        <span class="tooltip-value highlight">${editor.role}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).filter(html => html).join('');
+            }
+
+            // Parse trending items from markdown
+            const trendingSection = document.querySelector('.trending-list');
+            const lines = content.split('\n');
+            const items = [];
+
+            let currentItem = null;
+            lines.forEach(line => {
+                const headerMatch = line.match(/^###\s+\[(.+?)\]\s+(.+)$/);
+                if (headerMatch) {
+                    if (currentItem) items.push(currentItem);
+                    currentItem = {
+                        badge: headerMatch[1],
+                        title: headerMatch[2],
+                        details: ''
+                    };
+                } else if (currentItem && line.trim() && !line.startsWith('#')) {
+                    // Collect detail lines
+                    currentItem.details += (currentItem.details ? '\n' : '') + line;
+                }
+            });
+            if (currentItem) items.push(currentItem);
+
+            // Render trending items with expandable details
+            trendingSection.innerHTML = items.map((item, index) => {
+                const badgeClass = badgeClassMap[item.badge] || 'default';
+                const badgeStyle = getBadgeStyle(item.badge);
+                const hasDetails = item.details.trim().length > 0;
+                return `
+                <div class="trending-item ${hasDetails ? 'expandable' : ''}" onclick="${hasDetails ? 'toggleTrendingItem(this)' : ''}">
+                    <div class="trending-header">
+                        <span class="badge ${badgeClass}" ${badgeStyle ? `style="${badgeStyle}"` : ''}>${item.badge}</span>
+                        <div class="trending-title">${item.title}</div>
+                        ${hasDetails ? '<span class="expand-icon">▼</span>' : ''}
+                    </div>
+                    ${hasDetails ? `<div class="trending-details"><div><div class="trending-details-inner">${marked.parse(item.details)}</div></div></div>` : ''}
+                </div>
+                `;
+            }).join('');
+        }
+
+        // Toggle trending item expansion
+        function toggleTrendingItem(element) {
+            element.classList.toggle('expanded');
+        }
+
+        // Views API function (draft mode doesn't increment views)
+        async function incrementViews(vol) {
+            // In draft mode, just return 0 - don't track views
+            return 0;
+        }
+
+        // Likes API functions (draft mode uses local storage only)
+        async function fetchLikes() {
+            // In draft mode, return empty - no server tracking
+            return {};
+        }
+
+        async function updateLike(articleId, action) {
+            // In draft mode, just update locally
+            return null;
+        }
+
+        // Check if current user has liked an article (stored in localStorage)
+        function hasUserLiked(articleId) {
+            const likedArticles = JSON.parse(localStorage.getItem('likedArticles') || '{}');
+            return !!likedArticles[articleId];
+        }
+
+        // Save user's like status to localStorage
+        function setUserLiked(articleId, liked) {
+            const likedArticles = JSON.parse(localStorage.getItem('likedArticles') || '{}');
+            if (liked) {
+                likedArticles[articleId] = true;
+            } else {
+                delete likedArticles[articleId];
+            }
+            localStorage.setItem('likedArticles', JSON.stringify(likedArticles));
+        }
+
+        // Store server likes data
+        let serverLikes = {};
+
+        // Toggle contribution card expansion
+        function toggleContributionCard(element) {
+            element.closest('.contribution-card').classList.toggle('expanded');
+        }
+
+        // Render contribution card with collapsible structure
+        function renderContribution(metadata, content, articleId, folderPath = '') {
+            // Get author data from authorsData using author_id
+            const author = metadata.author_id ? authorsData[metadata.author_id] : null;
+
+            // Fallback to old format if author is embedded in metadata
+            const authorInfo = author || metadata.author || {
+                name: 'Unknown Author',
+                team: 'Unknown Team',
+                avatar: '/assets/images/avatars/default.jpg'
+            };
+
+            // Convert relative image paths to absolute paths
+            let processedContent = content;
+            if (folderPath) {
+                // Replace relative image paths like ./image.svg or image.svg
+                processedContent = content.replace(
+                    /!\[([^\]]*)\]\(\.\/([^)]+)\)/g,
+                    `![$1](/${folderPath}/$2)`
+                ).replace(
+                    /!\[([^\]]*)\]\((?!\/|https?:\/\/)([^)]+)\)/g,
+                    `![$1](/${folderPath}/$2)`
+                );
+            }
+
+            // Parse markdown content
+            let contentHtml = marked.parse(processedContent);
+
+            // Apply syntax highlighting to code blocks
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = contentHtml;
+
+            // Find all code blocks and apply highlighting with line numbers
+            const codeBlocks = tempDiv.querySelectorAll('pre code');
+            codeBlocks.forEach(block => {
+                const lang = block.className.match(/language-(\w+)/)?.[1] || '';
+                const code = block.textContent || '';
+
+                const highlighted = lang && hljs.getLanguage(lang)
+                    ? hljs.highlight(code, { language: lang }).value
+                    : hljs.highlightAuto(code).value;
+
+                // Split into lines for line numbers
+                const lines = highlighted.split('\n');
+                const codeLines = lines.map((line, i) =>
+                    `<div class="code-line"><span class="line-number">${i + 1}</span><span class="line-content">${line || '&nbsp;'}</span></div>`
+                ).join('');
+
+                const filename = lang ? `example.${lang}` : 'code';
+                const wrapper = document.createElement('div');
+                wrapper.className = 'code-block';
+                wrapper.innerHTML = `
+                    <div class="code-header">
+                        <div class="code-dots">
+                            <span class="code-dot red"></span>
+                            <span class="code-dot yellow"></span>
+                            <span class="code-dot green"></span>
+                        </div>
+                        <span class="code-filename">${filename}</span>
+                    </div>
+                    <div class="code-content">${codeLines}</div>
+                `;
+
+                block.parentElement.replaceWith(wrapper);
+            });
+
+            contentHtml = tempDiv.innerHTML;
+
+            // Get likes count from server only (no fallback to metadata)
+            const likesCount = serverLikes[articleId] || 0;
+            const userLiked = hasUserLiked(articleId);
+            const likedClass = userLiked ? 'liked' : '';
+
+            return `
+                <div class="contribution-card" data-article-id="${articleId}">
+                    <div class="card-header" onclick="toggleContributionCard(this)">
+                        <img src="${authorInfo.avatar}" alt="Author Avatar" class="author-avatar">
+                        <div class="card-title-area">
+                            <h3 class="contribution-title">${metadata.title}</h3>
+                            <div class="author-name">${authorInfo.name} · ${authorInfo.team}<span class="author-role-tag">${authorInfo.role || 'Contributor'}</span></div>
+                        </div>
+                        <div class="card-stats">
+                            <span class="stat-likes">
+                                <span>♥</span>
+                                <span class="like-count-header">${likesCount}</span>
+                            </span>
+                        </div>
+                        <span class="expand-icon">▼</span>
+                    </div>
+                    <div class="card-body">
+                        <div>
+                            <div class="card-body-inner">
+                                <p class="contribution-desc">${metadata.description}</p>
+                                ${contentHtml}
+                                <div class="card-footer">
+                                    <button class="like-button ${likedClass}" onclick="event.stopPropagation(); toggleLike(this)">
+                                        <span class="like-icon">♥</span>
+                                        <span class="like-count">${likesCount}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Get list of contribution folders from API or fallback
+        async function getContributionFolders(vol) {
+            try {
+                const response = await fetch(`/api/contributions/${vol}?draft=${IS_DRAFT_MODE}`);
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (e) {
+                console.log('API not available, using fallback');
+            }
+            // Fallback for static hosting - try common folder names
+            return ['01-typescript-types', '02-react-virtual-list', '03-k8s-optimization',
+                    '04-go-error-handling', '05-architecture-diagram', '06-quick-tip',
+                    '07-long-article', '08-performance-chart', '09-screenshot-example'];
+        }
+
+        // Load and render all contributions
+        async function loadContributions(vol) {
+            const contributionsGrid = document.querySelector('.contributions-grid');
+            contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading contributions...</p>';
+
+            const folders = await getContributionFolders(vol);
+            const basePath = `${CONTENT_DIR}/vol-${vol}/contributions`;
+
+            const contributions = [];
+            for (const folder of folders) {
+                const content = await loadMarkdown(`${basePath}/${folder}/index.md`);
+                if (content) {
+                    const { metadata, content: markdownContent } = parseFrontmatter(content);
+                    // Use vol + folder name as unique article ID
+                    const articleId = `draft-${vol}-${folder}`;
+                    // Pass the base path for resolving relative image URLs
+                    const folderPath = `${basePath}/${folder}`;
+                    contributions.push(renderContribution(metadata, markdownContent, articleId, folderPath));
+                }
+            }
+
+            contributionsGrid.innerHTML = contributions.join('');
+        }
+
+        // Main initialization
+        async function init() {
+            // Restore sidebar state
+            restoreSidebarState();
+
+            const vol = await getCurrentVol();
+
+            // Load site config and authors data
+            await loadConfig();
+            await loadAuthors();
+            applySiteConfig();
+
+            // Load server likes data
+            serverLikes = await fetchLikes();
+
+            // Display page views (draft mode shows 0)
+            const views = await incrementViews(vol);
+            document.getElementById('page-views').textContent = views.toLocaleString();
+
+            // Load archive list
+            await loadArchive(vol);
+
+            // Load radar content
+            const radarContent = await loadMarkdown(`${CONTENT_DIR}/vol-${vol}/radar.md`);
+            if (radarContent) {
+                const { metadata, content } = parseFrontmatter(radarContent);
+                renderRadar(metadata, content);
+            }
+
+            // Load contributions
+            await loadContributions(vol);
+        }
+
+        // Sidebar toggle functionality (for mobile)
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('open');
+        }
+
+        // Sidebar collapse/expand functionality (for desktop)
+        function toggleSidebarCollapse() {
+            const sidebar = document.getElementById('sidebar');
+            const collapseIcon = document.getElementById('collapse-icon');
+            sidebar.classList.toggle('collapsed');
+
+            // Update icon direction
+            if (sidebar.classList.contains('collapsed')) {
+                collapseIcon.textContent = '▶';
+            } else {
+                collapseIcon.textContent = '◀';
+            }
+
+            // Save preference to localStorage
+            localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+        }
+
+        // Restore sidebar state from localStorage
+        function restoreSidebarState() {
+            const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            if (isCollapsed) {
+                const sidebar = document.getElementById('sidebar');
+                const collapseIcon = document.getElementById('collapse-icon');
+                sidebar.classList.add('collapsed');
+                collapseIcon.textContent = '▶';
+            }
+        }
+
+        // Like button functionality (local only in draft mode)
+        async function toggleLike(button) {
+            const card = button.closest('.contribution-card');
+            const articleId = card.dataset.articleId;
+            const likeCountSpan = button.querySelector('.like-count');
+            const likeCountHeader = card.querySelector('.like-count-header');
+            const isCurrentlyLiked = button.classList.contains('liked');
+
+            // In draft mode, just toggle locally
+            let currentCount = parseInt(likeCountSpan.textContent) || 0;
+
+            if (isCurrentlyLiked) {
+                button.classList.remove('liked');
+                setUserLiked(articleId, false);
+                currentCount = Math.max(0, currentCount - 1);
+            } else {
+                button.classList.add('liked');
+                setUserLiked(articleId, true);
+                currentCount += 1;
+            }
+
+            likeCountSpan.textContent = currentCount;
+            if (likeCountHeader) {
+                likeCountHeader.textContent = currentCount;
+            }
+        }
+
+        // Submit modal functions
+        let submitGuideLoaded = false;
+
+        async function openSubmitModal() {
+            const modal = document.getElementById('submit-modal');
+            const modalBody = document.getElementById('submit-modal-body');
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+
+            // Load content only once
+            if (!submitGuideLoaded) {
+                try {
+                    const content = await loadMarkdown(`/${CONTENT_DIR}/submit-guide.md`);
+                    if (content) {
+                        const { content: markdownContent } = parseFrontmatter(content);
+                        modalBody.innerHTML = marked.parse(markdownContent);
+                        submitGuideLoaded = true;
+                    }
+                } catch (error) {
+                    modalBody.innerHTML = '<p style="color: var(--accent-pink);">Failed to load guide. Please try again.</p>';
+                }
+            }
+        }
+
+        function closeSubmitModal() {
+            const modal = document.getElementById('submit-modal');
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        // Close modal on overlay click
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeSubmitModal();
+            }
+        });
+
+        // Close modal on ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeSubmitModal();
+            }
+        });
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
