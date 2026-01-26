@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weekly Tech Radar | 技术雷达周刊</title>
+    <title>[DRAFT] Weekly Tech Radar | 技术雷达周刊</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -34,6 +34,7 @@
             --accent-green: #00ff88;
             --accent-orange: #ff6b35;
             --accent-purple: #a855f7;
+            --accent-yellow: #fbbf24;
             --border-glow: rgba(0, 243, 255, 0.3);
 
             /* Typography */
@@ -110,7 +111,7 @@
 
         .sidebar-header {
             margin-bottom: var(--spacing-lg);
-            padding-bottom: 3rem; 
+            padding-bottom: 3rem;
             border-bottom: 1px solid rgba(0, 243, 255, 0.1);
             position: relative;
         }
@@ -311,6 +312,44 @@
 
         header .container {
             position: relative;
+        }
+
+        /* ==================== DRAFT BADGE ==================== */
+        .draft-badge {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            padding: 0.5rem 1rem;
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(255, 107, 53, 0.2));
+            border: 2px solid var(--accent-yellow);
+            border-radius: var(--radius-md);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--accent-yellow);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            animation: draft-pulse 2s ease-in-out infinite;
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+        }
+
+        .draft-badge::before {
+            content: '⚠';
+            font-size: 1.1rem;
+        }
+
+        @keyframes draft-pulse {
+            0%, 100% {
+                box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+                border-color: var(--accent-yellow);
+            }
+            50% {
+                box-shadow: 0 0 30px rgba(251, 191, 36, 0.5), 0 0 60px rgba(255, 107, 53, 0.3);
+                border-color: var(--accent-orange);
+            }
         }
 
         .logo {
@@ -1432,6 +1471,11 @@
             .header-meta {
                 font-size: 1rem;
             }
+
+            .draft-badge {
+                position: relative;
+                margin-bottom: var(--spacing-md);
+            }
         }
 
         @media (max-width: 768px) {
@@ -1467,6 +1511,11 @@
 
             .sidebar {
                 width: 100%;
+            }
+
+            .draft-badge {
+                font-size: 0.75rem;
+                padding: 0.4rem 0.8rem;
             }
         }
 
@@ -1512,6 +1561,9 @@
     <!-- ==================== HEADER ==================== -->
     <header>
         <div class="container">
+            <!-- Draft Badge -->
+            <div class="draft-badge">DRAFT</div>
+
             <div class="logo glitch" data-text="Weekly Tech Radar" id="site-title">Weekly Tech Radar</div>
             <div class="header-meta" id="header-meta">
                 VOL.001<span>|</span>2024.05.20
@@ -1591,6 +1643,12 @@
     </div>
 
     <script>
+        // ==================== DRAFT MODE CONFIGURATION ====================
+        // Content directory for draft mode (with leading slash for absolute paths)
+        const CONTENT_DIR = '/content-draft';
+        const SHARED_DIR = '/shared';
+        const IS_DRAFT_MODE = true;
+
         // Configure marked with highlight.js
         marked.setOptions({
             highlight: function(code, lang) {
@@ -1627,13 +1685,13 @@
         async function fetchVolumes() {
             try {
                 // Try to load from API first (when using node server.js)
-                const response = await fetch('/api/volumes');
+                const response = await fetch(`/api/volumes?draft=${IS_DRAFT_MODE}`);
                 if (!response.ok) throw new Error('API not available');
                 return await response.json();
             } catch (apiError) {
                 // Fallback to static archive.json (when using npx serve or static hosting)
                 console.log('API not available, loading static archive.json');
-                const response = await fetch('/content/archive.json');
+                const response = await fetch(`${CONTENT_DIR}/archive.json`);
                 return await response.json();
             }
         }
@@ -1838,41 +1896,21 @@
             element.classList.toggle('expanded');
         }
 
-        // Views API function
+        // Views API function (draft mode doesn't increment views)
         async function incrementViews(vol) {
-            try {
-                const response = await fetch(`/api/views/${vol}`, { method: 'POST' });
-                const data = await response.json();
-                return data.views || 0;
-            } catch (error) {
-                console.error('Failed to increment views:', error);
-                return 0;
-            }
+            // In draft mode, just return 0 - don't track views
+            return 0;
         }
 
-        // Likes API functions
+        // Likes API functions (draft mode uses local storage only)
         async function fetchLikes() {
-            try {
-                const response = await fetch('/api/likes');
-                return await response.json();
-            } catch (error) {
-                console.error('Failed to fetch likes:', error);
-                return {};
-            }
+            // In draft mode, return empty - no server tracking
+            return {};
         }
 
         async function updateLike(articleId, action) {
-            try {
-                const response = await fetch(`/api/likes/${articleId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action })
-                });
-                return await response.json();
-            } catch (error) {
-                console.error('Failed to update like:', error);
-                return null;
-            }
+            // In draft mode, just update locally
+            return null;
         }
 
         // Check if current user has liked an article (stored in localStorage)
@@ -2010,7 +2048,7 @@
         // Get list of contribution folders from API or fallback
         async function getContributionFolders(vol) {
             try {
-                const response = await fetch(`/api/contributions/${vol}`);
+                const response = await fetch(`/api/contributions/${vol}?draft=${IS_DRAFT_MODE}`);
                 if (response.ok) {
                     return await response.json();
                 }
@@ -2029,7 +2067,7 @@
             contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading contributions...</p>';
 
             const folders = await getContributionFolders(vol);
-            const basePath = `content/vol-${vol}/contributions`;
+            const basePath = `${CONTENT_DIR}/vol-${vol}/contributions`;
 
             const contributions = [];
             for (const folder of folders) {
@@ -2037,7 +2075,7 @@
                 if (content) {
                     const { metadata, content: markdownContent } = parseFrontmatter(content);
                     // Use vol + folder name as unique article ID
-                    const articleId = `${vol}-${folder}`;
+                    const articleId = `draft-${vol}-${folder}`;
                     // Pass the base path for resolving relative image URLs
                     const folderPath = `${basePath}/${folder}`;
                     contributions.push(renderContribution(metadata, markdownContent, articleId, folderPath));
@@ -2062,7 +2100,7 @@
             // Load server likes data
             serverLikes = await fetchLikes();
 
-            // Increment and display page views
+            // Display page views (draft mode shows 0)
             const views = await incrementViews(vol);
             document.getElementById('page-views').textContent = views.toLocaleString();
 
@@ -2070,7 +2108,7 @@
             await loadArchive(vol);
 
             // Load radar content
-            const radarContent = await loadMarkdown(`content/vol-${vol}/radar.md`);
+            const radarContent = await loadMarkdown(`${CONTENT_DIR}/vol-${vol}/radar.md`);
             if (radarContent) {
                 const { metadata, content } = parseFrontmatter(radarContent);
                 renderRadar(metadata, content);
@@ -2114,7 +2152,7 @@
             }
         }
 
-        // Like button functionality
+        // Like button functionality (local only in draft mode)
         async function toggleLike(button) {
             const card = button.closest('.contribution-card');
             const articleId = card.dataset.articleId;
@@ -2122,26 +2160,22 @@
             const likeCountHeader = card.querySelector('.like-count-header');
             const isCurrentlyLiked = button.classList.contains('liked');
 
-            // Determine action
-            const action = isCurrentlyLiked ? 'unlike' : 'like';
+            // In draft mode, just toggle locally
+            let currentCount = parseInt(likeCountSpan.textContent) || 0;
 
-            // Update server
-            const result = await updateLike(articleId, action);
+            if (isCurrentlyLiked) {
+                button.classList.remove('liked');
+                setUserLiked(articleId, false);
+                currentCount = Math.max(0, currentCount - 1);
+            } else {
+                button.classList.add('liked');
+                setUserLiked(articleId, true);
+                currentCount += 1;
+            }
 
-            if (result) {
-                // Update UI
-                if (isCurrentlyLiked) {
-                    button.classList.remove('liked');
-                    setUserLiked(articleId, false);
-                } else {
-                    button.classList.add('liked');
-                    setUserLiked(articleId, true);
-                }
-                likeCountSpan.textContent = result.likes;
-                if (likeCountHeader) {
-                    likeCountHeader.textContent = result.likes;
-                }
-                serverLikes[articleId] = result.likes;
+            likeCountSpan.textContent = currentCount;
+            if (likeCountHeader) {
+                likeCountHeader.textContent = currentCount;
             }
         }
 
@@ -2158,7 +2192,7 @@
             // Load content only once
             if (!submitGuideLoaded) {
                 try {
-                    const content = await loadMarkdown('/shared/submit-guide.md');
+                    const content = await loadMarkdown(`${SHARED_DIR}/submit-guide.md`);
                     if (content) {
                         const { content: markdownContent } = parseFrontmatter(content);
                         modalBody.innerHTML = marked.parse(markdownContent);
