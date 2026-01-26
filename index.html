@@ -2158,7 +2158,7 @@
             // Load content only once
             if (!submitGuideLoaded) {
                 try {
-                    const content = await loadMarkdown('/content/submit-guide.md');
+                    const content = await loadMarkdown('/shared/submit-guide.md');
                     if (content) {
                         const { content: markdownContent } = parseFrontmatter(content);
                         modalBody.innerHTML = marked.parse(markdownContent);

@@ -1644,8 +1644,9 @@
 
     <script>
         // ==================== DRAFT MODE CONFIGURATION ====================
-        // Content directory for draft mode
-        const CONTENT_DIR = 'content-draft';
+        // Content directory for draft mode (with leading slash for absolute paths)
+        const CONTENT_DIR = '/content-draft';
+        const SHARED_DIR = '/shared';
         const IS_DRAFT_MODE = true;
 
         // Configure marked with highlight.js
@@ -1690,7 +1691,7 @@
             } catch (apiError) {
                 // Fallback to static archive.json (when using npx serve or static hosting)
                 console.log('API not available, loading static archive.json');
-                const response = await fetch(`/${CONTENT_DIR}/archive.json`);
+                const response = await fetch(`${CONTENT_DIR}/archive.json`);
                 return await response.json();
             }
         }
@@ -1756,7 +1757,7 @@
         // Load site configuration
         async function loadConfig() {
             try {
-                const response = await fetch(`/api/config?draft=${IS_DRAFT_MODE}`);
+                const response = await fetch('/api/config');
                 siteConfig = await response.json();
                 return siteConfig;
             } catch (error) {
@@ -1768,7 +1769,7 @@
         // Load all authors
         async function loadAuthors() {
             try {
-                const response = await fetch(`/api/authors?draft=${IS_DRAFT_MODE}`);
+                const response = await fetch('/api/authors');
                 authorsData = await response.json();
                 return authorsData;
             } catch (error) {
@@ -2191,7 +2192,7 @@
             // Load content only once
             if (!submitGuideLoaded) {
                 try {
-                    const content = await loadMarkdown(`/${CONTENT_DIR}/submit-guide.md`);
+                    const content = await loadMarkdown(`${SHARED_DIR}/submit-guide.md`);
                     if (content) {
                         const { content: markdownContent } = parseFrontmatter(content);
                         modalBody.innerHTML = marked.parse(markdownContent);

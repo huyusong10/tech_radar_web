@@ -88,10 +88,12 @@ function getContentDir(isDraft) {
     return path.join(__dirname, isDraft ? 'content-draft' : 'content');
 }
 
-// GET /api/config - Get site configuration
+// Shared directory for common files (config, authors, submit-guide)
+const SHARED_DIR = path.join(__dirname, 'shared');
+
+// GET /api/config - Get site configuration (from shared directory)
 app.get('/api/config', (req, res) => {
-    const isDraft = req.query.draft === 'true';
-    const configPath = path.join(getContentDir(isDraft), 'config.md');
+    const configPath = path.join(SHARED_DIR, 'config.md');
 
     try {
         if (fs.existsSync(configPath)) {
@@ -107,10 +109,9 @@ app.get('/api/config', (req, res) => {
     }
 });
 
-// GET /api/authors - Get all authors from unified authors.md
+// GET /api/authors - Get all authors from shared authors.md
 app.get('/api/authors', (req, res) => {
-    const isDraft = req.query.draft === 'true';
-    const authorsPath = path.join(getContentDir(isDraft), 'authors.md');
+    const authorsPath = path.join(SHARED_DIR, 'authors.md');
 
     try {
         const authors = {};
@@ -135,11 +136,10 @@ app.get('/api/authors', (req, res) => {
     }
 });
 
-// GET /api/authors/:authorId - Get specific author from unified authors.md
+// GET /api/authors/:authorId - Get specific author from shared authors.md
 app.get('/api/authors/:authorId', (req, res) => {
     const { authorId } = req.params;
-    const isDraft = req.query.draft === 'true';
-    const authorsPath = path.join(getContentDir(isDraft), 'authors.md');
+    const authorsPath = path.join(SHARED_DIR, 'authors.md');
 
     try {
         if (fs.existsSync(authorsPath)) {
