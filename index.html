@@ -22,6 +22,29 @@
             box-sizing: border-box;
         }
 
+        /* Loading state - hide content initially to prevent flash */
+        .dynamic-content {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .dynamic-content.loaded {
+            opacity: 1;
+        }
+
+        /* Loading skeleton animation */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        .loading-skeleton {
+            background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-secondary) 50%, var(--bg-card) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: var(--radius-md);
+        }
+
         :root {
             /* Color System */
             --bg-primary: #0a0a0a;
@@ -1571,7 +1594,7 @@
     <button class="sidebar-toggle" onclick="toggleSidebar()">☰ Archive</button>
 
     <!-- ==================== SIDEBAR NAVIGATION ==================== -->
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar dynamic-content" id="sidebar">
         <div class="sidebar-header">
             <div class="sidebar-logo" id="sidebar-logo"><span style="color: var(--accent-pink);">&gt;_</span> Contents</div>
             <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse/Expand Sidebar">
@@ -1579,18 +1602,20 @@
             </button>
         </div>
         <ul class="archive-list">
-            <!-- Dynamic content loaded via JavaScript -->
+            <li class="archive-item"><span class="loading-skeleton" style="display: block; width: 100%; height: 2.5em; margin-bottom: 0.5em;"></span></li>
+            <li class="archive-item"><span class="loading-skeleton" style="display: block; width: 100%; height: 2.5em; margin-bottom: 0.5em;"></span></li>
+            <li class="archive-item"><span class="loading-skeleton" style="display: block; width: 100%; height: 2.5em;"></span></li>
         </ul>
     </aside>
 
     <!-- ==================== MAIN CONTENT ==================== -->
     <div class="main-content">
     <!-- ==================== HEADER ==================== -->
-    <header>
+    <header class="dynamic-content" id="main-header">
         <div class="container">
             <div class="logo glitch" data-text="Weekly Tech Radar" id="site-title">Weekly Tech Radar</div>
             <div class="header-meta" id="header-meta">
-                VOL.001<span>|</span>2024.05.20
+                <span class="loading-skeleton" style="display: inline-block; width: 120px; height: 1em;"></span>
             </div>
             <div class="slogan" id="site-slogan">
                 "Navigating the bleeding edge of technology, one week at a time."
@@ -1599,19 +1624,19 @@
                 <div class="crew-row">
                     <span class="crew-label">Editors</span>
                     <div class="header-authors" id="header-authors">
-                        <!-- Dynamic editors loaded via JavaScript -->
+                        <span class="loading-skeleton" style="display: inline-block; width: 200px; height: 2em;"></span>
                     </div>
                 </div>
                 <div class="crew-row contributors-row">
                     <span class="crew-label">Authors</span>
                     <div class="header-contributors" id="header-contributors">
-                        <!-- Dynamic contributors loaded via JavaScript -->
+                        <span class="loading-skeleton" style="display: inline-block; width: 200px; height: 2em;"></span>
                     </div>
                 </div>
             </div>
             <div class="header-views">
                 <span class="views-icon">👁️</span>
-                <span class="views-count" id="page-views">0</span>
+                <span class="views-count" id="page-views">--</span>
                 <span class="views-label">views</span>
             </div>
         </div>
@@ -1625,8 +1650,10 @@
                 <span class="cn-text">本周热点</span>
             </h2>
 
-            <div class="trending-list">
-                <!-- Dynamic content loaded via JavaScript -->
+            <div class="trending-list dynamic-content" id="trending-list">
+                <div class="loading-skeleton" style="width: 100%; height: 80px; margin-bottom: 1rem;"></div>
+                <div class="loading-skeleton" style="width: 100%; height: 80px; margin-bottom: 1rem;"></div>
+                <div class="loading-skeleton" style="width: 100%; height: 80px;"></div>
             </div>
         </div>
     </section>
@@ -1639,8 +1666,8 @@
                 <span class="cn-text">开发者空间</span>
             </h2>
 
-            <div class="contributions-grid">
-                <!-- Dynamic content loaded via JavaScript -->
+            <div class="contributions-grid dynamic-content" id="contributions-grid">
+                <div class="loading-skeleton" style="width: 100%; height: 200px; border-radius: 12px;"></div>
             </div>
         </div>
     </section>
@@ -1688,6 +1715,72 @@
             }
         });
 
+        // ==================== CONCURRENCY UTILITIES ====================
+
+        // Retry with exponential backoff
+        async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+            let lastError;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+
+                    // Handle rate limiting
+                    if (response.status === 429) {
+                        const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
+                        await new Promise(r => setTimeout(r, retryAfter * 1000));
+                        continue;
+                    }
+
+                    // Handle server busy
+                    if (response.status === 503) {
+                        await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+                        continue;
+                    }
+
+                    return response;
+                } catch (error) {
+                    lastError = error;
+                    // Exponential backoff: 1s, 2s, 4s
+                    await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+                }
+            }
+            throw lastError || new Error('Max retries exceeded');
+        }
+
+        // Debounce utility
+        function debounce(fn, delay) {
+            let timeoutId;
+            return function (...args) {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => fn.apply(this, args), delay);
+            };
+        }
+
+        // Track in-flight requests to prevent duplicates
+        const pendingRequests = new Map();
+
+        // Deduplicated fetch - prevents duplicate concurrent requests
+        async function fetchDedupe(url, options = {}) {
+            const key = `${options.method || 'GET'}:${url}`;
+
+            // For POST requests, don't dedupe (each is intentional)
+            if (options.method === 'POST') {
+                return fetchWithRetry(url, options);
+            }
+
+            // Return existing promise if request is in flight
+            if (pendingRequests.has(key)) {
+                return pendingRequests.get(key);
+            }
+
+            const promise = fetchWithRetry(url, options).finally(() => {
+                pendingRequests.delete(key);
+            });
+
+            pendingRequests.set(key, promise);
+            return promise;
+        }
+
         // Site paths configuration (standardized structure)
         // These are URL paths, not filesystem paths
         let PUBLISHED_DIR = '/contents/published';
@@ -1697,7 +1790,7 @@
         // Load site paths from API (for dynamic configuration)
         async function loadSitePaths() {
             try {
-                const response = await fetch('/api/site-config');
+                const response = await fetchDedupe('/api/site-config');
                 if (response.ok) {
                     const config = await response.json();
                     PUBLISHED_DIR = config.publishedDir || '/contents/published';
@@ -1751,7 +1844,8 @@
             volumesCachePromise = (async () => {
                 try {
                     // Try to load from API first (when using node server.js)
-                    const response = await fetch('/api/volumes');
+                    // Use cache: 'no-store' to always get fresh views counts
+                    const response = await fetchWithRetry('/api/volumes', { cache: 'no-store' });
                     if (!response.ok) throw new Error('API not available');
                     volumesCache = await response.json();
                     return volumesCache;
@@ -1798,7 +1892,7 @@
                         <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
                             <span class="archive-vol">VOL.${item.vol}</span>
                             <span class="archive-date">${item.date}</span>
-                            <span class="archive-views">👁 ${item.views || 0}</span>
+                            <span class="archive-views">👁 ${(item.views || 0).toLocaleString()}</span>
                         </a>
                     </li>
                 `).join('');
@@ -1843,7 +1937,7 @@
                     <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
                         <span class="archive-vol">VOL.${item.vol}</span>
                         <span class="archive-date">${item.date}</span>
-                        <span class="archive-views">👁 ${item.views || 0}</span>
+                        <span class="archive-views">👁 ${(item.views || 0).toLocaleString()}</span>
                     </a>
                 `;
                 archiveList.appendChild(li);
@@ -1861,6 +1955,21 @@
                 `;
                 archiveList.appendChild(loadMoreItem);
             }
+        }
+
+        // Update sidebar views for a specific volume (keeps header and sidebar in sync)
+        function updateSidebarViews(vol, views) {
+            // Find the sidebar link for this volume and update its views count
+            const sidebarLinks = document.querySelectorAll('.archive-link');
+            sidebarLinks.forEach(link => {
+                const volSpan = link.querySelector('.archive-vol');
+                if (volSpan && volSpan.textContent === `VOL.${vol}`) {
+                    const viewsSpan = link.querySelector('.archive-views');
+                    if (viewsSpan) {
+                        viewsSpan.textContent = `👁 ${views.toLocaleString()}`;
+                    }
+                }
+            });
         }
 
         // Get latest volume
@@ -1905,7 +2014,7 @@
         // Load site configuration
         async function loadConfig() {
             try {
-                const response = await fetch('/api/config');
+                const response = await fetchDedupe('/api/config');
                 siteConfig = await response.json();
                 return siteConfig;
             } catch (error) {
@@ -1917,7 +2026,7 @@
         // Load all authors
         async function loadAuthors() {
             try {
-                const response = await fetch('/api/authors');
+                const response = await fetchDedupe('/api/authors');
                 authorsData = await response.json();
                 return authorsData;
             } catch (error) {
@@ -2045,44 +2154,15 @@
         }
 
         // Views API functions
-        // Check if current user has viewed a volume (stored in localStorage)
-        function hasUserViewed(vol) {
-            const viewedVolumes = JSON.parse(localStorage.getItem('viewedVolumes') || '{}');
-            return !!viewedVolumes[vol];
-        }
-
-        // Mark volume as viewed in localStorage
-        function setUserViewed(vol) {
-            const viewedVolumes = JSON.parse(localStorage.getItem('viewedVolumes') || '{}');
-            viewedVolumes[vol] = true;
-            localStorage.setItem('viewedVolumes', JSON.stringify(viewedVolumes));
-        }
-
-        // Get current views without incrementing
-        async function getViews(vol) {
-            try {
-                const response = await fetch(`/api/views/${vol}`);
-                const data = await response.json();
-                return data.views || 0;
-            } catch (error) {
-                console.error('Failed to get views:', error);
-                return 0;
-            }
-        }
-
-        // Increment views only if user hasn't viewed this volume before
+        // Increment views and return new count
         async function incrementViews(vol) {
             try {
-                // Check if already viewed from this browser
-                if (hasUserViewed(vol)) {
-                    // Just return current count without incrementing
-                    return await getViews(vol);
+                const response = await fetchWithRetry(`/api/views/${vol}`, { method: 'POST' });
+                if (!response.ok) {
+                    console.warn('Views increment returned non-OK status:', response.status);
+                    return 0;
                 }
-
-                // First time viewing - increment and mark as viewed
-                const response = await fetch(`/api/views/${vol}`, { method: 'POST' });
                 const data = await response.json();
-                setUserViewed(vol);
                 return data.views || 0;
             } catch (error) {
                 console.error('Failed to increment views:', error);
@@ -2093,7 +2173,7 @@
         // Likes API functions
         async function fetchLikes() {
             try {
-                const response = await fetch('/api/likes');
+                const response = await fetchDedupe('/api/likes');
                 return await response.json();
             } catch (error) {
                 console.error('Failed to fetch likes:', error);
@@ -2103,11 +2183,15 @@
 
         async function updateLike(articleId, action) {
             try {
-                const response = await fetch(`/api/likes/${articleId}`, {
+                const response = await fetchWithRetry(`/api/likes/${articleId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action })
                 });
+                if (!response.ok) {
+                    console.warn('Like update returned non-OK status:', response.status);
+                    return null;
+                }
                 return await response.json();
             } catch (error) {
                 console.error('Failed to update like:', error);
@@ -2155,13 +2239,15 @@
             // Convert relative image paths to absolute paths
             let processedContent = content;
             if (folderPath) {
+                // Ensure folderPath has leading slash but avoid double slashes
+                const normalizedPath = folderPath.startsWith('/') ? folderPath : `/${folderPath}`;
                 // Replace relative image paths like ./image.svg or image.svg
                 processedContent = content.replace(
                     /!\[([^\]]*)\]\(\.\/([^)]+)\)/g,
-                    `![$1](/${folderPath}/$2)`
+                    `![$1](${normalizedPath}/$2)`
                 ).replace(
                     /!\[([^\]]*)\]\((?!\/|https?:\/\/)([^)]+)\)/g,
-                    `![$1](/${folderPath}/$2)`
+                    `![$1](${normalizedPath}/$2)`
                 );
             }
 
@@ -2250,7 +2336,7 @@
         // Get list of contribution folders from API or fallback
         async function getContributionFolders(vol) {
             try {
-                const response = await fetch(`/api/contributions/${vol}`);
+                const response = await fetchWithRetry(`/api/contributions/${vol}`);
                 if (response.ok) {
                     return await response.json();
                 }
@@ -2416,6 +2502,10 @@
                 sentinelDiv.id = 'contributions-sentinel';
                 sentinelDiv.style.cssText = 'height: 20px; width: 100%;';
                 contributionsGrid.appendChild(sentinelDiv);
+                // Re-observe the new sentinel
+                if (contributionsObserver) {
+                    contributionsObserver.observe(sentinelDiv);
+                }
             }
         }
 
@@ -2471,25 +2561,34 @@
             await Promise.all([configPromise, authorsPromise]);
             applySiteConfig();
 
-            // Load likes data (non-critical, don't block)
-            fetchLikes().then(likes => {
-                serverLikes = likes;
-            }).catch(err => {
+            // Load likes data - MUST complete before rendering contributions
+            try {
+                serverLikes = await fetchLikes();
+            } catch (err) {
                 console.error('Failed to load likes:', err);
                 serverLikes = {};
-            });
+            }
 
             // Increment and display page views (non-critical)
             incrementViews(vol).then(views => {
                 document.getElementById('page-views').textContent = views.toLocaleString();
+                // Also update the sidebar views for current volume to keep in sync
+                updateSidebarViews(vol, views);
+                // Invalidate volumes cache so next load gets fresh data
+                volumesCachePromise = null;
+                volumesCache = null;
             }).catch(err => {
                 console.error('Failed to increment views:', err);
                 document.getElementById('page-views').textContent = '0';
             });
 
             // Load archive list (non-critical for main content)
-            loadArchive(vol).catch(err => {
+            loadArchive(vol).then(() => {
+                // Mark sidebar as loaded
+                document.getElementById('sidebar').classList.add('loaded');
+            }).catch(err => {
                 console.error('Failed to load archive:', err);
+                document.getElementById('sidebar').classList.add('loaded');
             });
 
             // Load radar content - this is important for the main view
@@ -2501,23 +2600,31 @@
                 } else {
                     console.warn(`No radar content found for vol-${vol}`);
                     // Show a message in trending section
-                    const trendingList = document.querySelector('.trending-list');
+                    const trendingList = document.getElementById('trending-list');
                     if (trendingList) {
                         trendingList.innerHTML = '<p style="color: var(--text-secondary); padding: var(--spacing-md);">No trending items available for this volume.</p>';
                     }
                 }
+                // Mark header and trending as loaded
+                document.getElementById('main-header').classList.add('loaded');
+                document.getElementById('trending-list').classList.add('loaded');
             } catch (error) {
                 console.error('Failed to load radar content:', error);
+                document.getElementById('main-header').classList.add('loaded');
+                document.getElementById('trending-list').classList.add('loaded');
             }
 
             // Load contributions with lazy loading
             try {
                 await loadContributions(vol);
+                // Mark contributions as loaded
+                document.getElementById('contributions-grid').classList.add('loaded');
             } catch (error) {
                 console.error('Failed to load contributions:', error);
-                const contributionsGrid = document.querySelector('.contributions-grid');
+                const contributionsGrid = document.getElementById('contributions-grid');
                 if (contributionsGrid) {
                     contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Failed to load contributions</p>';
+                    contributionsGrid.classList.add('loaded');
                 }
             }
         }
@@ -2556,34 +2663,54 @@
             }
         }
 
-        // Like button functionality
+        // Like button functionality with debounce protection
+        const likeInProgress = new Set();
+
         async function toggleLike(button) {
             const card = button.closest('.contribution-card');
             const articleId = card.dataset.articleId;
+
+            // Prevent rapid clicking - check if request is already in progress
+            if (likeInProgress.has(articleId)) {
+                return;
+            }
+
             const likeCountSpan = button.querySelector('.like-count');
             const likeCountHeader = card.querySelector('.like-count-header');
             const isCurrentlyLiked = button.classList.contains('liked');
 
+            // Mark as in progress
+            likeInProgress.add(articleId);
+            button.style.opacity = '0.6';
+            button.style.pointerEvents = 'none';
+
             // Determine action
             const action = isCurrentlyLiked ? 'unlike' : 'like';
 
-            // Update server
-            const result = await updateLike(articleId, action);
+            try {
+                // Update server
+                const result = await updateLike(articleId, action);
 
-            if (result) {
-                // Update UI
-                if (isCurrentlyLiked) {
-                    button.classList.remove('liked');
-                    setUserLiked(articleId, false);
-                } else {
-                    button.classList.add('liked');
-                    setUserLiked(articleId, true);
+                if (result) {
+                    // Update UI
+                    if (isCurrentlyLiked) {
+                        button.classList.remove('liked');
+                        setUserLiked(articleId, false);
+                    } else {
+                        button.classList.add('liked');
+                        setUserLiked(articleId, true);
+                    }
+                    likeCountSpan.textContent = result.likes;
+                    if (likeCountHeader) {
+                        likeCountHeader.textContent = result.likes;
+                    }
+                    serverLikes[articleId] = result.likes;
                 }
-                likeCountSpan.textContent = result.likes;
-                if (likeCountHeader) {
-                    likeCountHeader.textContent = result.likes;
-                }
-                serverLikes[articleId] = result.likes;
+            } finally {
+                // Restore button state
+                likeInProgress.delete(articleId);
+                button.style.opacity = '';
+                button.style.pointerEvents = '';
             }
         }
 
