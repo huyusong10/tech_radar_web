@@ -83,9 +83,15 @@ function parseYamlFrontmatter(content) {
     }
 }
 
+// Helper to get content directory based on draft mode
+function getContentDir(isDraft) {
+    return path.join(__dirname, isDraft ? 'content-draft' : 'content');
+}
+
 // GET /api/config - Get site configuration
 app.get('/api/config', (req, res) => {
-    const configPath = path.join(__dirname, 'content', 'config.md');
+    const isDraft = req.query.draft === 'true';
+    const configPath = path.join(getContentDir(isDraft), 'config.md');
 
     try {
         if (fs.existsSync(configPath)) {
@@ -103,7 +109,8 @@ app.get('/api/config', (req, res) => {
 
 // GET /api/authors - Get all authors from unified authors.md
 app.get('/api/authors', (req, res) => {
-    const authorsPath = path.join(__dirname, 'content', 'authors.md');
+    const isDraft = req.query.draft === 'true';
+    const authorsPath = path.join(getContentDir(isDraft), 'authors.md');
 
     try {
         const authors = {};
@@ -131,7 +138,8 @@ app.get('/api/authors', (req, res) => {
 // GET /api/authors/:authorId - Get specific author from unified authors.md
 app.get('/api/authors/:authorId', (req, res) => {
     const { authorId } = req.params;
-    const authorsPath = path.join(__dirname, 'content', 'authors.md');
+    const isDraft = req.query.draft === 'true';
+    const authorsPath = path.join(getContentDir(isDraft), 'authors.md');
 
     try {
         if (fs.existsSync(authorsPath)) {
@@ -155,7 +163,8 @@ app.get('/api/authors/:authorId', (req, res) => {
 
 // GET /api/volumes - Get list of available volumes
 app.get('/api/volumes', (req, res) => {
-    const contentDir = path.join(__dirname, 'content');
+    const isDraft = req.query.draft === 'true';
+    const contentDir = getContentDir(isDraft);
     const views = readViews();
 
     try {
@@ -176,7 +185,8 @@ app.get('/api/volumes', (req, res) => {
                     }
                 }
 
-                return { vol, date, views: views[vol] || 0 };
+                // Draft mode doesn't track views
+                return { vol, date, views: isDraft ? 0 : (views[vol] || 0) };
             })
             .sort((a, b) => b.vol.localeCompare(a.vol)); // Sort descending
 
@@ -190,7 +200,8 @@ app.get('/api/volumes', (req, res) => {
 // GET /api/contributions/:vol - Get list of contributions for a volume
 app.get('/api/contributions/:vol', (req, res) => {
     const { vol } = req.params;
-    const contributionsDir = path.join(__dirname, 'content', `vol-${vol}`, 'contributions');
+    const isDraft = req.query.draft === 'true';
+    const contributionsDir = path.join(getContentDir(isDraft), `vol-${vol}`, 'contributions');
 
     try {
         if (!fs.existsSync(contributionsDir)) {
@@ -285,12 +296,17 @@ app.post('/api/views/:vol', async (req, res) => {
 });
 
 // Auto-generate archive.json for static hosting fallback
-function generateArchiveJson() {
-    const contentDir = path.join(__dirname, 'content');
+function generateArchiveJson(isDraft = false) {
+    const contentDir = getContentDir(isDraft);
     const archivePath = path.join(contentDir, 'archive.json');
     const views = readViews();
 
     try {
+        if (!fs.existsSync(contentDir)) {
+            console.log(`Content directory ${contentDir} does not exist, skipping archive.json generation`);
+            return;
+        }
+
         const dirs = fs.readdirSync(contentDir, { withFileTypes: true });
         const volumes = dirs
             .filter(dir => dir.isDirectory() && dir.name.startsWith('vol-'))
@@ -307,12 +323,13 @@ function generateArchiveJson() {
                     }
                 }
 
-                return { vol, date, views: views[vol] || 0 };
+                // Draft mode doesn't track views
+                return { vol, date, views: isDraft ? 0 : (views[vol] || 0) };
             })
             .sort((a, b) => b.vol.localeCompare(a.vol));
 
         fs.writeFileSync(archivePath, JSON.stringify(volumes, null, 2));
-        console.log('Generated archive.json with', volumes.length, 'volumes');
+        console.log(`Generated ${isDraft ? 'draft ' : ''}archive.json with ${volumes.length} volumes`);
     } catch (error) {
         console.error('Failed to generate archive.json:', error);
     }
@@ -320,6 +337,7 @@ function generateArchiveJson() {
 
 app.listen(PORT, () => {
     // Generate archive.json on startup for static hosting fallback
-    generateArchiveJson();
+    generateArchiveJson(false); // For content/
+    generateArchiveJson(true);  // For content-draft/
     console.log(`Tech Radar server running at http://localhost:${PORT}`);
 });
