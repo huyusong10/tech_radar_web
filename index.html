@@ -22,6 +22,29 @@
             box-sizing: border-box;
         }
 
+        /* Loading state - hide content initially to prevent flash */
+        .dynamic-content {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .dynamic-content.loaded {
+            opacity: 1;
+        }
+
+        /* Loading skeleton animation */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        .loading-skeleton {
+            background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-secondary) 50%, var(--bg-card) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: var(--radius-md);
+        }
+
         :root {
             /* Color System */
             --bg-primary: #0a0a0a;
@@ -1571,7 +1594,7 @@
     <button class="sidebar-toggle" onclick="toggleSidebar()">☰ Archive</button>
 
     <!-- ==================== SIDEBAR NAVIGATION ==================== -->
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar dynamic-content" id="sidebar">
         <div class="sidebar-header">
             <div class="sidebar-logo" id="sidebar-logo"><span style="color: var(--accent-pink);">&gt;_</span> Contents</div>
             <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse/Expand Sidebar">
@@ -1579,18 +1602,20 @@
             </button>
         </div>
         <ul class="archive-list">
-            <!-- Dynamic content loaded via JavaScript -->
+            <li class="archive-item"><span class="loading-skeleton" style="display: block; width: 100%; height: 2.5em; margin-bottom: 0.5em;"></span></li>
+            <li class="archive-item"><span class="loading-skeleton" style="display: block; width: 100%; height: 2.5em; margin-bottom: 0.5em;"></span></li>
+            <li class="archive-item"><span class="loading-skeleton" style="display: block; width: 100%; height: 2.5em;"></span></li>
         </ul>
     </aside>
 
     <!-- ==================== MAIN CONTENT ==================== -->
     <div class="main-content">
     <!-- ==================== HEADER ==================== -->
-    <header>
+    <header class="dynamic-content" id="main-header">
         <div class="container">
             <div class="logo glitch" data-text="Weekly Tech Radar" id="site-title">Weekly Tech Radar</div>
             <div class="header-meta" id="header-meta">
-                VOL.001<span>|</span>2024.05.20
+                <span class="loading-skeleton" style="display: inline-block; width: 120px; height: 1em;"></span>
             </div>
             <div class="slogan" id="site-slogan">
                 "Navigating the bleeding edge of technology, one week at a time."
@@ -1599,19 +1624,19 @@
                 <div class="crew-row">
                     <span class="crew-label">Editors</span>
                     <div class="header-authors" id="header-authors">
-                        <!-- Dynamic editors loaded via JavaScript -->
+                        <span class="loading-skeleton" style="display: inline-block; width: 200px; height: 2em;"></span>
                     </div>
                 </div>
                 <div class="crew-row contributors-row">
                     <span class="crew-label">Authors</span>
                     <div class="header-contributors" id="header-contributors">
-                        <!-- Dynamic contributors loaded via JavaScript -->
+                        <span class="loading-skeleton" style="display: inline-block; width: 200px; height: 2em;"></span>
                     </div>
                 </div>
             </div>
             <div class="header-views">
                 <span class="views-icon">👁️</span>
-                <span class="views-count" id="page-views">0</span>
+                <span class="views-count" id="page-views">--</span>
                 <span class="views-label">views</span>
             </div>
         </div>
@@ -1625,8 +1650,10 @@
                 <span class="cn-text">本周热点</span>
             </h2>
 
-            <div class="trending-list">
-                <!-- Dynamic content loaded via JavaScript -->
+            <div class="trending-list dynamic-content" id="trending-list">
+                <div class="loading-skeleton" style="width: 100%; height: 80px; margin-bottom: 1rem;"></div>
+                <div class="loading-skeleton" style="width: 100%; height: 80px; margin-bottom: 1rem;"></div>
+                <div class="loading-skeleton" style="width: 100%; height: 80px;"></div>
             </div>
         </div>
     </section>
@@ -1639,8 +1666,8 @@
                 <span class="cn-text">开发者空间</span>
             </h2>
 
-            <div class="contributions-grid">
-                <!-- Dynamic content loaded via JavaScript -->
+            <div class="contributions-grid dynamic-content" id="contributions-grid">
+                <div class="loading-skeleton" style="width: 100%; height: 200px; border-radius: 12px;"></div>
             </div>
         </div>
     </section>
@@ -1817,7 +1844,8 @@
             volumesCachePromise = (async () => {
                 try {
                     // Try to load from API first (when using node server.js)
-                    const response = await fetchWithRetry('/api/volumes');
+                    // Use cache: 'no-store' to always get fresh views counts
+                    const response = await fetchWithRetry('/api/volumes', { cache: 'no-store' });
                     if (!response.ok) throw new Error('API not available');
                     volumesCache = await response.json();
                     return volumesCache;
@@ -2555,8 +2583,12 @@
             });
 
             // Load archive list (non-critical for main content)
-            loadArchive(vol).catch(err => {
+            loadArchive(vol).then(() => {
+                // Mark sidebar as loaded
+                document.getElementById('sidebar').classList.add('loaded');
+            }).catch(err => {
                 console.error('Failed to load archive:', err);
+                document.getElementById('sidebar').classList.add('loaded');
             });
 
             // Load radar content - this is important for the main view
@@ -2568,23 +2600,31 @@
                 } else {
                     console.warn(`No radar content found for vol-${vol}`);
                     // Show a message in trending section
-                    const trendingList = document.querySelector('.trending-list');
+                    const trendingList = document.getElementById('trending-list');
                     if (trendingList) {
                         trendingList.innerHTML = '<p style="color: var(--text-secondary); padding: var(--spacing-md);">No trending items available for this volume.</p>';
                     }
                 }
+                // Mark header and trending as loaded
+                document.getElementById('main-header').classList.add('loaded');
+                document.getElementById('trending-list').classList.add('loaded');
             } catch (error) {
                 console.error('Failed to load radar content:', error);
+                document.getElementById('main-header').classList.add('loaded');
+                document.getElementById('trending-list').classList.add('loaded');
             }
 
             // Load contributions with lazy loading
             try {
                 await loadContributions(vol);
+                // Mark contributions as loaded
+                document.getElementById('contributions-grid').classList.add('loaded');
             } catch (error) {
                 console.error('Failed to load contributions:', error);
-                const contributionsGrid = document.querySelector('.contributions-grid');
+                const contributionsGrid = document.getElementById('contributions-grid');
                 if (contributionsGrid) {
                     contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Failed to load contributions</p>';
+                    contributionsGrid.classList.add('loaded');
                 }
             }
         }
