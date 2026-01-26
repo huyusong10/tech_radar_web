@@ -1069,6 +1069,25 @@
             padding: 0 var(--spacing-lg) var(--spacing-lg);
         }
 
+        /* Links in card content */
+        .card-body-inner a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .card-body-inner a:hover {
+            color: var(--accent-pink);
+            border-bottom-color: var(--accent-pink);
+            text-shadow: 0 0 8px rgba(255, 0, 255, 0.5);
+        }
+
+        .card-body-inner a:visited {
+            color: var(--accent-purple);
+            border-bottom-color: rgba(168, 85, 247, 0.3);
+        }
+
         .contribution-title {
             font-size: 1.25rem;
             font-weight: 700;
