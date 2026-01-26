@@ -730,7 +730,7 @@
         .expand-icon {
             font-size: 0.75rem;
             color: var(--accent-cyan);
-            transition: transform 0.3s ease;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             margin-left: auto;
         }
 
@@ -738,10 +738,18 @@
             transform: rotate(180deg);
         }
 
+        .trending-item {
+            will-change: auto;
+        }
+
+        .trending-item.expandable:active {
+            will-change: transform;
+        }
+
         .trending-details {
             display: grid;
             grid-template-rows: 0fr;
-            transition: grid-template-rows 0.4s ease-out;
+            transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             color: var(--text-secondary);
             font-size: 0.9rem;
             line-height: 1.7;
@@ -749,16 +757,25 @@
 
         .trending-details > div {
             overflow: hidden;
+            min-height: 0;
+        }
+
+        .trending-details-inner {
+            padding-top: var(--spacing-sm);
+            margin-top: var(--spacing-sm);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            opacity: 0;
+            transform: translateY(-8px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
         }
 
         .trending-item.expanded .trending-details {
             grid-template-rows: 1fr;
         }
 
-        .trending-item.expanded .trending-details > div {
-            padding-top: var(--spacing-sm);
-            margin-top: var(--spacing-sm);
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        .trending-item.expanded .trending-details-inner {
+            opacity: 1;
+            transform: translateY(0);
         }
 
         .trending-details p {
@@ -1810,7 +1827,7 @@
                         <div class="trending-title">${item.title}</div>
                         ${hasDetails ? '<span class="expand-icon">▼</span>' : ''}
                     </div>
-                    ${hasDetails ? `<div class="trending-details"><div>${marked.parse(item.details)}</div></div>` : ''}
+                    ${hasDetails ? `<div class="trending-details"><div><div class="trending-details-inner">${marked.parse(item.details)}</div></div></div>` : ''}
                 </div>
                 `;
             }).join('');
