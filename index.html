@@ -2045,44 +2045,11 @@
         }
 
         // Views API functions
-        // Check if current user has viewed a volume (stored in localStorage)
-        function hasUserViewed(vol) {
-            const viewedVolumes = JSON.parse(localStorage.getItem('viewedVolumes') || '{}');
-            return !!viewedVolumes[vol];
-        }
-
-        // Mark volume as viewed in localStorage
-        function setUserViewed(vol) {
-            const viewedVolumes = JSON.parse(localStorage.getItem('viewedVolumes') || '{}');
-            viewedVolumes[vol] = true;
-            localStorage.setItem('viewedVolumes', JSON.stringify(viewedVolumes));
-        }
-
-        // Get current views without incrementing
-        async function getViews(vol) {
-            try {
-                const response = await fetch(`/api/views/${vol}`);
-                const data = await response.json();
-                return data.views || 0;
-            } catch (error) {
-                console.error('Failed to get views:', error);
-                return 0;
-            }
-        }
-
-        // Increment views only if user hasn't viewed this volume before
+        // Increment views and return new count
         async function incrementViews(vol) {
             try {
-                // Check if already viewed from this browser
-                if (hasUserViewed(vol)) {
-                    // Just return current count without incrementing
-                    return await getViews(vol);
-                }
-
-                // First time viewing - increment and mark as viewed
                 const response = await fetch(`/api/views/${vol}`, { method: 'POST' });
                 const data = await response.json();
-                setUserViewed(vol);
                 return data.views || 0;
             } catch (error) {
                 console.error('Failed to increment views:', error);
@@ -2155,13 +2122,15 @@
             // Convert relative image paths to absolute paths
             let processedContent = content;
             if (folderPath) {
+                // Ensure folderPath has leading slash but avoid double slashes
+                const normalizedPath = folderPath.startsWith('/') ? folderPath : `/${folderPath}`;
                 // Replace relative image paths like ./image.svg or image.svg
                 processedContent = content.replace(
                     /!\[([^\]]*)\]\(\.\/([^)]+)\)/g,
-                    `![$1](/${folderPath}/$2)`
+                    `![$1](${normalizedPath}/$2)`
                 ).replace(
                     /!\[([^\]]*)\]\((?!\/|https?:\/\/)([^)]+)\)/g,
-                    `![$1](/${folderPath}/$2)`
+                    `![$1](${normalizedPath}/$2)`
                 );
             }
 
@@ -2416,6 +2385,10 @@
                 sentinelDiv.id = 'contributions-sentinel';
                 sentinelDiv.style.cssText = 'height: 20px; width: 100%;';
                 contributionsGrid.appendChild(sentinelDiv);
+                // Re-observe the new sentinel
+                if (contributionsObserver) {
+                    contributionsObserver.observe(sentinelDiv);
+                }
             }
         }
 
