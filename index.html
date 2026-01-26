@@ -1864,7 +1864,7 @@
                         <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
                             <span class="archive-vol">VOL.${item.vol}</span>
                             <span class="archive-date">${item.date}</span>
-                            <span class="archive-views">👁 ${item.views || 0}</span>
+                            <span class="archive-views">👁 ${(item.views || 0).toLocaleString()}</span>
                         </a>
                     </li>
                 `).join('');
@@ -1909,7 +1909,7 @@
                     <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
                         <span class="archive-vol">VOL.${item.vol}</span>
                         <span class="archive-date">${item.date}</span>
-                        <span class="archive-views">👁 ${item.views || 0}</span>
+                        <span class="archive-views">👁 ${(item.views || 0).toLocaleString()}</span>
                     </a>
                 `;
                 archiveList.appendChild(li);
@@ -1927,6 +1927,21 @@
                 `;
                 archiveList.appendChild(loadMoreItem);
             }
+        }
+
+        // Update sidebar views for a specific volume (keeps header and sidebar in sync)
+        function updateSidebarViews(vol, views) {
+            // Find the sidebar link for this volume and update its views count
+            const sidebarLinks = document.querySelectorAll('.archive-link');
+            sidebarLinks.forEach(link => {
+                const volSpan = link.querySelector('.archive-vol');
+                if (volSpan && volSpan.textContent === `VOL.${vol}`) {
+                    const viewsSpan = link.querySelector('.archive-views');
+                    if (viewsSpan) {
+                        viewsSpan.textContent = `👁 ${views.toLocaleString()}`;
+                    }
+                }
+            });
         }
 
         // Get latest volume
@@ -2529,6 +2544,11 @@
             // Increment and display page views (non-critical)
             incrementViews(vol).then(views => {
                 document.getElementById('page-views').textContent = views.toLocaleString();
+                // Also update the sidebar views for current volume to keep in sync
+                updateSidebarViews(vol, views);
+                // Invalidate volumes cache so next load gets fresh data
+                volumesCachePromise = null;
+                volumesCache = null;
             }).catch(err => {
                 console.error('Failed to increment views:', err);
                 document.getElementById('page-views').textContent = '0';
