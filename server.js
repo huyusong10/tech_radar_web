@@ -40,7 +40,7 @@ const CONFIG = {
     RATE_LIMIT: {
         windowMs: 60000,    // 1 minute window
         maxRequests: {
-            read: 100,      // 100 read requests per minute per IP
+            read: 240,      // 100 read requests per minute per IP
             write: 20       // 20 write requests per minute per IP
         }
     },
