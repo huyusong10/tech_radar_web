@@ -455,13 +455,48 @@
             color: var(--text-secondary);
         }
 
-        /* Header Authors */
+        /* Header Crew Section (Editors + Contributors) */
+        .header-crew {
+            margin-top: var(--spacing-sm);
+        }
+
+        .crew-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-xs);
+            flex-wrap: wrap;
+        }
+
+        .crew-label {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            padding: 0.2rem 0.5rem;
+            background: rgba(0, 243, 255, 0.1);
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+        }
+
         .header-authors {
             display: flex;
             justify-content: center;
-            gap: var(--spacing-md);
-            margin-top: var(--spacing-md);
+            gap: var(--spacing-sm);
             flex-wrap: wrap;
+        }
+
+        .header-contributors {
+            display: flex;
+            justify-content: center;
+            gap: var(--spacing-xs);
+            flex-wrap: wrap;
+        }
+
+        .contributors-row .crew-label {
+            background: rgba(255, 0, 255, 0.1);
         }
 
         .author-badge {
@@ -594,6 +629,46 @@
         .tooltip-value.highlight {
             color: var(--accent-pink);
             font-weight: 600;
+        }
+
+        /* Contributor Badge (simpler style for article authors) */
+        .contributor-badge {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.25rem 0.5rem;
+            background: rgba(255, 0, 255, 0.08);
+            border: 1px solid rgba(255, 0, 255, 0.25);
+            border-radius: 16px;
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .contributor-badge:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 0, 255, 0.15);
+            box-shadow: 0 4px 15px rgba(255, 0, 255, 0.25);
+            border-color: rgba(255, 0, 255, 0.5);
+        }
+
+        .contributor-badge img {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 1px solid var(--accent-pink);
+        }
+
+        .contributor-badge .contributor-name {
+            color: var(--accent-pink);
+            font-weight: 500;
+        }
+
+        .contributor-badge:hover .author-tooltip {
+            opacity: 1;
+            visibility: visible;
         }
 
         /* Glitch Effect */
@@ -1571,8 +1646,19 @@
             <div class="slogan" id="site-slogan">
                 "Navigating the bleeding edge of technology, one week at a time."
             </div>
-            <div class="header-authors" id="header-authors">
-                <!-- Dynamic authors loaded via JavaScript -->
+            <div class="header-crew">
+                <div class="crew-row">
+                    <span class="crew-label">编辑</span>
+                    <div class="header-authors" id="header-authors">
+                        <!-- Dynamic editors loaded via JavaScript -->
+                    </div>
+                </div>
+                <div class="crew-row contributors-row">
+                    <span class="crew-label">作者</span>
+                    <div class="header-contributors" id="header-contributors">
+                        <!-- Dynamic contributors loaded via JavaScript -->
+                    </div>
+                </div>
             </div>
             <div class="header-views">
                 <span class="views-icon">👁️</span>
@@ -2078,6 +2164,51 @@
                     '07-long-article', '08-performance-chart', '09-screenshot-example'];
         }
 
+        // Store unique contributors (author_ids)
+        let contributorIds = new Set();
+
+        // Render contributors in header
+        function renderContributors() {
+            const contributorsContainer = document.getElementById('header-contributors');
+            if (!contributorsContainer) return;
+
+            const uniqueContributors = Array.from(contributorIds)
+                .map(id => authorsData[id])
+                .filter(author => author);
+
+            if (uniqueContributors.length === 0) {
+                contributorsContainer.innerHTML = '<span style="color: var(--text-secondary); font-size: 0.75rem;">No contributors</span>';
+                return;
+            }
+
+            contributorsContainer.innerHTML = uniqueContributors.map(author => `
+                <div class="contributor-badge">
+                    <img src="${author.avatar}" alt="${author.name}">
+                    <span class="contributor-name">${author.name}</span>
+                    <div class="author-tooltip">
+                        <div class="tooltip-header">
+                            <img src="${author.avatar}" alt="${author.name}">
+                            <span class="tooltip-name">${author.name}</span>
+                        </div>
+                        <div class="tooltip-info">
+                            <div class="tooltip-row">
+                                <span class="tooltip-label">Team</span>
+                                <span class="tooltip-value">${author.team}</span>
+                            </div>
+                            <div class="tooltip-row">
+                                <span class="tooltip-label">Role</span>
+                                <span class="tooltip-value">${author.role}</span>
+                            </div>
+                            <div class="tooltip-row">
+                                <span class="tooltip-label">本期</span>
+                                <span class="tooltip-value highlight">Contributor</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
         // Load and render all contributions
         async function loadContributions(vol) {
             const contributionsGrid = document.querySelector('.contributions-grid');
@@ -2086,11 +2217,16 @@
             const folders = await getContributionFolders(vol);
             const basePath = `${DRAFT_DIR}/vol-${vol}/contributions`;
 
+            contributorIds = new Set(); // Reset contributors
             const contributions = [];
             for (const folder of folders) {
                 const content = await loadMarkdown(`${basePath}/${folder}/index.md`);
                 if (content) {
                     const { metadata, content: markdownContent } = parseFrontmatter(content);
+                    // Collect contributor author_id
+                    if (metadata.author_id) {
+                        contributorIds.add(metadata.author_id);
+                    }
                     // Use vol + folder name as unique article ID
                     const articleId = `draft-${vol}-${folder}`;
                     // Pass the base path for resolving relative image URLs
@@ -2100,6 +2236,7 @@
             }
 
             contributionsGrid.innerHTML = contributions.join('');
+            renderContributors(); // Update header with contributors
         }
 
         // Main initialization
