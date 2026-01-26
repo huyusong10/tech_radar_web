@@ -4,11 +4,12 @@ node_modules/
 # OS files
 .DS_Store
 
-# Runtime data (likes and views are stored here)
-data/
+# Runtime data (likes and views are stored in contents/data/)
+contents/data/
 
-# Lock files
-package-lock.json
 # Auto-generated archive files
 contents/published/archive.json
 contents/draft/archive.json
+
+# Lock files
+package-lock.json

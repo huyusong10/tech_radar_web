@@ -8,9 +8,6 @@ const siteConfig = require('./site.config.js');
 
 const app = express();
 const PORT = siteConfig.server?.port || 5090;
-const DATA_DIR = path.join(__dirname, 'data');
-const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
-const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
 
 // Resolve contents directory from config (support both relative and absolute paths)
 const CONTENTS_DIR = path.isAbsolute(siteConfig.contentsDir)
@@ -23,23 +20,41 @@ const DRAFT_DIR = path.join(CONTENTS_DIR, 'draft');
 const SHARED_DIR = path.join(CONTENTS_DIR, 'shared');
 const ASSETS_DIR = path.join(CONTENTS_DIR, 'assets');
 
+// Data directory inside contents (persists with content across code upgrades)
+const DATA_DIR = path.join(CONTENTS_DIR, 'data');
+const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
+const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
+
 // Lock management for concurrent write operations
 const locks = new Map();
 
 // Middleware
 app.use(express.json());
-app.use(express.static(__dirname));
 
-// Serve contents directories with URL mapping
+// IMPORTANT: Serve contents directories BEFORE generic static middleware
+// This ensures external contents directories work correctly
 app.use('/contents/published', express.static(PUBLISHED_DIR));
 app.use('/contents/draft', express.static(DRAFT_DIR));
 app.use('/contents/shared', express.static(SHARED_DIR));
 app.use('/contents/assets', express.static(ASSETS_DIR));
 
-// Ensure data directory exists
+// Generic static files (HTML, JS, CSS from project directory)
+// Exclude the local contents folder to prevent conflicts with external contents
+app.use(express.static(__dirname, {
+    index: 'index.html',
+    // Don't serve local contents folder - use explicit routes above
+    setHeaders: (res, filePath) => {
+        // Add cache headers for static assets
+        if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+            res.setHeader('Cache-Control', 'public, max-age=3600');
+        }
+    }
+}));
+
+// Ensure data directory exists (with recursive creation)
 function ensureDataDir() {
     if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR);
+        fs.mkdirSync(DATA_DIR, { recursive: true });
     }
 }
 
@@ -377,6 +392,10 @@ app.listen(PORT, () => {
     console.log(`    - Draft: ${DRAFT_DIR}`);
     console.log(`    - Shared: ${SHARED_DIR}`);
     console.log(`    - Assets: ${ASSETS_DIR}`);
+    console.log(`    - Data: ${DATA_DIR}`);
+
+    // Ensure data directory exists
+    ensureDataDir();
 
     // Generate archive.json on startup for static hosting fallback
     generateArchiveJson(false); // For published/

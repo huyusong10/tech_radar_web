@@ -8,13 +8,17 @@
  * ├── published/          # Published volumes (vol-001, vol-002, ...)
  * ├── draft/              # Draft volumes for preview
  * ├── shared/             # Shared config (authors.md, config.md, submit-guide.md)
- * └── assets/             # Static assets (images, avatars, etc.)
+ * ├── assets/             # Static assets (images, avatars, etc.)
+ * └── data/               # Runtime data (likes.json, views.json)
  *
  * You can use relative or absolute paths.
+ * Example: contentsDir: '/data/my-team/tech-radar-contents'
+ *
+ * When upgrading code, your contents directory (with all data) remains untouched.
  */
 
 const config = {
-    // Contents directory (contains published/, draft/, shared/, assets/)
+    // Contents directory (contains published/, draft/, shared/, assets/, data/)
     contentsDir: './contents',
 
     // Server configuration
