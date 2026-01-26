@@ -3,6 +3,7 @@ const fs = require('fs');
 const fsPromises = require('fs').promises;
 const path = require('path');
 const yaml = require('js-yaml');
+const chokidar = require('chokidar');
 
 // Load site configuration
 const siteConfig = require('./site.config.js');
@@ -287,8 +288,11 @@ process.on('SIGINT', async () => {
 });
 
 // Parse YAML frontmatter from markdown using js-yaml
+// Supports both LF and CRLF line endings
 function parseYamlFrontmatter(content) {
-    const match = content.match(/^---\n([\s\S]*?)\n---/);
+    // Normalize line endings to LF for consistent parsing
+    const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const match = normalizedContent.match(/^---\n([\s\S]*?)\n---/);
     if (!match) return {};
 
     try {
@@ -560,6 +564,30 @@ app.get('/api/likes', rateLimitMiddleware('read'), (req, res) => {
     res.json(likesData);
 });
 
+// Helper to validate article existence
+async function validateArticleExists(articleId) {
+    // articleId format: "vol-folderName" e.g., "001-05-architecture-diagram"
+    const match = articleId.match(/^(\d+)-(.+)$/);
+    if (!match) return false;
+
+    const [, vol, folderName] = match;
+    const articlePath = path.join(PUBLISHED_DIR, `vol-${vol}`, 'contributions', folderName, 'index.md');
+
+    try {
+        await fsPromises.access(articlePath);
+        return true;
+    } catch {
+        // Also check draft directory
+        const draftPath = path.join(DRAFT_DIR, `vol-${vol}`, 'contributions', folderName, 'index.md');
+        try {
+            await fsPromises.access(draftPath);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+}
+
 // POST /api/likes/:articleId - Toggle like for an article (with concurrency control)
 app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res) => {
     const { articleId } = req.params;
@@ -572,6 +600,12 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
 
     if (!articleId || articleId.length > 100) {
         return res.status(400).json({ error: 'Invalid article ID' });
+    }
+
+    // Validate that the article actually exists
+    const articleExists = await validateArticleExists(articleId);
+    if (!articleExists) {
+        return res.status(404).json({ error: 'Article not found' });
     }
 
     const lockKey = `likes:${articleId}`;
@@ -736,7 +770,157 @@ async function startServer() {
     server.maxConnections = 2000;
 }
 
-startServer().catch(err => {
+// ==================== HOT RELOAD WITH FILE WATCHING ====================
+
+// Store SSE clients for hot reload notifications
+const sseClients = new Set();
+
+// SSE endpoint for hot reload notifications
+app.get('/api/hot-reload', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    // Send initial connection message
+    res.write('data: {"type":"connected"}\n\n');
+
+    // Add client to set
+    sseClients.add(res);
+    console.log(`Hot reload client connected. Total clients: ${sseClients.size}`);
+
+    // Remove client on disconnect
+    req.on('close', () => {
+        sseClients.delete(res);
+        console.log(`Hot reload client disconnected. Total clients: ${sseClients.size}`);
+    });
+});
+
+// Broadcast hot reload notification to all connected clients
+function notifyHotReload(changeType, filePath) {
+    const message = JSON.stringify({ type: changeType, path: filePath, timestamp: Date.now() });
+    sseClients.forEach(client => {
+        try {
+            client.write(`data: ${message}\n\n`);
+        } catch (e) {
+            sseClients.delete(client);
+        }
+    });
+}
+
+// Set up file watcher for hot reload
+function setupFileWatcher() {
+    const watchPaths = [PUBLISHED_DIR, DRAFT_DIR, SHARED_DIR];
+
+    // Filter to only watch existing directories
+    const existingPaths = watchPaths.filter(p => {
+        try {
+            fs.accessSync(p);
+            return true;
+        } catch {
+            return false;
+        }
+    });
+
+    if (existingPaths.length === 0) {
+        console.log('No content directories to watch');
+        return null;
+    }
+
+    console.log('Setting up file watcher for:', existingPaths);
+
+    const watcher = chokidar.watch(existingPaths, {
+        ignored: /(^|[\/\\])\../, // ignore dotfiles
+        persistent: true,
+        ignoreInitial: true,
+        awaitWriteFinish: {
+            stabilityThreshold: 300,
+            pollInterval: 100
+        }
+    });
+
+    // Debounce cache invalidation
+    let invalidationTimeout = null;
+    const scheduleInvalidation = (type, filePath) => {
+        if (invalidationTimeout) {
+            clearTimeout(invalidationTimeout);
+        }
+        invalidationTimeout = setTimeout(() => {
+            // Determine what cache to invalidate based on file path
+            if (filePath.includes('/vol-')) {
+                // Volume-related change - invalidate volumes and contributions cache
+                cache.invalidatePattern('volumes');
+                cache.invalidatePattern('contributions');
+                console.log('Cache invalidated: volumes and contributions');
+            }
+            if (filePath.includes('/shared/')) {
+                // Shared content change - invalidate config and authors
+                cache.invalidate('config');
+                cache.invalidate('authors');
+                console.log('Cache invalidated: config and authors');
+            }
+
+            // Regenerate archive.json for volume changes
+            if (filePath.includes('/vol-')) {
+                generateArchiveJson(filePath.includes('/draft/'));
+            }
+
+            // Notify connected clients
+            notifyHotReload(type, filePath);
+        }, 500);
+    };
+
+    watcher
+        .on('add', filePath => {
+            console.log(`File added: ${filePath}`);
+            scheduleInvalidation('add', filePath);
+        })
+        .on('change', filePath => {
+            console.log(`File changed: ${filePath}`);
+            scheduleInvalidation('change', filePath);
+        })
+        .on('unlink', filePath => {
+            console.log(`File removed: ${filePath}`);
+            scheduleInvalidation('unlink', filePath);
+        })
+        .on('addDir', dirPath => {
+            console.log(`Directory added: ${dirPath}`);
+            scheduleInvalidation('addDir', dirPath);
+        })
+        .on('unlinkDir', dirPath => {
+            console.log(`Directory removed: ${dirPath}`);
+            scheduleInvalidation('unlinkDir', dirPath);
+        })
+        .on('error', error => {
+            console.error('File watcher error:', error);
+        })
+        .on('ready', () => {
+            console.log('File watcher ready. Watching for changes...');
+        });
+
+    return watcher;
+}
+
+// Global watcher reference
+let fileWatcher = null;
+
+startServer().then(() => {
+    // Set up file watcher after server starts
+    fileWatcher = setupFileWatcher();
+}).catch(err => {
     console.error('Failed to start server:', err);
     process.exit(1);
+});
+
+// Cleanup watcher on shutdown
+process.on('SIGTERM', async () => {
+    if (fileWatcher) {
+        await fileWatcher.close();
+    }
+});
+
+process.on('SIGINT', async () => {
+    if (fileWatcher) {
+        await fileWatcher.close();
+    }
 });

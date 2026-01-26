@@ -1,8 +1,8 @@
-# CLAUDE.md - Weekly Tech Radar Project Guide
+# CLAUDE.md - Tech Radar Weekly Project Guide
 
 ## 项目概述
 
-Weekly Tech Radar 是一个赛博朋克风格的技术周刊单页应用模板。采用内容与展示分离的架构，所有内容使用 Markdown 编写，通过动态加载渲染到页面。
+Tech Radar Weekly 是一个赛博朋克风格的技术周刊单页应用模板。采用内容与展示分离的架构，所有内容使用 Markdown 编写，通过动态加载渲染到页面。
 
 **核心特性：**
 - 🎨 赛博朋克暗黑风格设计，霓虹发光效果

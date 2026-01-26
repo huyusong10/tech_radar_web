@@ -570,10 +570,12 @@
         .tooltip-header {
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: var(--spacing-sm);
             margin-bottom: var(--spacing-xs);
             padding-bottom: var(--spacing-xs);
             border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+            width: 100%;
         }
 
         .tooltip-header img {
@@ -581,34 +583,43 @@
             height: 40px;
             border-radius: 50%;
             border: 2px solid var(--accent-cyan);
+            flex-shrink: 0;
         }
 
         .tooltip-header .tooltip-name {
             font-size: 0.95rem;
             font-weight: 600;
             color: var(--accent-cyan);
+            text-align: center;
         }
 
         .tooltip-info {
             display: flex;
             flex-direction: column;
             gap: 0.3rem;
+            align-items: center;
         }
 
         .tooltip-row {
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: var(--spacing-xs);
             font-size: 0.75rem;
+            width: 100%;
         }
 
         .tooltip-label {
             color: var(--text-secondary);
             min-width: 45px;
+            text-align: right;
+            flex-shrink: 0;
         }
 
         .tooltip-value {
             color: var(--text-primary);
+            flex: 1;
+            text-align: left;
         }
 
         .tooltip-value.highlight {
@@ -1804,9 +1815,12 @@
         }
 
         // Parse frontmatter from markdown
+        // Supports both LF and CRLF line endings
         function parseFrontmatter(content) {
-            const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-            if (!match) return { metadata: {}, content };
+            // Normalize line endings to LF for consistent parsing
+            const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const match = normalizedContent.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+            if (!match) return { metadata: {}, content: normalizedContent };
 
             const metadata = jsyaml.load(match[1]);
             const markdownContent = match[2];
@@ -2109,8 +2123,10 @@
             }
 
             // Parse trending items from markdown
+            // Line endings are already normalized in parseFrontmatter, but handle here too for safety
             const trendingSection = document.querySelector('.trending-list');
-            const lines = content.split('\n');
+            const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const lines = normalizedContent.split('\n');
             const items = [];
 
             let currentItem = null;
@@ -2189,7 +2205,11 @@
                     body: JSON.stringify({ action })
                 });
                 if (!response.ok) {
-                    console.warn('Like update returned non-OK status:', response.status);
+                    if (response.status === 404) {
+                        console.warn('Article not found:', articleId);
+                    } else {
+                        console.warn('Like update returned non-OK status:', response.status);
+                    }
                     return null;
                 }
                 return await response.json();
@@ -2333,20 +2353,20 @@
             `;
         }
 
-        // Get list of contribution folders from API or fallback
+        // Get list of contribution folders from API
         async function getContributionFolders(vol) {
             try {
                 const response = await fetchWithRetry(`/api/contributions/${vol}`);
                 if (response.ok) {
                     return await response.json();
                 }
+                console.warn(`Failed to get contributions for vol-${vol}: ${response.status}`);
+                return [];
             } catch (e) {
-                console.log('API not available, using fallback');
+                console.error('API not available:', e);
+                // Return empty array instead of hardcoded fallback to avoid phantom articles
+                return [];
             }
-            // Fallback for static hosting - try common folder names
-            return ['01-typescript-types', '02-react-virtual-list', '03-k8s-optimization',
-                    '04-go-error-handling', '05-architecture-diagram', '06-quick-tip',
-                    '07-long-article', '08-performance-chart', '09-screenshot-example'];
         }
 
         // Store contribution folders for lazy loading
@@ -2759,8 +2779,59 @@
             }
         });
 
+        // Hot reload support - connect to SSE endpoint for live updates
+        let hotReloadEventSource = null;
+        function setupHotReload() {
+            if (hotReloadEventSource) {
+                hotReloadEventSource.close();
+            }
+
+            try {
+                hotReloadEventSource = new EventSource('/api/hot-reload');
+
+                hotReloadEventSource.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'connected') {
+                            console.log('Hot reload connected');
+                            return;
+                        }
+
+                        // Content changed - refresh the page data
+                        console.log('Content changed:', data.type, data.path);
+
+                        // Invalidate caches
+                        volumesCache = null;
+                        volumesCachePromise = null;
+
+                        // Reload current page content
+                        if (data.path && (data.path.includes('/vol-') || data.path.includes('/shared/'))) {
+                            // Reload the page to get fresh content
+                            // Could be smarter about partial reloads, but full reload is safer
+                            window.location.reload();
+                        }
+                    } catch (e) {
+                        console.error('Error processing hot reload message:', e);
+                    }
+                };
+
+                hotReloadEventSource.onerror = (error) => {
+                    console.log('Hot reload connection lost, will retry...');
+                    hotReloadEventSource.close();
+                    // Retry connection after 5 seconds
+                    setTimeout(setupHotReload, 5000);
+                };
+            } catch (e) {
+                console.log('Hot reload not available (server may not support SSE)');
+            }
+        }
+
         // Initialize when DOM is ready
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', () => {
+            init();
+            // Set up hot reload after a short delay to avoid blocking initial load
+            setTimeout(setupHotReload, 1000);
+        });
     </script>
 </body>
 </html>
