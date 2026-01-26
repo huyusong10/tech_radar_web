@@ -1623,27 +1623,68 @@
             }
         }
 
-        // Fetch volumes from API or static file (shared logic)
-        async function fetchVolumes() {
-            try {
-                // Try to load from API first (when using node server.js)
-                const response = await fetch('/api/volumes');
-                if (!response.ok) throw new Error('API not available');
-                return await response.json();
-            } catch (apiError) {
-                // Fallback to static archive.json (when using npx serve or static hosting)
-                console.log('API not available, loading static archive.json');
-                const response = await fetch('/content/archive.json');
-                return await response.json();
+        // Cache for volumes data to avoid multiple fetches
+        let volumesCache = null;
+        let volumesCachePromise = null;
+
+        // Fetch volumes from API or static file (with caching)
+        async function fetchVolumes(forceRefresh = false) {
+            // Return cached data if available
+            if (volumesCache && !forceRefresh) {
+                return volumesCache;
             }
+
+            // If a fetch is in progress, wait for it
+            if (volumesCachePromise) {
+                return volumesCachePromise;
+            }
+
+            volumesCachePromise = (async () => {
+                try {
+                    // Try to load from API first (when using node server.js)
+                    const response = await fetch('/api/volumes');
+                    if (!response.ok) throw new Error('API not available');
+                    volumesCache = await response.json();
+                    return volumesCache;
+                } catch (apiError) {
+                    // Fallback to static archive.json (when using npx serve or static hosting)
+                    console.log('API not available, trying static archive.json');
+                    try {
+                        const response = await fetch('/content/archive.json');
+                        if (!response.ok) throw new Error('archive.json not found');
+                        volumesCache = await response.json();
+                        return volumesCache;
+                    } catch (fallbackError) {
+                        console.error('Failed to load volumes from any source:', fallbackError);
+                        // Return empty array instead of throwing
+                        volumesCache = [];
+                        return volumesCache;
+                    }
+                } finally {
+                    volumesCachePromise = null;
+                }
+            })();
+
+            return volumesCachePromise;
         }
 
-        // Load and render archive list
+        // Load and render archive list with lazy loading support
         async function loadArchive(currentVol) {
             try {
                 const volumes = await fetchVolumes();
                 const archiveList = document.querySelector('.archive-list');
-                archiveList.innerHTML = volumes.map(item => `
+
+                if (volumes.length === 0) {
+                    archiveList.innerHTML = '<li class="archive-item" style="color: var(--text-secondary); padding: var(--spacing-sm);">No volumes available</li>';
+                    return;
+                }
+
+                // For large lists, only render visible items initially
+                const MAX_INITIAL_ITEMS = 20;
+                const visibleVolumes = volumes.slice(0, MAX_INITIAL_ITEMS);
+                const hasMore = volumes.length > MAX_INITIAL_ITEMS;
+
+                archiveList.innerHTML = visibleVolumes.map(item => `
                     <li class="archive-item">
                         <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
                             <span class="archive-vol">VOL.${item.vol}</span>
@@ -1652,8 +1693,64 @@
                         </a>
                     </li>
                 `).join('');
+
+                // Add "load more" button if there are more items
+                if (hasMore) {
+                    const loadMoreItem = document.createElement('li');
+                    loadMoreItem.className = 'archive-item';
+                    loadMoreItem.innerHTML = `
+                        <button class="archive-link" style="width: 100%; text-align: center; cursor: pointer; border: 1px dashed rgba(0, 243, 255, 0.3);"
+                                onclick="loadMoreVolumes(${MAX_INITIAL_ITEMS}, '${currentVol}')">
+                            <span style="color: var(--accent-cyan);">Load more (${volumes.length - MAX_INITIAL_ITEMS} remaining)</span>
+                        </button>
+                    `;
+                    archiveList.appendChild(loadMoreItem);
+                }
             } catch (error) {
                 console.error('Failed to load archive:', error);
+            }
+        }
+
+        // Load more volumes for lazy loading
+        async function loadMoreVolumes(startIndex, currentVol) {
+            const volumes = await fetchVolumes();
+            const archiveList = document.querySelector('.archive-list');
+
+            // Remove the "load more" button
+            const loadMoreBtn = archiveList.querySelector('button');
+            if (loadMoreBtn) {
+                loadMoreBtn.closest('li').remove();
+            }
+
+            // Add remaining volumes
+            const BATCH_SIZE = 50;
+            const remainingVolumes = volumes.slice(startIndex, startIndex + BATCH_SIZE);
+            const hasMore = volumes.length > startIndex + BATCH_SIZE;
+
+            remainingVolumes.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'archive-item';
+                li.innerHTML = `
+                    <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
+                        <span class="archive-vol">VOL.${item.vol}</span>
+                        <span class="archive-date">${item.date}</span>
+                        <span class="archive-views">👁 ${item.views || 0}</span>
+                    </a>
+                `;
+                archiveList.appendChild(li);
+            });
+
+            // Add another "load more" button if needed
+            if (hasMore) {
+                const loadMoreItem = document.createElement('li');
+                loadMoreItem.className = 'archive-item';
+                loadMoreItem.innerHTML = `
+                    <button class="archive-link" style="width: 100%; text-align: center; cursor: pointer; border: 1px dashed rgba(0, 243, 255, 0.3);"
+                            onclick="loadMoreVolumes(${startIndex + BATCH_SIZE}, '${currentVol}')">
+                        <span style="color: var(--accent-cyan);">Load more (${volumes.length - startIndex - BATCH_SIZE} remaining)</span>
+                    </button>
+                `;
+                archiveList.appendChild(loadMoreItem);
             }
         }
 
@@ -2023,61 +2120,179 @@
                     '07-long-article', '08-performance-chart', '09-screenshot-example'];
         }
 
-        // Load and render all contributions
+        // Store contribution folders for lazy loading
+        let contributionFolders = [];
+        let loadedContributions = 0;
+        let currentVolume = '';
+        const CONTRIBUTIONS_PER_BATCH = 3;
+
+        // Load and render contributions with lazy loading
         async function loadContributions(vol) {
             const contributionsGrid = document.querySelector('.contributions-grid');
             contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading contributions...</p>';
 
-            const folders = await getContributionFolders(vol);
-            const basePath = `content/vol-${vol}/contributions`;
+            currentVolume = vol;
+            contributionFolders = await getContributionFolders(vol);
+            loadedContributions = 0;
 
-            const contributions = [];
-            for (const folder of folders) {
+            if (contributionFolders.length === 0) {
+                contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No contributions yet</p>';
+                return;
+            }
+
+            // Clear and load initial batch
+            contributionsGrid.innerHTML = '';
+            await loadMoreContributions();
+
+            // Set up intersection observer for infinite scroll
+            setupContributionsObserver();
+        }
+
+        // Load more contributions (batch loading)
+        async function loadMoreContributions() {
+            if (loadedContributions >= contributionFolders.length) return;
+
+            const contributionsGrid = document.querySelector('.contributions-grid');
+            const basePath = `content/vol-${currentVolume}/contributions`;
+
+            // Remove loading sentinel if exists
+            const sentinel = document.getElementById('contributions-sentinel');
+            if (sentinel) sentinel.remove();
+
+            const endIndex = Math.min(loadedContributions + CONTRIBUTIONS_PER_BATCH, contributionFolders.length);
+            const foldersToLoad = contributionFolders.slice(loadedContributions, endIndex);
+
+            // Load contributions in parallel for better performance
+            const loadPromises = foldersToLoad.map(async (folder) => {
                 const content = await loadMarkdown(`${basePath}/${folder}/index.md`);
                 if (content) {
                     const { metadata, content: markdownContent } = parseFrontmatter(content);
-                    // Use vol + folder name as unique article ID
-                    const articleId = `${vol}-${folder}`;
-                    // Pass the base path for resolving relative image URLs
+                    const articleId = `${currentVolume}-${folder}`;
                     const folderPath = `${basePath}/${folder}`;
-                    contributions.push(renderContribution(metadata, markdownContent, articleId, folderPath));
+                    return { html: renderContribution(metadata, markdownContent, articleId, folderPath), folder };
                 }
-            }
+                return null;
+            });
 
-            contributionsGrid.innerHTML = contributions.join('');
+            const results = await Promise.all(loadPromises);
+
+            results.forEach(result => {
+                if (result) {
+                    const div = document.createElement('div');
+                    div.innerHTML = result.html;
+                    contributionsGrid.appendChild(div.firstElementChild);
+                }
+            });
+
+            loadedContributions = endIndex;
+
+            // Add sentinel for infinite scroll if more items remain
+            if (loadedContributions < contributionFolders.length) {
+                const sentinelDiv = document.createElement('div');
+                sentinelDiv.id = 'contributions-sentinel';
+                sentinelDiv.style.cssText = 'height: 20px; width: 100%;';
+                contributionsGrid.appendChild(sentinelDiv);
+            }
         }
 
-        // Main initialization
-        async function init() {
-            // Restore sidebar state
-            restoreSidebarState();
-
-            const vol = await getCurrentVol();
-
-            // Load site config and authors data
-            await loadConfig();
-            await loadAuthors();
-            applySiteConfig();
-
-            // Load server likes data
-            serverLikes = await fetchLikes();
-
-            // Increment and display page views
-            const views = await incrementViews(vol);
-            document.getElementById('page-views').textContent = views.toLocaleString();
-
-            // Load archive list
-            await loadArchive(vol);
-
-            // Load radar content
-            const radarContent = await loadMarkdown(`content/vol-${vol}/radar.md`);
-            if (radarContent) {
-                const { metadata, content } = parseFrontmatter(radarContent);
-                renderRadar(metadata, content);
+        // Set up intersection observer for lazy loading contributions
+        let contributionsObserver = null;
+        function setupContributionsObserver() {
+            if (contributionsObserver) {
+                contributionsObserver.disconnect();
             }
 
-            // Load contributions
-            await loadContributions(vol);
+            contributionsObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting && loadedContributions < contributionFolders.length) {
+                        loadMoreContributions();
+                    }
+                });
+            }, { rootMargin: '100px' });
+
+            const sentinel = document.getElementById('contributions-sentinel');
+            if (sentinel) {
+                contributionsObserver.observe(sentinel);
+            }
+        }
+
+        // Main initialization with error handling
+        async function init() {
+            // Restore sidebar state first (sync operation)
+            restoreSidebarState();
+
+            let vol = '001'; // Default fallback
+
+            try {
+                // Get current volume - this is critical
+                vol = await getCurrentVol();
+            } catch (error) {
+                console.error('Failed to get current volume, using default:', error);
+            }
+
+            // Load config and authors in parallel (non-blocking for main content)
+            const configPromise = loadConfig().catch(err => {
+                console.error('Failed to load config:', err);
+                return {};
+            });
+            const authorsPromise = loadAuthors().catch(err => {
+                console.error('Failed to load authors:', err);
+                return {};
+            });
+
+            // Wait for config and authors
+            await Promise.all([configPromise, authorsPromise]);
+            applySiteConfig();
+
+            // Load likes data (non-critical, don't block)
+            fetchLikes().then(likes => {
+                serverLikes = likes;
+            }).catch(err => {
+                console.error('Failed to load likes:', err);
+                serverLikes = {};
+            });
+
+            // Increment and display page views (non-critical)
+            incrementViews(vol).then(views => {
+                document.getElementById('page-views').textContent = views.toLocaleString();
+            }).catch(err => {
+                console.error('Failed to increment views:', err);
+                document.getElementById('page-views').textContent = '0';
+            });
+
+            // Load archive list (non-critical for main content)
+            loadArchive(vol).catch(err => {
+                console.error('Failed to load archive:', err);
+            });
+
+            // Load radar content - this is important for the main view
+            try {
+                const radarContent = await loadMarkdown(`content/vol-${vol}/radar.md`);
+                if (radarContent) {
+                    const { metadata, content } = parseFrontmatter(radarContent);
+                    renderRadar(metadata, content);
+                } else {
+                    console.warn(`No radar content found for vol-${vol}`);
+                    // Show a message in trending section
+                    const trendingList = document.querySelector('.trending-list');
+                    if (trendingList) {
+                        trendingList.innerHTML = '<p style="color: var(--text-secondary); padding: var(--spacing-md);">No trending items available for this volume.</p>';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load radar content:', error);
+            }
+
+            // Load contributions with lazy loading
+            try {
+                await loadContributions(vol);
+            } catch (error) {
+                console.error('Failed to load contributions:', error);
+                const contributionsGrid = document.querySelector('.contributions-grid');
+                if (contributionsGrid) {
+                    contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Failed to load contributions</p>';
+                }
+            }
         }
 
         // Sidebar toggle functionality (for mobile)
