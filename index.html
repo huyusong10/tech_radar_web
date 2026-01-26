@@ -1601,10 +1601,11 @@
             }
         });
 
-        // Site paths configuration (can be customized)
+        // Site paths configuration (standardized structure)
         // These are URL paths, not filesystem paths
-        let CONTENT_DIR = '/content';
-        let SHARED_DIR = '/shared';
+        let PUBLISHED_DIR = '/contents/published';
+        let SHARED_DIR = '/contents/shared';
+        let ASSETS_DIR = '/contents/assets';
 
         // Load site paths from API (for dynamic configuration)
         async function loadSitePaths() {
@@ -1612,8 +1613,9 @@
                 const response = await fetch('/api/site-config');
                 if (response.ok) {
                     const config = await response.json();
-                    CONTENT_DIR = config.contentDir || '/content';
-                    SHARED_DIR = config.sharedDir || '/shared';
+                    PUBLISHED_DIR = config.publishedDir || '/contents/published';
+                    SHARED_DIR = config.sharedDir || '/contents/shared';
+                    ASSETS_DIR = config.assetsDir || '/contents/assets';
                 }
             } catch (error) {
                 // Use defaults if API not available
@@ -1670,7 +1672,7 @@
                     // Fallback to static archive.json (when using npx serve or static hosting)
                     console.log('API not available, trying static archive.json');
                     try {
-                        const response = await fetch(`${CONTENT_DIR}/archive.json`);
+                        const response = await fetch(`${PUBLISHED_DIR}/archive.json`);
                         if (!response.ok) throw new Error('archive.json not found');
                         volumesCache = await response.json();
                         return volumesCache;
@@ -2207,7 +2209,7 @@
             if (loadedContributions >= contributionFolders.length) return;
 
             const contributionsGrid = document.querySelector('.contributions-grid');
-            const basePath = `${CONTENT_DIR}/vol-${currentVolume}/contributions`;
+            const basePath = `${PUBLISHED_DIR}/vol-${currentVolume}/contributions`;
 
             // Remove loading sentinel if exists
             const sentinel = document.getElementById('contributions-sentinel');
@@ -2324,7 +2326,7 @@
 
             // Load radar content - this is important for the main view
             try {
-                const radarContent = await loadMarkdown(`${CONTENT_DIR}/vol-${vol}/radar.md`);
+                const radarContent = await loadMarkdown(`${PUBLISHED_DIR}/vol-${vol}/radar.md`);
                 if (radarContent) {
                     const { metadata, content } = parseFrontmatter(radarContent);
                     renderRadar(metadata, content);

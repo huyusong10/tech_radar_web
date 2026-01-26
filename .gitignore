@@ -10,5 +10,5 @@ data/
 # Lock files
 package-lock.json
 # Auto-generated archive files
-content/archive.json
-content-draft/archive.json
+contents/published/archive.json
+contents/draft/archive.json

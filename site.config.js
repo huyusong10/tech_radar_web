@@ -1,24 +1,21 @@
 /**
  * Site Configuration
  *
- * This file defines the content directory paths for the Tech Radar site.
- * Modify these paths to point to your content location.
+ * Configure the contents directory path. The directory should follow
+ * the standardized structure:
  *
- * Content and code are separated - you can:
- * 1. Keep content in a different repository
- * 2. Use symlinks to point to external content
- * 3. Change paths without modifying application code
+ * contents/
+ * ├── published/          # Published volumes (vol-001, vol-002, ...)
+ * ├── draft/              # Draft volumes for preview
+ * ├── shared/             # Shared config (authors.md, config.md, submit-guide.md)
+ * └── assets/             # Static assets (images, avatars, etc.)
+ *
+ * You can use relative or absolute paths.
  */
 
 const config = {
-    // Main content directory (published content)
-    contentDir: './content',
-
-    // Draft content directory (pre-publication preview)
-    draftContentDir: './content-draft',
-
-    // Shared resources directory (authors, config, submit-guide)
-    sharedDir: './shared',
+    // Contents directory (contains published/, draft/, shared/, assets/)
+    contentsDir: './contents',
 
     // Server configuration
     server: {

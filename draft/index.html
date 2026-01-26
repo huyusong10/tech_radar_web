@@ -1644,9 +1644,10 @@
 
     <script>
         // ==================== DRAFT MODE CONFIGURATION ====================
-        // Site paths configuration (loaded from API or defaults)
-        let CONTENT_DIR = '/content-draft';
-        let SHARED_DIR = '/shared';
+        // Site paths configuration (standardized structure)
+        let DRAFT_DIR = '/contents/draft';
+        let SHARED_DIR = '/contents/shared';
+        let ASSETS_DIR = '/contents/assets';
         const IS_DRAFT_MODE = true;
 
         // Load site paths from API (for dynamic configuration)
@@ -1655,9 +1656,9 @@
                 const response = await fetch('/api/site-config');
                 if (response.ok) {
                     const config = await response.json();
-                    // For draft mode, use draftContentDir
-                    CONTENT_DIR = config.draftContentDir || '/content-draft';
-                    SHARED_DIR = config.sharedDir || '/shared';
+                    DRAFT_DIR = config.draftDir || '/contents/draft';
+                    SHARED_DIR = config.sharedDir || '/contents/shared';
+                    ASSETS_DIR = config.assetsDir || '/contents/assets';
                 }
             } catch (error) {
                 // Use defaults if API not available
@@ -1707,7 +1708,7 @@
             } catch (apiError) {
                 // Fallback to static archive.json (when using npx serve or static hosting)
                 console.log('API not available, loading static archive.json');
-                const response = await fetch(`${CONTENT_DIR}/archive.json`);
+                const response = await fetch(`${DRAFT_DIR}/archive.json`);
                 return await response.json();
             }
         }
@@ -2083,7 +2084,7 @@
             contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading contributions...</p>';
 
             const folders = await getContributionFolders(vol);
-            const basePath = `${CONTENT_DIR}/vol-${vol}/contributions`;
+            const basePath = `${DRAFT_DIR}/vol-${vol}/contributions`;
 
             const contributions = [];
             for (const folder of folders) {
@@ -2127,7 +2128,7 @@
             await loadArchive(vol);
 
             // Load radar content
-            const radarContent = await loadMarkdown(`${CONTENT_DIR}/vol-${vol}/radar.md`);
+            const radarContent = await loadMarkdown(`${DRAFT_DIR}/vol-${vol}/radar.md`);
             if (radarContent) {
                 const { metadata, content } = parseFrontmatter(radarContent);
                 renderRadar(metadata, content);

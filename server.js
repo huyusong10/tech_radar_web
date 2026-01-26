@@ -12,16 +12,16 @@ const DATA_DIR = path.join(__dirname, 'data');
 const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
 const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
 
-// Resolve content directories from config (support both relative and absolute paths)
-const CONTENT_DIR = path.isAbsolute(siteConfig.contentDir)
-    ? siteConfig.contentDir
-    : path.join(__dirname, siteConfig.contentDir);
-const DRAFT_CONTENT_DIR = path.isAbsolute(siteConfig.draftContentDir)
-    ? siteConfig.draftContentDir
-    : path.join(__dirname, siteConfig.draftContentDir);
-const SHARED_DIR = path.isAbsolute(siteConfig.sharedDir)
-    ? siteConfig.sharedDir
-    : path.join(__dirname, siteConfig.sharedDir);
+// Resolve contents directory from config (support both relative and absolute paths)
+const CONTENTS_DIR = path.isAbsolute(siteConfig.contentsDir)
+    ? siteConfig.contentsDir
+    : path.join(__dirname, siteConfig.contentsDir);
+
+// Standardized subdirectories within contents
+const PUBLISHED_DIR = path.join(CONTENTS_DIR, 'published');
+const DRAFT_DIR = path.join(CONTENTS_DIR, 'draft');
+const SHARED_DIR = path.join(CONTENTS_DIR, 'shared');
+const ASSETS_DIR = path.join(CONTENTS_DIR, 'assets');
 
 // Lock management for concurrent write operations
 const locks = new Map();
@@ -30,10 +30,11 @@ const locks = new Map();
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Serve content directories (support external paths)
-app.use('/content', express.static(CONTENT_DIR));
-app.use('/content-draft', express.static(DRAFT_CONTENT_DIR));
-app.use('/shared', express.static(SHARED_DIR));
+// Serve contents directories with URL mapping
+app.use('/contents/published', express.static(PUBLISHED_DIR));
+app.use('/contents/draft', express.static(DRAFT_DIR));
+app.use('/contents/shared', express.static(SHARED_DIR));
+app.use('/contents/assets', express.static(ASSETS_DIR));
 
 // Ensure data directory exists
 function ensureDataDir() {
@@ -103,17 +104,19 @@ function parseYamlFrontmatter(content) {
 }
 
 // Helper to get content directory based on draft mode
-function getContentDir(isDraft) {
-    return isDraft ? DRAFT_CONTENT_DIR : CONTENT_DIR;
+function getVolumesDir(isDraft) {
+    return isDraft ? DRAFT_DIR : PUBLISHED_DIR;
 }
 
 // GET /api/site-config - Get site paths configuration for frontend
 app.get('/api/site-config', (req, res) => {
-    // Return URL paths (not filesystem paths) for frontend use
+    // Return URL paths (standardized structure)
     res.json({
-        contentDir: '/content',
-        draftContentDir: '/content-draft',
-        sharedDir: '/shared'
+        contentsDir: '/contents',
+        publishedDir: '/contents/published',
+        draftDir: '/contents/draft',
+        sharedDir: '/contents/shared',
+        assetsDir: '/contents/assets'
     });
 });
 
@@ -190,21 +193,21 @@ app.get('/api/authors/:authorId', (req, res) => {
 // GET /api/volumes - Get list of available volumes
 app.get('/api/volumes', (req, res) => {
     const isDraft = req.query.draft === 'true';
-    const contentDir = getContentDir(isDraft);
+    const volumesDir = getVolumesDir(isDraft);
     const views = readViews();
 
     try {
-        if (!fs.existsSync(contentDir)) {
-            console.log(`Content directory ${contentDir} does not exist`);
+        if (!fs.existsSync(volumesDir)) {
+            console.log(`Volumes directory ${volumesDir} does not exist`);
             return res.json([]);
         }
 
-        const dirs = fs.readdirSync(contentDir, { withFileTypes: true });
+        const dirs = fs.readdirSync(volumesDir, { withFileTypes: true });
         const volumes = dirs
             .filter(dir => dir.isDirectory() && dir.name.startsWith('vol-'))
             .map(dir => {
                 const vol = dir.name.replace('vol-', '');
-                const radarPath = path.join(contentDir, dir.name, 'radar.md');
+                const radarPath = path.join(volumesDir, dir.name, 'radar.md');
                 let date = '';
 
                 // Try to read date from radar.md frontmatter
@@ -232,7 +235,7 @@ app.get('/api/volumes', (req, res) => {
 app.get('/api/contributions/:vol', (req, res) => {
     const { vol } = req.params;
     const isDraft = req.query.draft === 'true';
-    const contributionsDir = path.join(getContentDir(isDraft), `vol-${vol}`, 'contributions');
+    const contributionsDir = path.join(getVolumesDir(isDraft), `vol-${vol}`, 'contributions');
 
     try {
         if (!fs.existsSync(contributionsDir)) {
@@ -328,22 +331,22 @@ app.post('/api/views/:vol', async (req, res) => {
 
 // Auto-generate archive.json for static hosting fallback
 function generateArchiveJson(isDraft = false) {
-    const contentDir = getContentDir(isDraft);
-    const archivePath = path.join(contentDir, 'archive.json');
+    const volumesDir = getVolumesDir(isDraft);
+    const archivePath = path.join(volumesDir, 'archive.json');
     const views = readViews();
 
     try {
-        if (!fs.existsSync(contentDir)) {
-            console.log(`Content directory ${contentDir} does not exist, skipping archive.json generation`);
+        if (!fs.existsSync(volumesDir)) {
+            console.log(`Volumes directory ${volumesDir} does not exist, skipping archive.json generation`);
             return;
         }
 
-        const dirs = fs.readdirSync(contentDir, { withFileTypes: true });
+        const dirs = fs.readdirSync(volumesDir, { withFileTypes: true });
         const volumes = dirs
             .filter(dir => dir.isDirectory() && dir.name.startsWith('vol-'))
             .map(dir => {
                 const vol = dir.name.replace('vol-', '');
-                const radarPath = path.join(contentDir, dir.name, 'radar.md');
+                const radarPath = path.join(volumesDir, dir.name, 'radar.md');
                 let date = '';
 
                 if (fs.existsSync(radarPath)) {
@@ -369,12 +372,14 @@ function generateArchiveJson(isDraft = false) {
 app.listen(PORT, () => {
     // Log configuration
     console.log('Site Configuration:');
-    console.log(`  Content Dir: ${CONTENT_DIR}`);
-    console.log(`  Draft Content Dir: ${DRAFT_CONTENT_DIR}`);
-    console.log(`  Shared Dir: ${SHARED_DIR}`);
+    console.log(`  Contents Dir: ${CONTENTS_DIR}`);
+    console.log(`    - Published: ${PUBLISHED_DIR}`);
+    console.log(`    - Draft: ${DRAFT_DIR}`);
+    console.log(`    - Shared: ${SHARED_DIR}`);
+    console.log(`    - Assets: ${ASSETS_DIR}`);
 
     // Generate archive.json on startup for static hosting fallback
-    generateArchiveJson(false); // For content/
-    generateArchiveJson(true);  // For content-draft/
+    generateArchiveJson(false); // For published/
+    generateArchiveJson(true);  // For draft/
     console.log(`Tech Radar server running at http://localhost:${PORT}`);
 });
