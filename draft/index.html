@@ -1644,10 +1644,26 @@
 
     <script>
         // ==================== DRAFT MODE CONFIGURATION ====================
-        // Content directory for draft mode (with leading slash for absolute paths)
-        const CONTENT_DIR = '/content-draft';
-        const SHARED_DIR = '/shared';
+        // Site paths configuration (loaded from API or defaults)
+        let CONTENT_DIR = '/content-draft';
+        let SHARED_DIR = '/shared';
         const IS_DRAFT_MODE = true;
+
+        // Load site paths from API (for dynamic configuration)
+        async function loadSitePaths() {
+            try {
+                const response = await fetch('/api/site-config');
+                if (response.ok) {
+                    const config = await response.json();
+                    // For draft mode, use draftContentDir
+                    CONTENT_DIR = config.draftContentDir || '/content-draft';
+                    SHARED_DIR = config.sharedDir || '/shared';
+                }
+            } catch (error) {
+                // Use defaults if API not available
+                console.log('Using default content paths for draft mode');
+            }
+        }
 
         // Configure marked with highlight.js
         marked.setOptions({
@@ -2089,6 +2105,9 @@
         async function init() {
             // Restore sidebar state
             restoreSidebarState();
+
+            // Load site paths configuration (for content directory)
+            await loadSitePaths();
 
             const vol = await getCurrentVol();
 
