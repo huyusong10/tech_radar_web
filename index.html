@@ -2471,13 +2471,13 @@
             await Promise.all([configPromise, authorsPromise]);
             applySiteConfig();
 
-            // Load likes data (non-critical, don't block)
-            fetchLikes().then(likes => {
-                serverLikes = likes;
-            }).catch(err => {
+            // Load likes data - MUST complete before rendering contributions
+            try {
+                serverLikes = await fetchLikes();
+            } catch (err) {
                 console.error('Failed to load likes:', err);
                 serverLikes = {};
-            });
+            }
 
             // Increment and display page views (non-critical)
             incrementViews(vol).then(views => {
