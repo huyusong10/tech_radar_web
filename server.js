@@ -33,15 +33,15 @@ const CONFIG = {
     CACHE_TTL: {
         config: 60000,      // 1 minute for site config
         authors: 60000,     // 1 minute for authors
-        volumes: 30000,     // 30 seconds for volumes list
-        contributions: 30000 // 30 seconds for contributions
+        volumes: 60000,     // 1 minute for volumes list (increased for stress testing)
+        contributions: 60000 // 1 minute for contributions (increased for stress testing)
     },
-    // Rate limiting
+    // Rate limiting - adjusted for stress testing
     RATE_LIMIT: {
         windowMs: 60000,    // 1 minute window
         maxRequests: {
-            read: 240,      // 100 read requests per minute per IP
-            write: 20       // 20 write requests per minute per IP
+            read: 5000,     // 5000 read requests per minute per IP (increased for stress testing)
+            write: 500      // 500 write requests per minute per IP (increased for stress testing)
         }
     },
     // Lock timeout in milliseconds
@@ -86,9 +86,52 @@ class Cache {
             }
         }
     }
+    
+    get size() {
+        return this.store.size;
+    }
 }
 
 const cache = new Cache();
+
+// ==================== REQUEST STATISTICS FOR STRESS TESTING ====================
+const requestStats = {
+    totalRequests: 0,
+    successfulRequests: 0,
+    failedRequests: 0,
+    rateLimitedRequests: 0,
+    startTime: Date.now(),
+    byEndpoint: new Map()
+};
+
+// Middleware to collect request statistics
+app.use((req, res, next) => {
+    requestStats.totalRequests++;
+    
+    const originalSend = res.send;
+    res.send = function(body) {
+        const endpoint = req.path;
+        if (!requestStats.byEndpoint.has(endpoint)) {
+            requestStats.byEndpoint.set(endpoint, { count: 0, errors: 0 });
+        }
+        const stats = requestStats.byEndpoint.get(endpoint);
+        stats.count++;
+        
+        if (res.statusCode >= 400) {
+            requestStats.failedRequests++;
+            stats.errors++;
+            if (res.statusCode === 429) {
+                requestStats.rateLimitedRequests++;
+            }
+        } else if (res.statusCode >= 200 && res.statusCode < 300) {
+            requestStats.successfulRequests++;
+        }
+        
+        return originalSend.call(this, body);
+    };
+    
+    next();
+});
 
 // ==================== ASYNC MUTEX IMPLEMENTATION ====================
 class AsyncMutex {
@@ -371,17 +414,32 @@ app.use((req, res, next) => {
 // IMPORTANT: Serve contents directories BEFORE generic static middleware
 // This ensures external contents directories work correctly
 app.use('/contents/published', express.static(PUBLISHED_DIR, {
-    maxAge: '5m',
+    maxAge: '1h',
     etag: true,
-    lastModified: true
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.md')) {
+            res.setHeader('Cache-Control', 'public, max-age=300'); // 5 minutes for markdown files
+        }
+    }
 }));
 app.use('/contents/draft', express.static(DRAFT_DIR, {
-    maxAge: '1m',
-    etag: true
+    maxAge: '5m',
+    etag: true,
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.md')) {
+            res.setHeader('Cache-Control', 'public, max-age=60'); // 1 minute for draft markdown files
+        }
+    }
 }));
 app.use('/contents/shared', express.static(SHARED_DIR, {
-    maxAge: '5m',
-    etag: true
+    maxAge: '30m',
+    etag: true,
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.md')) {
+            res.setHeader('Cache-Control', 'public, max-age=300'); // 5 minutes for shared config files
+        }
+    }
 }));
 app.use('/contents/assets', express.static(ASSETS_DIR, {
     maxAge: '1h',
@@ -714,6 +772,42 @@ app.get('/api/health', (req, res) => {
         dataLoaded,
         uptime: process.uptime(),
         memoryUsage: process.memoryUsage()
+    });
+});
+
+// Statistics endpoint for stress testing monitoring
+app.get('/api/stats', (req, res) => {
+    const uptime = Date.now() - requestStats.startTime;
+    const endpointStats = {};
+    requestStats.byEndpoint.forEach((stats, endpoint) => {
+        endpointStats[endpoint] = {
+            requests: stats.count,
+            errors: stats.errors,
+            errorRate: stats.count > 0 ? (stats.errors / stats.count * 100).toFixed(2) + '%' : '0%'
+        };
+    });
+    
+    res.json({
+        requestStats: {
+            totalRequests: requestStats.totalRequests,
+            successfulRequests: requestStats.successfulRequests,
+            failedRequests: requestStats.failedRequests,
+            rateLimitedRequests: requestStats.rateLimitedRequests,
+            successRate: requestStats.totalRequests > 0 ? 
+                ((requestStats.successfulRequests / requestStats.totalRequests) * 100).toFixed(2) + '%' : '0%',
+            uptimeSeconds: Math.floor(uptime / 1000),
+            requestsPerSecond: requestStats.totalRequests > 0 ? 
+                (requestStats.totalRequests / (uptime / 1000)).toFixed(2) : 0
+        },
+        cacheStats: {
+            size: cache.size
+        },
+        systemStats: {
+            uptime: process.uptime(),
+            memoryUsage: process.memoryUsage(),
+            dataLoaded
+        },
+        endpointStats
     });
 });
 
