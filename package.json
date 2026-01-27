@@ -4,7 +4,15 @@
   "description": "Tech Radar Weekly - Cyberpunk style tech newsletter",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test:quick": "./tests/run-tests.sh quick",
+    "test:full": "./tests/run-tests.sh full",
+    "test:extreme": "./tests/run-tests.sh extreme",
+    "test:load": "./tests/run-tests.sh load",
+    "test:perf": "./tests/run-tests.sh perf",
+    "test:report": "./tests/run-tests.sh report",
+    "test:check": "./tests/run-tests.sh check",
+    "test:cleanup": "./tests/run-tests.sh cleanup"
   },
   "dependencies": {
     "chokidar": "^3.5.3",
