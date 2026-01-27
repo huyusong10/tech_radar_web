@@ -27,35 +27,57 @@
    # 服务器运行在 http://localhost:5090
    ```
 
+3. **系统优化（重要！）**:
+   如果测试中出现 `dial: i/o timeout` 错误，需要调整系统TCP参数：
+   ```bash
+   # macOS
+   sudo sysctl -w kern.ipc.somaxconn=4096
+   
+   # Linux
+   sudo sysctl -w net.core.somaxconn=4096
+   ```
+   详细说明见 [SYSTEM_OPTIMIZATION.md](./SYSTEM_OPTIMIZATION.md)
+
 ## 测试脚本说明
 
-| 测试脚本 | 目标 | 最大并发 | 持续时间 |
-|---------|------|---------|---------|
-| `api-load-test.js` | 测试API端点稳定性 | 1000用户 | 4.5分钟 |
-| `static-file-test.js` | 测试静态文件服务能力 | 2000用户 | 4分钟 |
-| `user-journey-test.js` | 模拟真实用户行为 | 1200用户 | 7分钟 |
-| `write-operation-test.js` | 测试写操作并发 | 200用户 | 4分钟 |
-| `stress-test.js` | 极限负载测试 | 5000用户 | 4分钟 |
+| 测试脚本 | 目标 | 最大并发 | 持续时间 | 推荐顺序 |
+|---------|------|---------|---------|----------|
+| `medium-load-test.js` | 中等负载测试 | 2000用户 | 7分钟 | 1️⃣ 首先运行 |
+| `api-load-test.js` | 测试API端点稳定性 | 1000用户 | 4.5分钟 | 2️⃣ |
+| `static-file-test.js` | 测试静态文件服务能力 | 2000用户 | 4分钟 | 3️⃣ |
+| `user-journey-test.js` | 模拟真实用户行为 | 1200用户 | 7分钟 | 4️⃣ |
+| `write-operation-test.js` | 测试写操作并发 | 200用户 | 4分钟 | 5️⃣ |
+| `stress-test.js` | 极限负载测试 | 5000用户 | 11.5分钟 | 6️⃣ 最后运行 |
 
 ## 执行测试
+
+### 推荐测试顺序
 
 ```bash
 # 进入测试目录
 cd k6-tests
 
-# 1. 基础API负载测试
+# 0. 系统优化（如果遇到 dial: i/o timeout 错误）
+# 参见 SYSTEM_OPTIMIZATION.md 中的说明
+sudo sysctl -w kern.ipc.somaxconn=4096  # macOS
+# 或 sudo sysctl -w net.core.somaxconn=4096  # Linux
+
+# 1. 中等负载测试（验证基本配置）
+k6 run medium-load-test.js
+
+# 2. 基础API负载测试
 k6 run api-load-test.js
 
-# 2. 静态文件测试
+# 3. 静态文件测试
 k6 run static-file-test.js
 
-# 3. 混合用户行为测试
+# 4. 混合用户行为测试
 k6 run user-journey-test.js
 
-# 4. 写操作测试
+# 5. 写操作测试
 k6 run write-operation-test.js
 
-# 5. 极限负载测试（最后执行）
+# 6. 极限负载测试（确保前5个测试都通过）
 k6 run stress-test.js
 ```
 
@@ -131,24 +153,46 @@ k6 run --vus 1000 --duration 5m --out cloud api-load-test.js
 4. **系统资源使用** (通过 `/api/stats` 监控)
 5. **缓存效果** (缓存命中率，通过日志观察)
 
-## 故障排除
+## 常见问题解决
 
-### 服务器启动失败
+### 1. `dial: i/o timeout` 连接超时错误
+这是最常见的问题，表示k6无法建立到服务器的TCP连接。
+
+**原因**：
+1. TCP连接队列溢出（`kern.ipc.somaxconn` 默认值128太小）
+2. 服务器最大连接数限制
+3. 临时端口耗尽
+
+**解决方案**：
+```bash
+# macOS 临时调整
+sudo sysctl -w kern.ipc.somaxconn=4096
+
+# Linux 临时调整
+sudo sysctl -w net.core.somaxconn=4096
+
+# 详细解决方案见 SYSTEM_OPTIMIZATION.md
+```
+
+### 2. 服务器启动失败
 - 检查端口 5090 是否被占用
 - 验证 `site.config.js` 配置
 
-### 测试连接失败
+### 3. 测试连接失败
 - 确保服务器正在运行 `npm start`
 - 检查防火墙设置
+- 确认在正确的分支：`git checkout opencode-test`
 
-### 高错误率
+### 4. 高错误率
 - 查看服务器日志了解具体错误
 - 调整限流配置（修改 `server.js` 中的 `CONFIG.RATE_LIMIT`）
 - 检查文件系统权限
+- 降低测试并发数，从 `medium-load-test.js` 开始
 
-### 内存泄漏
+### 5. 内存泄漏
 - 监控 `/api/stats` 中的内存使用增长
 - 检查缓存大小是否持续增长
+- 重启服务器释放内存
 
 ## 恢复原始配置
 

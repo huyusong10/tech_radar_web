@@ -884,10 +884,20 @@ async function startServer() {
         console.log(`  - Debounced writes`);
     });
 
-    // Configure server for high concurrency
+    // Configure server for high concurrency - increased for stress testing
     server.keepAliveTimeout = 65000;
     server.headersTimeout = 66000;
-    server.maxConnections = 2000;
+    server.maxConnections = 10000; // Increased from 2000 to handle 5000+ concurrent connections
+    
+    // Additional TCP optimizations for high concurrency
+    server.on('connection', (socket) => {
+        // Set TCP keep-alive
+        socket.setKeepAlive(true, 10000); // 10 seconds
+        // Disable Nagle's algorithm for real-time applications
+        socket.setNoDelay(true);
+    });
+    
+    console.log(`Server configured for up to ${server.maxConnections} concurrent connections`);
 }
 
 // ==================== HOT RELOAD WITH FILE WATCHING ====================
