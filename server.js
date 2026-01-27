@@ -281,6 +281,18 @@ setInterval(persistData, 5000);
 async function gracefulShutdown(signal) {
     console.log(`Received ${signal}. Shutting down gracefully...`);
 
+    // Stop SSE heartbeat and close all SSE connections
+    if (typeof stopSSEHeartbeat === 'function') {
+        stopSSEHeartbeat();
+    }
+    if (typeof sseClients !== 'undefined' && sseClients.size > 0) {
+        console.log(`Closing ${sseClients.size} SSE connection(s)...`);
+        sseClients.forEach((info, client) => {
+            try { client.end(); } catch (e) { /* ignore */ }
+        });
+        sseClients.clear();
+    }
+
     // Close file watcher if it exists
     if (fileWatcher) {
         console.log('Closing file watcher...');
@@ -787,10 +799,78 @@ async function startServer() {
 // ==================== HOT RELOAD WITH FILE WATCHING ====================
 
 // Store SSE clients for hot reload notifications
-const sseClients = new Set();
+const sseClients = new Map(); // Map<response, { connectedAt, ip }>
+const SSE_CONFIG = {
+    MAX_CLIENTS_TOTAL: 1000,   // Maximum total SSE connections (for high concurrency)
+    MAX_CLIENTS_PER_IP: 5,     // Maximum SSE connections per IP (prevent single client abuse)
+    HEARTBEAT_INTERVAL: 30000  // Send heartbeat every 30 seconds
+};
+
+// Count connections per IP
+function getConnectionCountByIP(ip) {
+    let count = 0;
+    sseClients.forEach((info) => {
+        if (info.ip === ip) count++;
+    });
+    return count;
+}
+
+// Periodic heartbeat to detect dead connections
+let sseHeartbeatInterval = null;
+
+function startSSEHeartbeat() {
+    if (sseHeartbeatInterval) return;
+
+    sseHeartbeatInterval = setInterval(() => {
+        const now = Date.now();
+        const deadClients = [];
+
+        sseClients.forEach((info, client) => {
+            try {
+                // Send heartbeat
+                client.write(':heartbeat\n\n');
+            } catch (e) {
+                // Client is dead, mark for removal
+                deadClients.push(client);
+            }
+        });
+
+        // Remove dead clients
+        deadClients.forEach(client => {
+            sseClients.delete(client);
+            try { client.end(); } catch (e) { /* ignore */ }
+        });
+
+        if (deadClients.length > 0) {
+            console.log(`Cleaned up ${deadClients.length} dead SSE client(s). Total clients: ${sseClients.size}`);
+        }
+    }, SSE_CONFIG.HEARTBEAT_INTERVAL);
+}
+
+function stopSSEHeartbeat() {
+    if (sseHeartbeatInterval) {
+        clearInterval(sseHeartbeatInterval);
+        sseHeartbeatInterval = null;
+    }
+}
 
 // SSE endpoint for hot reload notifications
 app.get('/api/hot-reload', (req, res) => {
+    const clientIP = getClientIP(req);
+
+    // Check global limit
+    if (sseClients.size >= SSE_CONFIG.MAX_CLIENTS_TOTAL) {
+        console.log(`SSE connection rejected: max total clients (${SSE_CONFIG.MAX_CLIENTS_TOTAL}) reached`);
+        return res.status(503).json({ error: 'Server busy, please try again later' });
+    }
+
+    // Check per-IP limit
+    const ipConnectionCount = getConnectionCountByIP(clientIP);
+    if (ipConnectionCount >= SSE_CONFIG.MAX_CLIENTS_PER_IP) {
+        console.log(`SSE connection rejected: IP ${clientIP} has ${ipConnectionCount} connections (max: ${SSE_CONFIG.MAX_CLIENTS_PER_IP})`);
+        return res.status(429).json({ error: 'Too many connections from your IP' });
+    }
+
     // Disable the request timeout for SSE connections (they are long-lived)
     res.setTimeout(0);
 
@@ -798,30 +878,52 @@ app.get('/api/hot-reload', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable proxy buffering
 
     // Send initial connection message
     res.write('data: {"type":"connected"}\n\n');
 
-    // Add client to set
-    sseClients.add(res);
+    // Add client to map with connection info
+    sseClients.set(res, {
+        connectedAt: Date.now(),
+        ip: clientIP
+    });
     console.log(`Hot reload client connected. Total clients: ${sseClients.size}`);
+
+    // Start heartbeat if this is the first client
+    if (sseClients.size === 1) {
+        startSSEHeartbeat();
+    }
 
     // Remove client on disconnect
     req.on('close', () => {
         sseClients.delete(res);
         console.log(`Hot reload client disconnected. Total clients: ${sseClients.size}`);
+
+        // Stop heartbeat if no more clients
+        if (sseClients.size === 0) {
+            stopSSEHeartbeat();
+        }
     });
 });
 
 // Broadcast hot reload notification to all connected clients
 function notifyHotReload(changeType, filePath) {
     const message = JSON.stringify({ type: changeType, path: filePath, timestamp: Date.now() });
-    sseClients.forEach(client => {
+    const deadClients = [];
+
+    sseClients.forEach((info, client) => {
         try {
             client.write(`data: ${message}\n\n`);
         } catch (e) {
-            sseClients.delete(client);
+            deadClients.push(client);
         }
+    });
+
+    // Clean up dead clients
+    deadClients.forEach(client => {
+        sseClients.delete(client);
+        try { client.end(); } catch (e) { /* ignore */ }
     });
 }
 
