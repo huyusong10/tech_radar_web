@@ -218,6 +218,9 @@ let likesData = {};
 let viewsData = {};
 let dataLoaded = false;
 
+// Global watcher reference (declared here so gracefulShutdown can access it)
+let fileWatcher = null;
+
 async function ensureDataDir() {
     try {
         await fsPromises.access(DATA_DIR);
@@ -274,18 +277,26 @@ async function persistData() {
 // Start periodic persistence
 setInterval(persistData, 5000);
 
-// Graceful shutdown - persist data before exit
-process.on('SIGTERM', async () => {
-    console.log('Shutting down, persisting data...');
-    await persistData();
-    process.exit(0);
-});
+// Graceful shutdown handler - consolidates all cleanup tasks
+async function gracefulShutdown(signal) {
+    console.log(`Received ${signal}. Shutting down gracefully...`);
 
-process.on('SIGINT', async () => {
-    console.log('Shutting down, persisting data...');
+    // Close file watcher if it exists
+    if (fileWatcher) {
+        console.log('Closing file watcher...');
+        await fileWatcher.close();
+    }
+
+    // Persist any pending data
+    console.log('Persisting data...');
     await persistData();
+
+    console.log('Shutdown complete.');
     process.exit(0);
-});
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Parse YAML frontmatter from markdown using js-yaml
 // Supports both LF and CRLF line endings
@@ -337,7 +348,10 @@ function rateLimitMiddleware(type = 'read') {
 // Request timeout middleware
 app.use((req, res, next) => {
     res.setTimeout(30000, () => {
-        res.status(408).json({ error: 'Request timeout' });
+        // Only send timeout response if headers haven't been sent yet
+        if (!res.headersSent) {
+            res.status(408).json({ error: 'Request timeout' });
+        }
     });
     next();
 });
@@ -777,6 +791,9 @@ const sseClients = new Set();
 
 // SSE endpoint for hot reload notifications
 app.get('/api/hot-reload', (req, res) => {
+    // Disable the request timeout for SSE connections (they are long-lived)
+    res.setTimeout(0);
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -901,26 +918,10 @@ function setupFileWatcher() {
     return watcher;
 }
 
-// Global watcher reference
-let fileWatcher = null;
-
 startServer().then(() => {
     // Set up file watcher after server starts
     fileWatcher = setupFileWatcher();
 }).catch(err => {
     console.error('Failed to start server:', err);
     process.exit(1);
-});
-
-// Cleanup watcher on shutdown
-process.on('SIGTERM', async () => {
-    if (fileWatcher) {
-        await fileWatcher.close();
-    }
-});
-
-process.on('SIGINT', async () => {
-    if (fileWatcher) {
-        await fileWatcher.close();
-    }
 });
