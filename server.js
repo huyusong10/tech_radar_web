@@ -777,6 +777,9 @@ const sseClients = new Set();
 
 // SSE endpoint for hot reload notifications
 app.get('/api/hot-reload', (req, res) => {
+    // Disable the request timeout for SSE connections (they are long-lived)
+    res.setTimeout(0);
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
