@@ -2809,10 +2809,25 @@
 
         // Hot reload support - connect to SSE endpoint for live updates
         let hotReloadEventSource = null;
-        function setupHotReload() {
+        let hotReloadRetryTimeout = null;
+        let isPageHidden = false;
+
+        function closeHotReload() {
+            if (hotReloadRetryTimeout) {
+                clearTimeout(hotReloadRetryTimeout);
+                hotReloadRetryTimeout = null;
+            }
             if (hotReloadEventSource) {
                 hotReloadEventSource.close();
+                hotReloadEventSource = null;
             }
+        }
+
+        function setupHotReload() {
+            // Don't setup if page is hidden (navigating away)
+            if (isPageHidden) return;
+
+            closeHotReload();
 
             try {
                 hotReloadEventSource = new EventSource('/api/hot-reload');
@@ -2844,15 +2859,40 @@
                 };
 
                 hotReloadEventSource.onerror = (error) => {
+                    // Don't retry if page is hidden (navigating away)
+                    if (isPageHidden) return;
+
                     console.log('Hot reload connection lost, will retry...');
-                    hotReloadEventSource.close();
+                    closeHotReload();
                     // Retry connection after 5 seconds
-                    setTimeout(setupHotReload, 5000);
+                    hotReloadRetryTimeout = setTimeout(setupHotReload, 5000);
                 };
             } catch (e) {
                 console.log('Hot reload not available (server may not support SSE)');
             }
         }
+
+        // Clean up SSE connection when page is hidden (navigation, tab switch, etc.)
+        window.addEventListener('pagehide', (event) => {
+            isPageHidden = true;
+            closeHotReload();
+        });
+
+        // Reconnect when page becomes visible again (back-forward cache restore)
+        window.addEventListener('pageshow', (event) => {
+            isPageHidden = false;
+            // If restored from bfcache, need to reconnect
+            if (event.persisted) {
+                console.log('Page restored from bfcache, reconnecting hot reload...');
+                setupHotReload();
+            }
+        });
+
+        // Also clean up on beforeunload for older browsers
+        window.addEventListener('beforeunload', () => {
+            isPageHidden = true;
+            closeHotReload();
+        });
 
         // Initialize when DOM is ready
         document.addEventListener('DOMContentLoaded', () => {
