@@ -4,7 +4,15 @@
   "description": "Tech Radar Weekly - Cyberpunk style tech newsletter",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:load": "node load-test.js",
+    "test:performance": "node performance-test.js",
+    "test:performance-throughput": "node performance-test.js -t=throughput -r=2000 -d=20",
+    "test:performance-stability": "node performance-test.js -t=stability -r=2000 -d=60 -c=100",
+    "test:load-mixed": "node load-test.js -u=100 -r=100 -t=mixed",
+    "test:load-read": "node load-test.js -u=200 -r=200 -t=read",
+    "test:load-write": "node load-test.js -u=50 -r=100 -t=write"
   },
   "dependencies": {
     "chokidar": "^3.5.3",
@@ -16,6 +24,8 @@
     "esbuild": "^0.27.2",
     "highlight.js": "^11.9.0",
     "js-yaml": "^4.1.0",
-    "marked": "^11.1.1"
+    "marked": "^11.1.1",
+    "mocha": "^11.7.5",
+    "supertest": "^7.2.2"
   }
 }
