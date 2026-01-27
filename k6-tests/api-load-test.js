@@ -28,21 +28,39 @@ export default function() {
     let res2 = http.get(`${BASE_URL}/api/volumes`);
     check(res2, {
         'volumes status is 200': (r) => r.status === 200,
-        'volumes has data': (r) => JSON.parse(r.body).length > 0,
+        'volumes has data': (r) => {
+            try {
+                return r.body && JSON.parse(r.body).length > 0;
+            } catch(e) {
+                return false;
+            }
+        },
     });
 
     // 测试特定期刊的投稿列表
     let res3 = http.get(`${BASE_URL}/api/contributions/001`);
     check(res3, {
         'contributions status is 200': (r) => r.status === 200,
-        'contributions has data': (r) => JSON.parse(r.body).length > 0,
+        'contributions has data': (r) => {
+            try {
+                return r.body && JSON.parse(r.body).length > 0;
+            } catch(e) {
+                return false;
+            }
+        },
     });
 
     // 测试作者列表
     let res4 = http.get(`${BASE_URL}/api/authors`);
     check(res4, {
         'authors status is 200': (r) => r.status === 200,
-        'authors has data': (r) => JSON.parse(r.body).length > 0,
+        'authors has data': (r) => {
+            try {
+                return r.body && JSON.parse(r.body).length > 0;
+            } catch(e) {
+                return false;
+            }
+        },
     });
 
     sleep(1); // 模拟用户思考时间

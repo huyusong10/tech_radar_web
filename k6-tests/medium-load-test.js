@@ -18,7 +18,7 @@ export const options = {
     // 启用连接池以减少TCP压力
     // noConnectionReuse: false, // 默认启用连接复用
     batch: 15, // 请求批处理
-    discardResponseBodies: true, // 丢弃响应体以节省内存
+    // discardResponseBodies: true, // 禁用，因为需要解析响应体
 };
 
 const BASE_URL = 'http://localhost:5090';
@@ -40,12 +40,17 @@ export default function() {
         check(res1, { 'volumes status 200': (r) => r.status === 200 });
         
         // 如果成功获取期刊列表，随机选择一个查看详情
-        if (res1.status === 200) {
-            const volumes = JSON.parse(res1.body);
-            if (volumes.length > 0) {
-                const randomVol = volumes[Math.floor(Math.random() * volumes.length)].vol;
-                const res2 = http.get(`${BASE_URL}/api/contributions/${randomVol}`);
-                check(res2, { 'contributions status 200': (r) => r.status === 200 });
+        if (res1.status === 200 && res1.body) {
+            try {
+                const volumes = JSON.parse(res1.body);
+                if (Array.isArray(volumes) && volumes.length > 0) {
+                    const randomVol = volumes[Math.floor(Math.random() * volumes.length)].vol;
+                    const res2 = http.get(`${BASE_URL}/api/contributions/${randomVol}`);
+                    check(res2, { 'contributions status 200': (r) => r.status === 200 });
+                }
+            } catch (e) {
+                // JSON解析失败，跳过后续操作
+                console.warn(`Failed to parse volumes response: ${e.message}`);
             }
         }
     } else if (scenario < 0.9) {

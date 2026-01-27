@@ -21,9 +21,18 @@ export default function() {
     let res2 = http.get(`${BASE_URL}/api/volumes`);
     check(res2, { 'volumes loaded': (r) => r.status === 200 });
     
-    // 3. 随机选择一个期刊查看
-    const volumes = JSON.parse(res2.body);
-    if (volumes.length > 0) {
+    // 3. 随机选择一个期刊查看（需要先检查响应）
+    let volumes = [];
+    if (res2.status === 200 && res2.body) {
+        try {
+            volumes = JSON.parse(res2.body);
+        } catch(e) {
+            // JSON解析失败，使用空数组
+            volumes = [];
+        }
+    }
+    
+    if (Array.isArray(volumes) && volumes.length > 0) {
         const randomVol = volumes[Math.floor(Math.random() * volumes.length)].vol;
         
         // 4. 加载该期刊的雷达内容
@@ -41,14 +50,18 @@ export default function() {
         check(res5, { 'view recorded': (r) => r.status === 200 });
         
         // 7. 10%的用户进行点赞
-        if (Math.random() < 0.1) {
-            const contributions = JSON.parse(res4.body);
-            if (contributions.length > 0) {
-                const randomArticle = contributions[0].id;
-                let res6 = http.post(`${BASE_URL}/api/likes/${randomArticle}`, null, {
-                    headers: { 'Content-Type': 'application/json' },
-                });
-                check(res6, { 'like recorded': (r) => r.status === 200 });
+        if (Math.random() < 0.1 && res4.status === 200 && res4.body) {
+            try {
+                const contributions = JSON.parse(res4.body);
+                if (Array.isArray(contributions) && contributions.length > 0) {
+                    const randomArticle = contributions[0].id;
+                    let res6 = http.post(`${BASE_URL}/api/likes/${randomArticle}`, null, {
+                        headers: { 'Content-Type': 'application/json' },
+                    });
+                    check(res6, { 'like recorded': (r) => r.status === 200 });
+                }
+            } catch(e) {
+                // JSON解析失败，跳过点赞
             }
         }
     }

@@ -25,7 +25,7 @@ export default function() {
     check(res, {
         'status is 200': (r) => r.status === 200,
         'content type correct': (r) => r.headers['Content-Type'] !== undefined,
-        'response size > 0': (r) => r.body.length > 0,
+        'response size > 0': (r) => r.body && r.body.length > 0,
     });
     
     sleep(0.5);
