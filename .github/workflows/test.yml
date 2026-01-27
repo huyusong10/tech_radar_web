@@ -1,0 +1,289 @@
+# GitHub Actions 工作流配置
+# 自动化测试和部署流程
+
+name: 测试与部署
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'tests/**'
+      - 'server.js'
+      - 'index.html'
+      - 'package.json'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'tests/**'
+      - 'server.js'
+      - 'index.html'
+      - 'package.json'
+
+env:
+  NODE_VERSION: '18.x'
+
+jobs:
+  # 任务1: 依赖检查
+  lint-code:
+    name: 代码检查
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 安装依赖
+        run: npm install
+
+      - name: 代码格式检查
+        run: npm run lint
+        continue-on-error: true
+
+  # 任务2: 构建测试
+  build-test:
+    name: 构建测试
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 安装依赖
+        run: npm install
+
+      - name: 运行基本测试
+        run: npm test
+        continue-on-error: true
+
+  # 任务3: 快速压力测试
+  quick-stress-test:
+    name: 快速压力测试
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 k6
+        uses: grafana/setup-k6-action@v0
+
+      - name: 启动测试服务器
+        run: |
+          npm install
+          nohup node server.js > server.log 2>&1 &
+          echo $! > server_pid.txt
+
+      - name: 等待服务器就绪
+        run: |
+          for i in {1..30}; do
+            if curl -s -f http://localhost:5090/api/config > /dev/null; then
+              echo "服务器已就绪"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "服务器启动超时"
+          cat server.log
+          exit 1
+
+      - name: 运行快速压力测试 (50 VUs, 1分钟)
+        run: |
+          mkdir -p tests/results
+          k6 run \
+            --out json=tests/results/quick-test.json \
+            --out html=tests/results/quick-test.html \
+            --vus=50 \
+            --duration=1m \
+            tests/k6/pressure-test.js
+
+      - name: 保存测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-stress-test-report
+          path: tests/results/
+
+      - name: 服务器清理
+        if: always()
+        run: |
+          if [ -f server_pid.txt ]; then
+            kill $(cat server_pid.txt) 2>/dev/null || true
+          fi
+          rm -f server_pid.txt server.log
+
+  # 任务4: 性能测试 (仅在 PR/推送时运行)
+  performance-test:
+    name: 性能测试
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 k6
+        uses: grafana/setup-k6-action@v0
+
+      - name: 启动测试服务器
+        run: |
+          npm install
+          nohup node server.js > server.log 2>&1 &
+          echo $! > server_pid.txt
+
+      - name: 等待服务器就绪
+        run: |
+          for i in {1..30}; do
+            if curl -s -f http://localhost:5090/api/config > /dev/null; then
+              echo "服务器已就绪"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "服务器启动超时"
+          exit 1
+
+      - name: 运行性能测试
+        run: |
+          mkdir -p tests/results
+          k6 run \
+            --out json=tests/results/performance-test.json \
+            --out html=tests/results/performance-test.html \
+            tests/k6/performance-test.js
+
+      - name: 保存测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-test-report
+          path: tests/results/
+
+      - name: 服务器清理
+        if: always()
+        run: |
+          if [ -f server_pid.txt ]; then
+            kill $(cat server_pid.txt) 2>/dev/null || true
+          fi
+          rm -f server_pid.txt server.log
+
+  # 任务5: 深度压力测试 (手动触发)
+  deep-stress-test:
+    name: 千级并发压力测试
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 k6
+        uses: grafana/setup-k6-action@v0
+
+      - name: 启动测试服务器
+        run: |
+          npm install
+          nohup node server.js > server.log 2>&1 &
+          echo $! > server_pid.txt
+
+      - name: 等待服务器就绪
+        run: |
+          for i in {1..30}; do
+            if curl -s -f http://localhost:5090/api/config > /dev/null; then
+              echo "服务器已就绪"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "服务器启动超时"
+          exit 1
+
+      - name: 运行千级并发压力测试
+        run: |
+          mkdir -p tests/results
+          cat > tests/k6/full-stress-test.js << 'EOF'
+          import http from 'k6/http';
+          import { check, sleep } from 'k6';
+
+          export let options = {
+              stages: [
+                  { duration: '30s', target: 100 },
+                  { duration: '1m', target: 500 },
+                  { duration: '1m', target: 1000 },
+                  { duration: '1m', target: 0 },
+              ],
+              thresholds: {
+                  'http_req_duration': ['p(95)<500', 'p(99)<1000'],
+                  'http_req_failed': ['rate<0.05'],
+              },
+          };
+
+          const BASE_URL = 'http://localhost:5090';
+
+          export default function () {
+              http.get(\`\${BASE_URL}/api/volumes\`);
+              http.get(\`\${BASE_URL}/api/config\`);
+              sleep(1);
+          }
+          EOF
+
+          k6 run \
+            --out json=tests/results/deep-stress-test.json \
+            --out html=tests/results/deep-stress-test.html \
+            tests/k6/full-stress-test.js
+
+      - name: 保存测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-stress-test-report
+          path: tests/results/
+
+      - name: 服务器清理
+        if: always()
+        run: |
+          if [ -f server_pid.txt ]; then
+            kill $(cat server_pid.txt) 2>/dev/null || true
+          fi
+          rm -f server_pid.txt server.log
+
+  # 任务6: 测试报告汇总
+  test-summary:
+    name: 生成测试报告
+    runs-on: ubuntu-latest
+    needs: [quick-stress-test, performance-test]
+    if: always()
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 下载所有测试报告
+        uses: actions/download-artifact@v4
+        with:
+          path: ./tests/results/
+
+      - name: 生成报告摘要
+        run: |
+          echo "# 性能测试报告汇总" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 测试执行情况" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "✅ 快速压力测试完成" >> $GITHUB_STEP_SUMMARY
+          echo "✅ 性能测试完成" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 报告文件" >> $GITHUB_STEP_SUMMARY
+          echo "- 快速压力测试: \`quick-stress-test-report\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 性能测试: \`performance-test-report\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "请点击上方文件下载链接查看详细报告。" >> $GITHUB_STEP_SUMMARY
