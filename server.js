@@ -799,12 +799,21 @@ async function startServer() {
 // ==================== HOT RELOAD WITH FILE WATCHING ====================
 
 // Store SSE clients for hot reload notifications
-const sseClients = new Map(); // Map<response, { connectedAt, lastHeartbeat }>
+const sseClients = new Map(); // Map<response, { connectedAt, ip }>
 const SSE_CONFIG = {
-    MAX_CLIENTS: 10,           // Maximum concurrent SSE connections
-    HEARTBEAT_INTERVAL: 30000, // Send heartbeat every 30 seconds
-    CLIENT_TIMEOUT: 60000      // Consider client dead if no response in 60 seconds
+    MAX_CLIENTS_TOTAL: 1000,   // Maximum total SSE connections (for high concurrency)
+    MAX_CLIENTS_PER_IP: 5,     // Maximum SSE connections per IP (prevent single client abuse)
+    HEARTBEAT_INTERVAL: 30000  // Send heartbeat every 30 seconds
 };
+
+// Count connections per IP
+function getConnectionCountByIP(ip) {
+    let count = 0;
+    sseClients.forEach((info) => {
+        if (info.ip === ip) count++;
+    });
+    return count;
+}
 
 // Periodic heartbeat to detect dead connections
 let sseHeartbeatInterval = null;
@@ -847,10 +856,19 @@ function stopSSEHeartbeat() {
 
 // SSE endpoint for hot reload notifications
 app.get('/api/hot-reload', (req, res) => {
-    // Limit maximum connections
-    if (sseClients.size >= SSE_CONFIG.MAX_CLIENTS) {
-        console.log(`SSE connection rejected: max clients (${SSE_CONFIG.MAX_CLIENTS}) reached`);
-        return res.status(503).json({ error: 'Too many connections, please try again later' });
+    const clientIP = getClientIP(req);
+
+    // Check global limit
+    if (sseClients.size >= SSE_CONFIG.MAX_CLIENTS_TOTAL) {
+        console.log(`SSE connection rejected: max total clients (${SSE_CONFIG.MAX_CLIENTS_TOTAL}) reached`);
+        return res.status(503).json({ error: 'Server busy, please try again later' });
+    }
+
+    // Check per-IP limit
+    const ipConnectionCount = getConnectionCountByIP(clientIP);
+    if (ipConnectionCount >= SSE_CONFIG.MAX_CLIENTS_PER_IP) {
+        console.log(`SSE connection rejected: IP ${clientIP} has ${ipConnectionCount} connections (max: ${SSE_CONFIG.MAX_CLIENTS_PER_IP})`);
+        return res.status(429).json({ error: 'Too many connections from your IP' });
     }
 
     // Disable the request timeout for SSE connections (they are long-lived)
@@ -868,7 +886,7 @@ app.get('/api/hot-reload', (req, res) => {
     // Add client to map with connection info
     sseClients.set(res, {
         connectedAt: Date.now(),
-        ip: getClientIP(req)
+        ip: clientIP
     });
     console.log(`Hot reload client connected. Total clients: ${sseClients.size}`);
 
