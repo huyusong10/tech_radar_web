@@ -1,0 +1,466 @@
+{
+  "timestamp": "2026-01-27T20:40:56.840Z",
+  "server": {
+    "host": "localhost",
+    "port": 5090,
+    "baseUrl": "http://localhost:5090"
+  },
+  "summary": {
+    "total": 10,
+    "passed": 10,
+    "failed": 0
+  },
+  "endpoints": {
+    "/api/config": {
+      "endpoint": "/api/config",
+      "type": "read",
+      "success": true,
+      "duration": 10.01,
+      "requests": {
+        "total": 387709,
+        "average": 38771.2,
+        "sent": 387719
+      },
+      "latency": {
+        "average": 0.01,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "min": 1,
+        "max": 3,
+        "stddev": 0.02
+      },
+      "throughput": {
+        "average": 11490918.4,
+        "min": 11335024,
+        "max": 11629840
+      },
+      "errors": {
+        "total": 0,
+        "codes": 387469,
+        "timeouts": 0
+      },
+      "thresholds": {
+        "p95": {
+          "limit": 200,
+          "actual": 0,
+          "passed": true
+        },
+        "p99": {
+          "limit": 500,
+          "actual": 0,
+          "passed": true
+        },
+        "errorRate": {
+          "limit": 0.01,
+          "actual": 0,
+          "passed": true
+        }
+      },
+      "passed": true
+    },
+    "/api/authors": {
+      "endpoint": "/api/authors",
+      "type": "read",
+      "success": true,
+      "duration": 10,
+      "requests": {
+        "total": 387813,
+        "average": 38777.6,
+        "sent": 387823
+      },
+      "latency": {
+        "average": 0.01,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "min": 1,
+        "max": 1,
+        "stddev": 0.01
+      },
+      "throughput": {
+        "average": 11480268.8,
+        "min": 11346568,
+        "max": 11586328
+      },
+      "errors": {
+        "total": 0,
+        "codes": 387813,
+        "timeouts": 0
+      },
+      "thresholds": {
+        "p95": {
+          "limit": 200,
+          "actual": 0,
+          "passed": true
+        },
+        "p99": {
+          "limit": 500,
+          "actual": 0,
+          "passed": true
+        },
+        "errorRate": {
+          "limit": 0.01,
+          "actual": 0,
+          "passed": true
+        }
+      },
+      "passed": true
+    },
+    "/api/volumes": {
+      "endpoint": "/api/volumes",
+      "type": "read",
+      "success": true,
+      "duration": 10,
+      "requests": {
+        "total": 384089,
+        "average": 38406.4,
+        "sent": 384099
+      },
+      "latency": {
+        "average": 0.01,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "min": 1,
+        "max": 1,
+        "stddev": 0.01
+      },
+      "throughput": {
+        "average": 11368857.6,
+        "min": 11298912,
+        "max": 11450168
+      },
+      "errors": {
+        "total": 0,
+        "codes": 384089,
+        "timeouts": 0
+      },
+      "thresholds": {
+        "p95": {
+          "limit": 200,
+          "actual": 0,
+          "passed": true
+        },
+        "p99": {
+          "limit": 500,
+          "actual": 0,
+          "passed": true
+        },
+        "errorRate": {
+          "limit": 0.01,
+          "actual": 0,
+          "passed": true
+        }
+      },
+      "passed": true
+    },
+    "/api/contributions/vol-001": {
+      "endpoint": "/api/contributions/vol-001",
+      "type": "read",
+      "success": true,
+      "duration": 10,
+      "requests": {
+        "total": 377667,
+        "average": 37763.2,
+        "sent": 377677
+      },
+      "latency": {
+        "average": 0.01,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "min": 1,
+        "max": 1,
+        "stddev": 0.01
+      },
+      "throughput": {
+        "average": 11178803.2,
+        "min": 11061816,
+        "max": 11328216
+      },
+      "errors": {
+        "total": 0,
+        "codes": 377667,
+        "timeouts": 0
+      },
+      "thresholds": {
+        "p95": {
+          "limit": 200,
+          "actual": 0,
+          "passed": true
+        },
+        "p99": {
+          "limit": 500,
+          "actual": 0,
+          "passed": true
+        },
+        "errorRate": {
+          "limit": 0.01,
+          "actual": 0,
+          "passed": true
+        }
+      },
+      "passed": true
+    },
+    "/api/likes": {
+      "endpoint": "/api/likes",
+      "type": "read",
+      "success": true,
+      "duration": 10,
+      "requests": {
+        "total": 383257,
+        "average": 38326.4,
+        "sent": 383267
+      },
+      "latency": {
+        "average": 0.01,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "min": 1,
+        "max": 1,
+        "stddev": 0.01
+      },
+      "throughput": {
+        "average": 11344281.6,
+        "min": 11201528,
+        "max": 11486872
+      },
+      "errors": {
+        "total": 0,
+        "codes": 383257,
+        "timeouts": 0
+      },
+      "thresholds": {
+        "p95": {
+          "limit": 200,
+          "actual": 0,
+          "passed": true
+        },
+        "p99": {
+          "limit": 500,
+          "actual": 0,
+          "passed": true
+        },
+        "errorRate": {
+          "limit": 0.01,
+          "actual": 0,
+          "passed": true
+        }
+      },
+      "passed": true
+    },
+    "/api/views/vol-001": {
+      "endpoint": "/api/views/vol-001",
+      "type": "write",
+      "success": true,
+      "duration": 10,
+      "requests": {
+        "total": 531562,
+        "average": 53158.4,
+        "sent": 531572
+      },
+      "latency": {
+        "average": 0.01,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "min": 1,
+        "max": 1,
+        "stddev": 0.01
+      },
+      "throughput": {
+        "average": 15735193.6,
+        "min": 15633536,
+        "max": 15792784
+      },
+      "errors": {
+        "total": 0,
+        "codes": 531562,
+        "timeouts": 0
+      },
+      "thresholds": {
+        "p95": {
+          "limit": 300,
+          "actual": 0,
+          "passed": true
+        },
+        "p99": {
+          "limit": 800,
+          "actual": 0,
+          "passed": true
+        },
+        "errorRate": {
+          "limit": 0.01,
+          "actual": 0,
+          "passed": true
+        }
+      },
+      "passed": true
+    },
+    "/api/health": {
+      "endpoint": "/api/health",
+      "type": "read",
+      "success": true,
+      "duration": 10,
+      "requests": {
+        "total": 384206,
+        "average": 38422.4,
+        "sent": 384216
+      },
+      "latency": {
+        "average": 0.01,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "min": 1,
+        "max": 1,
+        "stddev": 0.01
+      },
+      "throughput": {
+        "average": 15659827.2,
+        "min": 15420922,
+        "max": 15860626
+      },
+      "errors": {
+        "total": 0,
+        "codes": 0,
+        "timeouts": 0
+      },
+      "thresholds": {
+        "p95": {
+          "limit": 200,
+          "actual": 0,
+          "passed": true
+        },
+        "p99": {
+          "limit": 500,
+          "actual": 0,
+          "passed": true
+        },
+        "errorRate": {
+          "limit": 0.01,
+          "actual": 0,
+          "passed": true
+        }
+      },
+      "passed": true
+    },
+    "/": {
+      "endpoint": "/",
+      "type": "read",
+      "success": true,
+      "duration": 10,
+      "requests": {
+        "total": 118556,
+        "average": 11856.8,
+        "sent": 118566
+      },
+      "latency": {
+        "average": 0.26,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "min": 1,
+        "max": 4,
+        "stddev": 0.44
+      },
+      "throughput": {
+        "average": 1223478476.8,
+        "min": 1206269733,
+        "max": 1235990469
+      },
+      "errors": {
+        "total": 0,
+        "codes": 0,
+        "timeouts": 0
+      },
+      "thresholds": {
+        "p95": {
+          "limit": 200,
+          "actual": 1,
+          "passed": true
+        },
+        "p99": {
+          "limit": 500,
+          "actual": 1,
+          "passed": true
+        },
+        "errorRate": {
+          "limit": 0.01,
+          "actual": 0,
+          "passed": true
+        }
+      },
+      "passed": true
+    },
+    "/api/likes/article-001": {
+      "endpoint": "/api/likes/article-001",
+      "type": "write",
+      "success": true,
+      "duration": 10,
+      "requests": {
+        "total": 538526,
+        "average": 53852.8,
+        "sent": 538536
+      },
+      "latency": {
+        "average": 0.01,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "min": 1,
+        "max": 3,
+        "stddev": 0.01
+      },
+      "throughput": {
+        "average": 15940812.8,
+        "min": 15670628,
+        "max": 16043792
+      },
+      "errors": {
+        "total": 0,
+        "codes": 538526,
+        "timeouts": 0
+      },
+      "thresholds": {
+        "p95": {
+          "limit": 300,
+          "actual": 0,
+          "passed": true
+        },
+        "p99": {
+          "limit": 800,
+          "actual": 0,
+          "passed": true
+        },
+        "errorRate": {
+          "limit": 0.01,
+          "actual": 0,
+          "passed": true
+        }
+      },
+      "passed": true
+    }
+  },
+  "performanceAnalysis": {
+    "readEndpoints": {
+      "count": 8,
+      "averageLatency": 0.125,
+      "maxLatency": 1,
+      "minLatency": 0,
+      "throughputAvg": 163967078.4
+    },
+    "writeEndpoints": {
+      "count": 2,
+      "averageLatency": 0,
+      "maxLatency": 0,
+      "minLatency": 0,
+      "throughputAvg": 15838003.2
+    },
+    "bottlenecks": [],
+    "topPerformers": []
+  },
+  "recommendations": []
+}

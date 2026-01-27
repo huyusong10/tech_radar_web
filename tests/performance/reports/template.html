@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performance Report - {{timestamp}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #151515 100%);
+            color: #ededed;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+            position: relative;
+        }
+
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 2px;
+            background: linear-gradient(90deg, #00f3ff, #ff00ff);
+            border-radius: 1px;
+        }
+
+        .title {
+            font-size: clamp(2rem, 5vw, 3rem);
+            font-weight: 700;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, #00f3ff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #9ca3af;
+            font-size: 1.1rem;
+            margin-bottom: 25px;
+        }
+
+        .grades-container {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .grade {
+            display: inline-flex;
+            align-items: center;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .grade::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .grade:hover::before {
+            left: 100%;
+        }
+
+        .grade.A { 
+            background: rgba(0, 255, 136, 0.2); 
+            color: #00ff88; 
+            border: 1px solid rgba(0, 255, 136, 0.3);
+        }
+
+        .grade.B { 
+            background: rgba(0, 243, 255, 0.2); 
+            color: #00f3ff; 
+            border: 1px solid rgba(0, 243, 255, 0.3);
+        }
+
+        .grade.C { 
+            background: rgba(255, 255, 0, 0.2); 
+            color: #ffff00; 
+            border: 1px solid rgba(255, 255, 0, 0.3);
+        }
+
+        .grade.D { 
+            background: rgba(255, 107, 53, 0.2); 
+            color: #ff6b35; 
+            border: 1px solid rgba(255, 107, 53, 0.3);
+        }
+
+        .grade.F { 
+            background: rgba(255, 0, 0, 0.2); 
+            color: #ff4444; 
+            border: 1px solid rgba(255, 0, 0, 0.3);
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 25px;
+            color: #00f3ff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title::before {
+            content: '▶';
+            font-size: 0.8rem;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-bottom: 50px;
+        }
+
+        .summary-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #1f1f1f 100%);
+            padding: 25px;
+            border-radius: 16px;
+            border: 1px solid #333;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .summary-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #00f3ff, #ff00ff);
+            border-radius: 3px 3px 0 0;
+        }
+
+        .summary-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 243, 255, 0.1);
+        }
+
+        .summary-card h3 {
+            color: #00f3ff;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .summary-card p {
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .summary-card strong {
+            color: #9ca3af;
+        }
+
+        .summary-card .value {
+            color: #00ff88;
+            font-weight: 600;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 50px;
+        }
+
+        .chart-container {
+            background: linear-gradient(135deg, #1a1a1a 0%, #1f1f1f 100%);
+            padding: 25px;
+            border-radius: 16px;
+            border: 1px solid #333;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .chart-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #ff00ff, #00f3ff);
+            border-radius: 3px 3px 0 0;
+        }
+
+        .chart-container h4 {
+            color: #ff00ff;
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .stat-label {
+            color: #9ca3af;
+            font-size: 0.9rem;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            color: #00ff88;
+            font-size: 1rem;
+        }
+
+        .bar-chart {
+            position: relative;
+            height: 35px;
+            background: #2a2a2a;
+            border-radius: 18px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00f3ff, #00ff88);
+            border-radius: 18px;
+            transition: width 0.8s ease;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+        }
+
+        .bar-label {
+            color: #000;
+            font-weight: 600;
+            font-size: 0.8rem;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .recommendations {
+            background: linear-gradient(135deg, #1a1a1a 0%, #1f1f1f 100%);
+            padding: 30px;
+            border-radius: 16px;
+            border: 1px solid #333;
+            margin-bottom: 50px;
+        }
+
+        .recommendations::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #ff6b35, #ffff00);
+            border-radius: 3px 3px 0 0;
+        }
+
+        .recommendations {
+            position: relative;
+        }
+
+        .recommendations h3 {
+            color: #ff6b35;
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+        }
+
+        .recommendations ul {
+            list-style: none;
+        }
+
+        .recommendations li {
+            padding: 12px 0;
+            border-bottom: 1px solid #333;
+            position: relative;
+            padding-left: 25px;
+            transition: all 0.3s ease;
+        }
+
+        .recommendations li:last-child {
+            border-bottom: none;
+        }
+
+        .recommendations li::before {
+            content: "⚡";
+            position: absolute;
+            left: 0;
+            color: #ff6b35;
+            font-size: 1rem;
+        }
+
+        .recommendations li:hover {
+            padding-left: 30px;
+            color: #ff6b35;
+        }
+
+        .no-data {
+            text-align: center;
+            color: #9ca3af;
+            font-style: italic;
+            padding: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+
+            .title {
+                font-size: 2rem;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .charts-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .grades-container {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .grade {
+                width: 200px;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .summary-card,
+            .chart-container,
+            .recommendations {
+                padding: 20px;
+            }
+
+            .title {
+                font-size: 1.8rem;
+            }
+
+            .section-title {
+                font-size: 1.3rem;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="title">Performance Test Report</h1>
+            <p class="subtitle">Generated: {{timestamp}} | Version: {{version}}</p>
+            <div class="grades-container">
+                <span class="grade {{overallGrade}}">Overall: {{overallGrade}}</span>
+                <span class="grade {{performanceGrade}}">Performance: {{performanceGrade}}</span>
+                <span class="grade {{resourceGrade}}">Resources: {{resourceGrade}}</span>
+            </div>
+        </header>
+
+        <section>
+            <h2 class="section-title">Test Overview</h2>
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h3>Test Configuration</h3>
+                    <p><strong>Duration:</strong> <span class="value">{{testDuration}}s</span></p>
+                    <p><strong>Arrival Rate:</strong> <span class="value">{{arrivalRate}} req/s</span></p>
+                    <p><strong>Max Users:</strong> <span class="value">{{maxVusers}}</span></p>
+                </div>
+                <div class="summary-card">
+                    <h3>Request Statistics</h3>
+                    <p><strong>Total Requests:</strong> <span class="value">{{totalRequests}}</span></p>
+                    <p><strong>Successful:</strong> <span class="value">{{successRequests}}</span></p>
+                    <p><strong>Failed:</strong> <span class="value">{{failedRequests}}</span></p>
+                </div>
+                <div class="summary-card">
+                    <h3>Performance Metrics</h3>
+                    <p><strong>Avg Response Time:</strong> <span class="value">{{avgResponseTime}}ms</span></p>
+                    <p><strong>P95 Response Time:</strong> <span class="value">{{p95ResponseTime}}ms</span></p>
+                    <p><strong>Avg Throughput:</strong> <span class="value">{{avgThroughput}} req/s</span></p>
+                    <p><strong>Error Rate:</strong> <span class="value">{{avgErrorRate}}%</span></p>
+                </div>
+                <div class="summary-card">
+                    <h3>Resource Usage</h3>
+                    <p><strong>Max Memory:</strong> <span class="value">{{maxMemory}}MB</span></p>
+                    <p><strong>Avg Memory:</strong> <span class="value">{{avgMemory}}MB</span></p>
+                    <p><strong>Max CPU:</strong> <span class="value">{{maxCPU}}%</span></p>
+                    <p><strong>Avg CPU:</strong> <span class="value">{{avgCPU}}%</span></p>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="section-title">Performance Charts</h2>
+            <div class="charts-grid">
+                {{responseTimeChart}}
+                {{throughputChart}}
+                {{errorRateChart}}
+                {{memoryChart}}
+                {{cpuChart}}
+            </div>
+        </section>
+
+        <section class="recommendations">
+            <h3>Recommendations</h3>
+            <ul>
+                {{recommendations}}
+            </ul>
+        </section>
+    </div>
+</body>
+</html>

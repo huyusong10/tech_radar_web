@@ -1,0 +1,209 @@
+config:
+  target: 'http://localhost:5090'
+  phases:
+    - duration: 10
+      arrivalRate: 5
+      name: "Warm up phase"
+    
+    - duration: 30
+      arrivalRate: 50
+      rampTo: 1000
+      name: "Ramp up load"
+    
+    - duration: 300
+      arrivalRate: 1000
+      name: "Sustained load"
+    
+    - duration: 30
+      arrivalRate: 1000
+      rampTo: 50
+      name: "Ramp down load"
+    
+    - duration: 10
+      arrivalRate: 5
+      name: "Cool down phase"
+
+  processor: "./load-test-processor.js"
+  
+  http:
+    timeout: 30
+    pool: 50
+    maxSockets: 100
+  
+  variables:
+    ip_addresses:
+      - "192.168.1.101"
+      - "192.168.1.102" 
+      - "192.168.1.103"
+      - "192.168.1.104"
+      - "192.168.1.105"
+      - "192.168.1.106"
+      - "192.168.1.107"
+      - "192.168.1.108"
+      - "192.168.1.109"
+      - "192.168.1.110"
+    
+    test_volumes: ["001", "002"]
+    test_article_ids: ["vol-001-typescript-types", "vol-001-react-hooks", "vol-002-nodejs-performance"]
+
+scenarios:
+  - name: "Real User Browsing Flow"
+    weight: 70
+    flow:
+      - get:
+          url: "/api/config"
+          headers:
+            X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+          capture:
+            - json: "$.title"
+              as: "site_title"
+          expect:
+            - statusCode: 200
+            - contentType: application/json
+      
+      - think: 2
+      
+      - get:
+          url: "/api/volumes"
+          headers:
+            X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+          capture:
+            - json: "$.volumes[0].vol"
+              as: "latest_vol"
+          expect:
+            - statusCode: 200
+            - contentType: application/json
+      
+      - think: 1
+      
+      - get:
+          url: "/api/contributions/{{ latest_vol || $randomElement($testVolumes) }}"
+          headers:
+            X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+          expect:
+            - statusCode: 200
+            - contentType: application/json
+      
+      - think: "{{ $randomInt(3, 8) }}"
+      
+      - loop:
+          - get:
+              url: "/"
+              qs:
+                vol: "{{ $randomElement($testVolumes) }}"
+              headers:
+                X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+              expect:
+                - statusCode: 200
+        count: 2
+      
+      - function: "maybeLikeArticle"
+      
+      - think: 1
+      
+      - get:
+          url: "/api/authors"
+          headers:
+            X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+          expect:
+            - statusCode: 200
+            - contentType: application/json
+
+  - name: "API Stress Test"
+    weight: 20
+    flow:
+      - loop:
+          - get:
+              url: "/api/config"
+              headers:
+                X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+          - get:
+              url: "/api/volumes"
+              headers:
+                X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+          - get:
+              url: "/api/authors"
+              headers:
+                X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+          - think: 0.5
+        count: 10
+
+  - name: "Cache Hit Rate Test"
+    weight: 10
+    flow:
+      - loop:
+          - get:
+              url: "/api/config"
+              headers:
+                X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+                Cache-Control: "max-age=0"
+          - think: 0.1
+        count: 50
+      
+      - loop:
+          - get:
+              url: "/api/volumes"
+              headers:
+                X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+                Cache-Control: "max-age=0"
+          - think: 0.1
+        count: 30
+
+  - name: "Write Operations Test"
+    weight: 5
+    flow:
+      - loop:
+          - post:
+              url: "/api/likes/{{ $randomElement($testArticleIds) }}"
+              headers:
+                X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+                Content-Type: "application/json"
+              expect:
+                - statusCode: 
+                    - 200
+                    - 429
+          - think: 1
+        count: 25
+      
+      - loop:
+          - post:
+              url: "/api/views/{{ $randomElement($testVolumes) }}"
+              headers:
+                X-Forwarded-For: "{{ $randomElement($ipAddresses) }}"
+                Content-Type: "application/json"
+          - think: 0.5
+        count: 20
+
+processor: "./load-test-processor.js"
+
+plugins:
+  publish-metrics:
+    - type: "stdout"
+    - type: "json-file" 
+      destination: "./load-test-results.json"
+  
+  metrics-by-endpoint:
+    "/api/config":
+      - statusCode: 200
+      - responseTime:
+          p95: 200
+      - errorRate: 0.01
+    
+    "/api/volumes":
+      - statusCode: 200
+      - responseTime:
+          p95: 300
+      - errorRate: 0.01
+    
+    "/api/contributions/*":
+      - statusCode: 200
+      - responseTime:
+          p95: 400
+      - errorRate: 0.01
+
+target:
+  overall:
+    - responseTime:
+        p95: 250
+    - errorRate: 0.01
+    - throughput: 1000

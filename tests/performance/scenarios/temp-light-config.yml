@@ -1,0 +1,44 @@
+config:
+  target: http://localhost:5090
+  phases:
+    - duration: 30
+      arrivalRate: 2
+      maxVusers: 5
+  payload:
+    path: ./users.csv
+    fields:
+      - username
+      - email
+      - ip
+  processor: ./load-test-processor.js
+scenarios:
+  - name: light Load Test
+    weight: 100
+    flow:
+      - get:
+          url: /api/config
+      - get:
+          url: /api/authors
+      - get:
+          url: /api/volumes
+      - get:
+          url: /api/contributions/vol-001
+      - get:
+          url: /api/likes
+      - get:
+          url: /api/views/vol-001
+      - get:
+          url: /api/health
+      - get:
+          url: /
+      - think: 1
+      - function: setRandomIP
+      - post:
+          url: /api/views/vol-001
+          headers:
+            X-Forwarded-For: '{{ currentIP }}'
+      - function: maybeLikeArticle
+      - post:
+          url: /api/likes/{{ selectedArticleId }}
+          headers: '{{ $randomHeader() }}'
+        if: selectedArticleId
