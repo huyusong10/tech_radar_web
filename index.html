@@ -990,6 +990,12 @@
             margin-left: 0.5rem;
         }
 
+        .card-header .author-separator {
+            color: var(--accent-pink);
+            font-weight: 600;
+            margin: 0 0.3rem;
+        }
+
         .card-header .card-stats {
             display: flex;
             align-items: center;
@@ -2021,10 +2027,9 @@
         let ASSETS_DIR = '/contents/assets';
         let CONTENT_DIR = '/contents/published'; // Active content directory (published or draft)
 
-        // Check if we're in draft mode
+        // Check if we're in draft mode (via /draft URL path)
         function isDraftMode() {
-            const params = new URLSearchParams(window.location.search);
-            return params.get('draft') === 'true';
+            return window.location.pathname === '/draft' || window.location.pathname.startsWith('/draft/');
         }
 
         // Load site paths from API (for dynamic configuration)
@@ -2090,7 +2095,8 @@
                 try {
                     // Try to load from API first (when using node server.js)
                     // Use cache: 'no-store' to always get fresh views counts
-                    const response = await fetchWithRetry('/api/volumes', { cache: 'no-store' });
+                    const draftParam = isDraftMode() ? '?draft=true' : '';
+                    const response = await fetchWithRetry(`/api/volumes${draftParam}`, { cache: 'no-store' });
                     if (!response.ok) throw new Error('API not available');
                     volumesCache = await response.json();
                     return volumesCache;
@@ -2527,12 +2533,18 @@
                     ${authors.map(a => `<img src="${a.avatar}" alt="Author Avatar" class="author-avatar">`).join('')}
                    </div>`;
 
-            // Generate author info text
-            const authorNames = authors.map(a => a.name).join(' & ');
-            const authorTeams = [...new Set(authors.map(a => a.team))].join(' / ');
-            const authorRoles = authors.length === 1
-                ? (authors[0].role || 'Contributor')
-                : authors.map(a => a.role || 'Contributor').join(' & ');
+            // Generate author info text - show complete info for each author
+            let authorInfoHtml;
+            if (authors.length === 1) {
+                // Single author: "Name · Team · Role"
+                const a = authors[0];
+                authorInfoHtml = `${a.name} · ${a.team}<span class="author-role-tag">${a.role || 'Contributor'}</span>`;
+            } else {
+                // Multi-author: "Name · Team · Role & Name · Team · Role"
+                authorInfoHtml = authors.map(a =>
+                    `${a.name} · ${a.team}<span class="author-role-tag">${a.role || 'Contributor'}</span>`
+                ).join(' <span class="author-separator">&</span> ');
+            }
 
             // Convert relative image paths to absolute paths
             let processedContent = content;
@@ -2568,6 +2580,10 @@
 
                 // Split into lines for line numbers
                 const lines = highlighted.split('\n');
+                // Remove trailing empty line (caused by code ending with newline)
+                if (lines.length > 0 && lines[lines.length - 1] === '') {
+                    lines.pop();
+                }
                 const codeLines = lines.map((line, i) =>
                     `<div class="code-line"><span class="line-number">${i + 1}</span><span class="line-content">${line || '&nbsp;'}</span></div>`
                 ).join('');
@@ -2603,7 +2619,7 @@
                         ${avatarHtml}
                         <div class="card-title-area">
                             <h3 class="contribution-title">${metadata.title}</h3>
-                            <div class="author-name">${authorNames} · ${authorTeams}<span class="author-role-tag">${authorRoles}</span></div>
+                            <div class="author-name">${authorInfoHtml}</div>
                         </div>
                         <div class="card-stats">
                             <span class="stat-likes">
@@ -2634,7 +2650,8 @@
         // Get list of contribution folders from API
         async function getContributionFolders(vol) {
             try {
-                const response = await fetchWithRetry(`/api/contributions/${vol}`);
+                const draftParam = isDraftMode() ? '?draft=true' : '';
+                const response = await fetchWithRetry(`/api/contributions/${vol}${draftParam}`);
                 if (response.ok) {
                     return await response.json();
                 }

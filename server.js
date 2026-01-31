@@ -396,6 +396,13 @@ app.use('/contents/assets', express.static(ASSETS_DIR, {
     immutable: true
 }));
 
+// ==================== DRAFT MODE ROUTE ====================
+// Serve index.html for /draft path (draft mode via URL path instead of ?draft=true)
+// Must be defined BEFORE generic static middleware
+app.get('/draft', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // Generic static files (HTML, JS, CSS from project directory)
 app.use(express.static(__dirname, {
     index: 'index.html',
