@@ -711,31 +711,17 @@
 
         /* ==================== VOLUME TITLE ==================== */
         .volume-title-section {
-            padding: var(--spacing-lg) 0;
+            padding: var(--spacing-sm) 0;
             text-align: center;
         }
 
         .volume-title {
             font-family: var(--font-mono);
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--accent-cyan);
-            text-shadow: 0 0 20px rgba(0, 243, 255, 0.5);
-            margin: 0;
-            padding: var(--spacing-md) var(--spacing-lg);
-            display: inline-block;
-            background: linear-gradient(135deg, rgba(0, 243, 255, 0.1), rgba(255, 0, 255, 0.1));
-            border: 1px solid rgba(0, 243, 255, 0.3);
-            border-radius: var(--radius-lg);
-            position: relative;
-        }
-
-        .volume-title::before,
-        .volume-title::after {
-            content: '//';
+            font-size: 1rem;
+            font-weight: 600;
             color: var(--accent-pink);
-            margin: 0 var(--spacing-sm);
-            opacity: 0.7;
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
+            margin: 0;
         }
 
         /* ==================== TRENDING SECTION ==================== */
@@ -2150,6 +2136,22 @@
             font-size: 0.75rem;
             color: var(--text-secondary);
             margin-top: var(--spacing-xs);
+        }
+
+        /* Disable selection styling during export */
+        body.exporting * {
+            user-select: none !important;
+            -webkit-user-select: none !important;
+        }
+
+        body.exporting *::selection {
+            background: transparent !important;
+            color: inherit !important;
+        }
+
+        body.exporting *::-moz-selection {
+            background: transparent !important;
+            color: inherit !important;
         }
 
         /* ==================== RESPONSIVE DESIGN ==================== */
@@ -3955,6 +3957,12 @@
                 // Wait for animations to complete while overlay is still blocking
                 await new Promise(resolve => setTimeout(resolve, 800));
 
+                // Clear any text selection
+                window.getSelection()?.removeAllRanges();
+
+                // Add class to disable selection styling during export
+                document.body.classList.add('exporting');
+
                 // Now hide elements just before capture
                 elementsToHide.forEach(el => {
                     if (el) el.style.visibility = 'hidden';
@@ -3974,7 +3982,8 @@
                     windowHeight: mainContent.scrollHeight
                 });
 
-                // Restore hidden elements
+                // Restore hidden elements and remove exporting class
+                document.body.classList.remove('exporting');
                 elementsToHide.forEach(el => {
                     if (el) el.style.visibility = '';
                 });
