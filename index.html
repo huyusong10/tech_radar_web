@@ -416,6 +416,40 @@
             color: var(--text-secondary);
         }
 
+        /* Header Stats Button */
+        .header-stats {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            padding: 0.4rem 0.8rem;
+            background: rgba(255, 0, 255, 0.1);
+            border: 1px solid rgba(255, 0, 255, 0.3);
+            border-radius: var(--radius-md);
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .header-stats:hover {
+            background: rgba(255, 0, 255, 0.2);
+            border-color: rgba(255, 0, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .stats-icon {
+            font-size: 0.9rem;
+        }
+
+        .stats-label {
+            color: var(--accent-pink);
+            font-weight: 600;
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+        }
+
         /* Header Authors */
         /* Header Crew Section (Editors + Contributors) */
         .header-crew {
@@ -1727,6 +1761,169 @@
             color: var(--text-primary);
         }
 
+        /* Stats Modal Styles */
+        .stats-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--spacing-lg);
+        }
+
+        @media (max-width: 768px) {
+            .stats-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .stats-section {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+        }
+
+        .stats-section-title {
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-xs);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+        }
+
+        .stats-section-title.contributions {
+            color: var(--accent-green);
+        }
+
+        .stats-section-title.likes {
+            color: var(--accent-pink);
+        }
+
+        .stats-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .stats-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: var(--radius-sm);
+            transition: background 0.2s ease;
+        }
+
+        .stats-item:hover {
+            background: rgba(0, 243, 255, 0.1);
+        }
+
+        .stats-rank {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            min-width: 2rem;
+        }
+
+        .stats-rank.top-1 {
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        .stats-rank.top-2 {
+            color: #c0c0c0;
+            text-shadow: 0 0 10px rgba(192, 192, 192, 0.5);
+        }
+
+        .stats-rank.top-3 {
+            color: #cd7f32;
+            text-shadow: 0 0 10px rgba(205, 127, 50, 0.5);
+        }
+
+        .stats-author {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+        }
+
+        .stats-author-avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1px solid rgba(0, 243, 255, 0.3);
+        }
+
+        .stats-author-name {
+            color: var(--accent-cyan);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .stats-count {
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            font-weight: 700;
+            padding: 0.2rem 0.5rem;
+            border-radius: var(--radius-sm);
+        }
+
+        .stats-count.contributions {
+            color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.1);
+        }
+
+        .stats-count.likes {
+            color: var(--accent-pink);
+            background: rgba(255, 0, 255, 0.1);
+        }
+
+        .stats-summary {
+            display: flex;
+            justify-content: center;
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
+            padding: var(--spacing-md);
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.1), rgba(255, 0, 255, 0.1));
+            border-radius: var(--radius-md);
+        }
+
+        .stats-total {
+            text-align: center;
+        }
+
+        .stats-total-value {
+            font-family: var(--font-mono);
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: block;
+        }
+
+        .stats-total-value.contributions {
+            color: var(--accent-green);
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .stats-total-value.likes {
+            color: var(--accent-pink);
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+        }
+
+        .stats-total-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .stats-empty {
+            color: var(--text-secondary);
+            font-style: italic;
+            text-align: center;
+            padding: var(--spacing-md);
+        }
+
         /* ==================== RESPONSIVE DESIGN ==================== */
         @media (max-width: 1024px) {
             .sidebar {
@@ -1871,6 +2068,10 @@
                     </div>
                 </div>
             </div>
+            <div class="header-stats" onclick="openStatsModal()">
+                <span class="stats-icon">📊</span>
+                <span class="stats-label">Stats</span>
+            </div>
             <div class="header-views">
                 <span class="views-icon">👁️</span>
                 <span class="views-count" id="page-views">--</span>
@@ -1937,6 +2138,19 @@
             </div>
             <div class="modal-body" id="submit-modal-body">
                 Loading...
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== STATS MODAL ==================== -->
+    <div class="modal-overlay" id="stats-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">📊 Author Statistics</span>
+                <button class="modal-close" onclick="closeStatsModal()">×</button>
+            </div>
+            <div class="modal-body" id="stats-modal-body">
+                <div class="stats-loading">Loading statistics...</div>
             </div>
         </div>
     </div>
@@ -3105,10 +3319,116 @@
             document.body.style.overflow = '';
         }
 
+        // Stats modal functions
+        let statsLoaded = false;
+        let cachedAuthors = null;
+
+        async function openStatsModal() {
+            const modal = document.getElementById('stats-modal');
+            const modalBody = document.getElementById('stats-modal-body');
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+
+            // Load content
+            if (!statsLoaded) {
+                try {
+                    // Fetch stats and authors in parallel
+                    const [statsResponse, authorsResponse] = await Promise.all([
+                        fetch('/api/stats'),
+                        cachedAuthors ? Promise.resolve({ ok: true, json: () => Promise.resolve(cachedAuthors) }) : fetch('/api/authors')
+                    ]);
+
+                    if (!statsResponse.ok) throw new Error('Failed to fetch stats');
+
+                    const stats = await statsResponse.json();
+                    if (!cachedAuthors && authorsResponse.ok) {
+                        cachedAuthors = await authorsResponse.json();
+                    }
+
+                    // Build authors map
+                    const authorsMap = {};
+                    if (cachedAuthors && cachedAuthors.authors) {
+                        cachedAuthors.authors.forEach(author => {
+                            authorsMap[author.id] = author;
+                        });
+                    }
+
+                    // Render stats
+                    modalBody.innerHTML = renderStats(stats, authorsMap);
+                    statsLoaded = true;
+                } catch (error) {
+                    console.error('Error loading stats:', error);
+                    modalBody.innerHTML = '<p class="stats-empty">Failed to load statistics. Please try again.</p>';
+                }
+            }
+        }
+
+        function renderStats(stats, authorsMap) {
+            const { contributionRanking, likeRanking, totalContributions, totalLikes } = stats;
+
+            const renderRankingItem = (item, index, type) => {
+                const author = authorsMap[item.authorId] || { name: item.authorId, avatar: '' };
+                const rankClass = index === 0 ? 'top-1' : index === 1 ? 'top-2' : index === 2 ? 'top-3' : '';
+                const avatarHtml = author.avatar
+                    ? `<img src="${author.avatar}" alt="${author.name}" class="stats-author-avatar">`
+                    : '';
+
+                return `
+                    <li class="stats-item">
+                        <span class="stats-rank ${rankClass}">#${index + 1}</span>
+                        <div class="stats-author">
+                            ${avatarHtml}
+                            <span class="stats-author-name">${author.name || item.authorId}</span>
+                        </div>
+                        <span class="stats-count ${type}">${item.count}</span>
+                    </li>
+                `;
+            };
+
+            const contributionsList = contributionRanking.length > 0
+                ? `<ul class="stats-list">${contributionRanking.map((item, i) => renderRankingItem(item, i, 'contributions')).join('')}</ul>`
+                : '<p class="stats-empty">No contributions yet</p>';
+
+            const likesList = likeRanking.length > 0
+                ? `<ul class="stats-list">${likeRanking.map((item, i) => renderRankingItem(item, i, 'likes')).join('')}</ul>`
+                : '<p class="stats-empty">No likes yet</p>';
+
+            return `
+                <div class="stats-summary">
+                    <div class="stats-total">
+                        <span class="stats-total-value contributions">${totalContributions}</span>
+                        <span class="stats-total-label">Total Articles</span>
+                    </div>
+                    <div class="stats-total">
+                        <span class="stats-total-value likes">${totalLikes}</span>
+                        <span class="stats-total-label">Total Likes</span>
+                    </div>
+                </div>
+                <div class="stats-container">
+                    <div class="stats-section">
+                        <div class="stats-section-title contributions">📝 Contribution Ranking</div>
+                        ${contributionsList}
+                    </div>
+                    <div class="stats-section">
+                        <div class="stats-section-title likes">❤️ Like Ranking</div>
+                        ${likesList}
+                    </div>
+                </div>
+            `;
+        }
+
+        function closeStatsModal() {
+            const modal = document.getElementById('stats-modal');
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
         // Close modal on overlay click
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) {
                 closeSubmitModal();
+                closeStatsModal();
             }
         });
 
@@ -3116,6 +3436,7 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 closeSubmitModal();
+                closeStatsModal();
             }
         });
 

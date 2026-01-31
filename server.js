@@ -862,6 +862,87 @@ app.post('/api/views/:vol', rateLimitMiddleware('write'), async (req, res) => {
     }
 });
 
+// GET /api/stats - Get author statistics (contribution count and like count rankings)
+app.get('/api/stats', rateLimitMiddleware('read'), async (req, res) => {
+    const cacheKey = 'stats';
+    let stats = cache.get(cacheKey);
+
+    if (!stats) {
+        try {
+            // Get all volumes
+            const volumesDir = getVolumesDir(false);
+            const volDirs = await fsPromises.readdir(volumesDir, { withFileTypes: true });
+            const volumes = volDirs
+                .filter(d => d.isDirectory() && d.name.startsWith('vol-'))
+                .map(d => d.name.replace('vol-', ''));
+
+            // Aggregate stats per author
+            const authorStats = {}; // { authorId: { contributions: 0, likes: 0 } }
+
+            for (const vol of volumes) {
+                const contributionsDir = path.join(volumesDir, `vol-${vol}`, 'contributions');
+                try {
+                    const dirs = await fsPromises.readdir(contributionsDir, { withFileTypes: true });
+                    for (const dir of dirs) {
+                        if (!dir.isDirectory()) continue;
+
+                        const indexPath = path.join(contributionsDir, dir.name, 'index.md');
+                        try {
+                            const content = await fsPromises.readFile(indexPath, 'utf8');
+                            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+                            if (frontmatterMatch) {
+                                const frontmatter = yaml.load(frontmatterMatch[1]);
+                                const authorIds = frontmatter.author_ids || (frontmatter.author_id ? [frontmatter.author_id] : []);
+
+                                // Get likes for this article
+                                const articleId = `${vol}-${dir.name}`;
+                                const articleLikes = likesData[articleId] || 0;
+
+                                // Add stats for each author
+                                for (const authorId of authorIds) {
+                                    if (!authorStats[authorId]) {
+                                        authorStats[authorId] = { contributions: 0, likes: 0 };
+                                    }
+                                    authorStats[authorId].contributions += 1;
+                                    authorStats[authorId].likes += articleLikes;
+                                }
+                            }
+                        } catch (e) {
+                            // Skip files that can't be read
+                        }
+                    }
+                } catch (e) {
+                    // Skip volumes without contributions
+                }
+            }
+
+            // Convert to sorted arrays
+            const contributionRanking = Object.entries(authorStats)
+                .map(([authorId, data]) => ({ authorId, count: data.contributions }))
+                .sort((a, b) => b.count - a.count);
+
+            const likeRanking = Object.entries(authorStats)
+                .map(([authorId, data]) => ({ authorId, count: data.likes }))
+                .sort((a, b) => b.count - a.count);
+
+            stats = {
+                contributionRanking,
+                likeRanking,
+                totalContributions: contributionRanking.reduce((sum, r) => sum + r.count, 0),
+                totalLikes: likeRanking.reduce((sum, r) => sum + r.count, 0)
+            };
+
+            cache.set(cacheKey, stats, CONFIG.CACHE_TTL.contributions);
+        } catch (error) {
+            console.error('Error generating stats:', error);
+            return res.status(500).json({ error: 'Failed to generate stats' });
+        }
+    }
+
+    res.set('Cache-Control', 'public, max-age=30');
+    res.json(stats);
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({
