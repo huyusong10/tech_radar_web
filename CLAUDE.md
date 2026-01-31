@@ -212,7 +212,7 @@ editors:
 
 ```markdown
 ---
-author_id: "zhang_wei"
+author_id: "zhang_wei"        # 单作者模式
 title: "文章标题"
 description: "简短描述（1-2 句话）"
 ---
@@ -225,6 +225,22 @@ description: "简短描述（1-2 句话）"
 代码内容
 \```
 ```
+
+**多作者模式（支持 1-2 位作者）：**
+
+```markdown
+---
+author_ids:                   # 多作者模式（使用 author_ids 数组）
+  - "zhang_wei"
+  - "lisa_chen"
+title: "协作文章标题"
+description: "由两位作者共同撰写的文章"
+---
+
+正文内容...
+```
+
+> **注意**：`author_id` 和 `author_ids` 二选一。多作者模式最多支持 2 位作者，超出部分将被忽略。
 
 ### 统一作者文件 (shared/authors.md)
 

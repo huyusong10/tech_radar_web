@@ -27,6 +27,13 @@ const DATA_DIR = path.join(CONTENTS_DIR, 'data');
 const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
 const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
 
+// ==================== LOAD TEST MODE ====================
+// Set LOAD_TEST_MODE=true to relax rate limits and connection limits for benchmarking
+const LOAD_TEST_MODE = process.env.LOAD_TEST_MODE === 'true';
+if (LOAD_TEST_MODE) {
+    console.log('⚠️  LOAD TEST MODE ENABLED - Rate limits and connection limits are relaxed');
+}
+
 // ==================== CONCURRENCY CONFIGURATION ====================
 const CONFIG = {
     // Cache TTL in milliseconds
@@ -36,12 +43,12 @@ const CONFIG = {
         volumes: 30000,     // 30 seconds for volumes list
         contributions: 30000 // 30 seconds for contributions
     },
-    // Rate limiting
+    // Rate limiting (relaxed in LOAD_TEST_MODE)
     RATE_LIMIT: {
         windowMs: 60000,    // 1 minute window
         maxRequests: {
-            read: 240,      // 100 read requests per minute per IP
-            write: 20       // 20 write requests per minute per IP
+            read: LOAD_TEST_MODE ? 100000 : 240,    // Effectively unlimited in test mode
+            write: LOAD_TEST_MODE ? 10000 : 20      // Effectively unlimited in test mode
         }
     },
     // Lock timeout in milliseconds
@@ -801,8 +808,8 @@ async function startServer() {
 // Store SSE clients for hot reload notifications
 const sseClients = new Map(); // Map<response, { connectedAt, ip }>
 const SSE_CONFIG = {
-    MAX_CLIENTS_TOTAL: 1000,   // Maximum total SSE connections (for high concurrency)
-    MAX_CLIENTS_PER_IP: 5,     // Maximum SSE connections per IP (prevent single client abuse)
+    MAX_CLIENTS_TOTAL: LOAD_TEST_MODE ? 10000 : 1000,  // Relaxed in test mode
+    MAX_CLIENTS_PER_IP: LOAD_TEST_MODE ? 10000 : 5,    // Effectively unlimited per IP in test mode
     HEARTBEAT_INTERVAL: 30000  // Send heartbeat every 30 seconds
 };
 

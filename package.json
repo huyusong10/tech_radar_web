@@ -4,7 +4,14 @@
   "description": "Tech Radar Weekly - Cyberpunk style tech newsletter",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "start:test": "LOAD_TEST_MODE=true node server.js",
+    "test:load": "node tests/load-test.js",
+    "test:load:api": "node tests/load-test.js --test api --concurrency 500",
+    "test:load:sse": "node tests/load-test.js --test sse --concurrency 100",
+    "test:load:1k": "node tests/load-test.js --test api --concurrency 1000 --duration 60",
+    "test:load:volume": "node tests/load-test.js --test volume --concurrency 200",
+    "test:benchmark": "node tests/load-test.js --test benchmark"
   },
   "dependencies": {
     "chokidar": "^3.5.3",

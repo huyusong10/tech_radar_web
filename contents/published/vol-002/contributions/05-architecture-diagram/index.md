@@ -1,5 +1,7 @@
 ---
-author_id: "wang_fang"
+author_ids:
+  - "wang_fang"
+  - "lisa_chen"
 title: "微服务架构演进路线图"
 description: "从单体应用到微服务的完整演进路径，包含关键技术选型和实践经验。"
 ---

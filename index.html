@@ -344,33 +344,10 @@
             text-shadow:
                 0 0 10px rgba(0, 243, 255, 0.8),
                 0 0 20px rgba(0, 243, 255, 0.6),
-                0 0 30px rgba(0, 243, 255, 0.4),
-                0 0 40px rgba(255, 0, 255, 0.4),
-                0 0 70px rgba(255, 0, 255, 0.2),
-                0 0 100px rgba(255, 0, 255, 0.1);
+                0 0 40px rgba(255, 0, 255, 0.4);
             margin-bottom: var(--spacing-md);
             letter-spacing: 4px;
-            animation: pulse-glow 3s ease-in-out infinite;
-        }
-
-        @keyframes pulse-glow {
-            0%, 100% {
-                text-shadow:
-                    0 0 10px rgba(0, 243, 255, 0.8),
-                    0 0 20px rgba(0, 243, 255, 0.6),
-                    0 0 30px rgba(0, 243, 255, 0.4),
-                    0 0 40px rgba(255, 0, 255, 0.4),
-                    0 0 70px rgba(255, 0, 255, 0.2);
-            }
-            50% {
-                text-shadow:
-                    0 0 15px rgba(0, 243, 255, 1),
-                    0 0 30px rgba(0, 243, 255, 0.8),
-                    0 0 45px rgba(0, 243, 255, 0.6),
-                    0 0 60px rgba(255, 0, 255, 0.6),
-                    0 0 90px rgba(255, 0, 255, 0.4),
-                    0 0 120px rgba(255, 0, 255, 0.2);
-            }
+            /* Static glow - animation removed for performance */
         }
 
         .logo::before {
@@ -496,24 +473,15 @@
             font-family: var(--font-mono);
             font-size: 0.8rem;
             transition: all 0.3s ease;
-            animation: author-glow 3s ease-in-out infinite;
             cursor: pointer;
+            /* Static glow - animation removed for performance */
+            box-shadow: 0 0 5px rgba(0, 243, 255, 0.2);
         }
 
         .author-badge:hover {
             transform: translateY(-2px);
+            border-color: rgba(255, 0, 255, 0.5);
             box-shadow: 0 5px 20px rgba(0, 243, 255, 0.3);
-        }
-
-        @keyframes author-glow {
-            0%, 100% {
-                border-color: rgba(0, 243, 255, 0.3);
-                box-shadow: 0 0 5px rgba(0, 243, 255, 0.2);
-            }
-            50% {
-                border-color: rgba(255, 0, 255, 0.5);
-                box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
-            }
         }
 
         .author-badge img {
@@ -745,16 +713,8 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            animation: text-glow 2s ease-in-out infinite alternate;
-        }
-
-        @keyframes text-glow {
-            from {
-                filter: drop-shadow(0 0 5px rgba(0, 243, 255, 0.5));
-            }
-            to {
-                filter: drop-shadow(0 0 15px rgba(255, 0, 255, 0.8));
-            }
+            /* Static glow effect - no animation for better performance */
+            filter: drop-shadow(0 0 8px rgba(0, 243, 255, 0.6));
         }
 
         /* Section Header with Toggle */
@@ -888,18 +848,7 @@
             transform: translateY(0);
         }
 
-        .trending-details p {
-            margin: 0;
-        }
-
-        .trending-details code {
-            background: rgba(0, 243, 255, 0.1);
-            padding: 0.1rem 0.4rem;
-            border-radius: 3px;
-            font-family: var(--font-mono);
-            font-size: 0.85em;
-            color: var(--accent-cyan);
-        }
+        /* Trending-specific code styling handled by shared markdown styles above */
 
         .badge {
             font-family: var(--font-mono);
@@ -990,6 +939,26 @@
             flex-shrink: 0;
         }
 
+        /* Multi-author avatar group */
+        .card-header .author-avatars {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .card-header .author-avatars .author-avatar {
+            margin-left: -12px;
+            box-shadow: 0 0 0 2px var(--bg-card);
+        }
+
+        .card-header .author-avatars .author-avatar:first-child {
+            margin-left: 0;
+        }
+
+        .card-header .author-avatars .author-avatar:nth-child(2) {
+            border-color: var(--accent-pink);
+        }
+
         .card-header .card-title-area {
             flex: 1;
             min-width: 0;
@@ -1069,32 +1038,252 @@
             padding: 0 var(--spacing-lg) var(--spacing-lg);
         }
 
-        /* Links in card content */
-        .card-body-inner a {
+        /* Links in card and trending content */
+        .card-body-inner a,
+        .trending-details-inner a {
             color: var(--accent-cyan);
             text-decoration: none;
             border-bottom: 1px solid rgba(0, 243, 255, 0.3);
             transition: all 0.2s ease;
         }
 
-        .card-body-inner a:hover {
+        .card-body-inner a:hover,
+        .trending-details-inner a:hover {
             color: var(--accent-pink);
             border-bottom-color: var(--accent-pink);
             text-shadow: 0 0 8px rgba(255, 0, 255, 0.5);
         }
 
-        .card-body-inner a:visited {
+        .card-body-inner a:visited,
+        .trending-details-inner a:visited {
             color: var(--accent-purple);
             border-bottom-color: rgba(168, 85, 247, 0.3);
         }
 
-        /* Responsive images in card content */
-        .card-body-inner img {
+        /* Responsive images in card and trending content */
+        .card-body-inner img,
+        .trending-details-inner img {
             max-width: 100%;
             height: auto;
             border-radius: var(--radius-sm);
-            margin: var(--spacing-sm) 0;
+            margin: var(--spacing-md) 0;
             display: block;
+        }
+
+        /* ==================== MARKDOWN TYPOGRAPHY (Typora-like) ==================== */
+        /* Shared markdown content styling for card-body-inner and trending-details-inner */
+        .card-body-inner,
+        .trending-details-inner {
+            line-height: 1.8;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+        }
+
+        /* Paragraphs */
+        .card-body-inner p,
+        .trending-details-inner p {
+            margin: 0 0 1.2em 0;
+            line-height: 1.8;
+        }
+
+        .card-body-inner p:last-child,
+        .trending-details-inner p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Headings */
+        .card-body-inner h1,
+        .card-body-inner h2,
+        .card-body-inner h3,
+        .card-body-inner h4,
+        .card-body-inner h5,
+        .card-body-inner h6,
+        .trending-details-inner h1,
+        .trending-details-inner h2,
+        .trending-details-inner h3,
+        .trending-details-inner h4,
+        .trending-details-inner h5,
+        .trending-details-inner h6 {
+            color: var(--text-primary);
+            font-weight: 600;
+            line-height: 1.4;
+            margin-top: 1.8em;
+            margin-bottom: 0.8em;
+        }
+
+        .card-body-inner h1:first-child,
+        .card-body-inner h2:first-child,
+        .card-body-inner h3:first-child,
+        .trending-details-inner h1:first-child,
+        .trending-details-inner h2:first-child,
+        .trending-details-inner h3:first-child {
+            margin-top: 0;
+        }
+
+        .card-body-inner h1,
+        .trending-details-inner h1 {
+            font-size: 1.6em;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+            padding-bottom: 0.4em;
+        }
+
+        .card-body-inner h2,
+        .trending-details-inner h2 {
+            font-size: 1.35em;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 0.3em;
+        }
+
+        .card-body-inner h3,
+        .trending-details-inner h3 {
+            font-size: 1.15em;
+        }
+
+        .card-body-inner h4,
+        .trending-details-inner h4 {
+            font-size: 1.05em;
+        }
+
+        /* Lists */
+        .card-body-inner ul,
+        .card-body-inner ol,
+        .trending-details-inner ul,
+        .trending-details-inner ol {
+            margin: 0 0 1.2em 0;
+            padding-left: 1.8em;
+        }
+
+        .card-body-inner li,
+        .trending-details-inner li {
+            margin-bottom: 0.5em;
+            line-height: 1.7;
+        }
+
+        .card-body-inner li:last-child,
+        .trending-details-inner li:last-child {
+            margin-bottom: 0;
+        }
+
+        .card-body-inner ul ul,
+        .card-body-inner ul ol,
+        .card-body-inner ol ul,
+        .card-body-inner ol ol,
+        .trending-details-inner ul ul,
+        .trending-details-inner ul ol,
+        .trending-details-inner ol ul,
+        .trending-details-inner ol ol {
+            margin-top: 0.5em;
+            margin-bottom: 0.5em;
+        }
+
+        /* Blockquotes */
+        .card-body-inner blockquote,
+        .trending-details-inner blockquote {
+            margin: 1.2em 0;
+            padding: 0.8em 1.2em;
+            border-left: 4px solid var(--accent-cyan);
+            background: rgba(0, 243, 255, 0.05);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .card-body-inner blockquote p:last-child,
+        .trending-details-inner blockquote p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Inline code */
+        .card-body-inner code:not([class*="language-"]),
+        .trending-details-inner code:not([class*="language-"]) {
+            background: rgba(0, 243, 255, 0.1);
+            color: var(--accent-cyan);
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.88em;
+            white-space: nowrap;
+        }
+
+        /* Strong and emphasis */
+        .card-body-inner strong,
+        .trending-details-inner strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .card-body-inner em,
+        .trending-details-inner em {
+            color: var(--accent-cyan);
+            font-style: italic;
+        }
+
+        /* Horizontal rule */
+        .card-body-inner hr,
+        .trending-details-inner hr {
+            border: none;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.3), transparent);
+            margin: 2em 0;
+        }
+
+        /* Tables */
+        .card-body-inner table,
+        .trending-details-inner table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.2em 0;
+            font-size: 0.9em;
+        }
+
+        .card-body-inner th,
+        .card-body-inner td,
+        .trending-details-inner th,
+        .trending-details-inner td {
+            padding: 0.7em 1em;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: left;
+        }
+
+        .card-body-inner th,
+        .trending-details-inner th {
+            background: rgba(0, 243, 255, 0.1);
+            color: var(--accent-cyan);
+            font-weight: 600;
+            font-family: var(--font-mono);
+            font-size: 0.85em;
+        }
+
+        .card-body-inner tr:nth-child(even),
+        .trending-details-inner tr:nth-child(even) {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Definition lists */
+        .card-body-inner dl,
+        .trending-details-inner dl {
+            margin: 1.2em 0;
+        }
+
+        .card-body-inner dt,
+        .trending-details-inner dt {
+            font-weight: 600;
+            color: var(--accent-cyan);
+            margin-top: 1em;
+        }
+
+        .card-body-inner dd,
+        .trending-details-inner dd {
+            margin-left: 1.5em;
+            margin-bottom: 0.5em;
+            color: var(--text-secondary);
+        }
+
+        /* Task lists (checkboxes) */
+        .card-body-inner input[type="checkbox"],
+        .trending-details-inner input[type="checkbox"] {
+            margin-right: 0.5em;
+            accent-color: var(--accent-cyan);
         }
 
         .contribution-title {
@@ -1322,18 +1511,11 @@
             inset: 0;
             border-radius: 50px;
             padding: 2px;
-            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink), var(--accent-cyan));
-            background-size: 200% 200%;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
             -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
             -webkit-mask-composite: xor;
             mask-composite: exclude;
-            animation: gradient-rotate 3s linear infinite;
-        }
-
-        @keyframes gradient-rotate {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+            /* Static gradient border - animation removed for performance */
         }
 
         .submit-button::after {
@@ -1359,12 +1541,7 @@
 
         .submit-button .btn-icon {
             font-size: 1.3rem;
-            animation: pulse-icon 2s ease-in-out infinite;
-        }
-
-        @keyframes pulse-icon {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.2); }
+            /* Static icon - animation removed for performance */
         }
 
         .submit-button .btn-text-en {
@@ -1626,6 +1803,21 @@
         ::-webkit-scrollbar-thumb:hover {
             background: var(--accent-pink);
         }
+
+        /* ==================== PERFORMANCE OPTIMIZATIONS ==================== */
+        /* Pause animations on hidden modal elements */
+        .modal-overlay:not(.active) * {
+            animation-play-state: paused !important;
+        }
+
+        /* Reduce motion for users who prefer it */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1744,8 +1936,10 @@
     </div>
 
     <script>
-        // Configure marked with highlight.js
+        // Configure marked with highlight.js and GFM breaks
         marked.setOptions({
+            breaks: true,  // Convert single newlines to <br>
+            gfm: true,     // Enable GitHub Flavored Markdown
             highlight: function(code, lang) {
                 if (lang && hljs.getLanguage(lang)) {
                     return hljs.highlight(code, { language: lang }).value;
@@ -1825,6 +2019,13 @@
         let PUBLISHED_DIR = '/contents/published';
         let SHARED_DIR = '/contents/shared';
         let ASSETS_DIR = '/contents/assets';
+        let CONTENT_DIR = '/contents/published'; // Active content directory (published or draft)
+
+        // Check if we're in draft mode
+        function isDraftMode() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('draft') === 'true';
+        }
 
         // Load site paths from API (for dynamic configuration)
         async function loadSitePaths() {
@@ -1840,6 +2041,8 @@
                 // Use defaults if API not available
                 console.log('Using default content paths');
             }
+            // Set active content directory based on draft mode
+            CONTENT_DIR = isDraftMode() ? '/contents/draft' : PUBLISHED_DIR;
         }
 
         // Parse frontmatter from markdown
@@ -2105,9 +2308,23 @@
         }
 
         // Render radar items
-        function renderRadar(metadata, content) {
+        function renderRadar(metadata, content, volPath = '') {
             // Update header with issue-specific VOL and date
             document.getElementById('header-meta').innerHTML = `VOL.${metadata.vol}<span>|</span>${metadata.date}`;
+
+            // Convert relative image paths to absolute paths for radar.md content
+            let processedContent = content;
+            if (volPath) {
+                const normalizedPath = volPath.startsWith('/') ? volPath : `/${volPath}`;
+                // Replace relative image paths like ./image.svg or image.svg
+                processedContent = content.replace(
+                    /!\[([^\]]*)\]\(\.\/([^)]+)\)/g,
+                    `![$1](${normalizedPath}/$2)`
+                ).replace(
+                    /!\[([^\]]*)\]\((?!\/|https?:\/\/)([^)]+)\)/g,
+                    `![$1](${normalizedPath}/$2)`
+                );
+            }
 
             // Render editors from radar.md metadata (per-issue editors)
             // Editors reference authors from content/authors.md by author_id
@@ -2153,7 +2370,7 @@
             // Parse trending items from markdown
             // Line endings are already normalized in parseFrontmatter, but handle here too for safety
             const trendingSection = document.querySelector('.trending-list');
-            const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const normalizedContent = processedContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             const lines = normalizedContent.split('\n');
             const items = [];
 
@@ -2274,15 +2491,48 @@
 
         // Render contribution card with collapsible structure
         function renderContribution(metadata, content, articleId, folderPath = '') {
-            // Get author data from authorsData using author_id
-            const author = metadata.author_id ? authorsData[metadata.author_id] : null;
+            // Support multi-author mode: author_ids (array) or author_id (single)
+            let authors = [];
+
+            if (metadata.author_ids && Array.isArray(metadata.author_ids)) {
+                // Multi-author mode: use author_ids array (limit to 2)
+                authors = metadata.author_ids.slice(0, 2)
+                    .map(id => authorsData[id])
+                    .filter(a => a);
+            } else if (metadata.author_id) {
+                // Single author mode: use author_id
+                const author = authorsData[metadata.author_id];
+                if (author) authors = [author];
+            }
 
             // Fallback to old format if author is embedded in metadata
-            const authorInfo = author || metadata.author || {
-                name: 'Unknown Author',
-                team: 'Unknown Team',
-                avatar: '/assets/images/avatars/default.jpg'
-            };
+            if (authors.length === 0 && metadata.author) {
+                authors = [metadata.author];
+            }
+
+            // Default fallback
+            if (authors.length === 0) {
+                authors = [{
+                    name: 'Unknown Author',
+                    team: 'Unknown Team',
+                    avatar: '/assets/images/avatars/default.jpg',
+                    role: 'Contributor'
+                }];
+            }
+
+            // Generate avatar HTML based on number of authors
+            const avatarHtml = authors.length === 1
+                ? `<img src="${authors[0].avatar}" alt="Author Avatar" class="author-avatar">`
+                : `<div class="author-avatars">
+                    ${authors.map(a => `<img src="${a.avatar}" alt="Author Avatar" class="author-avatar">`).join('')}
+                   </div>`;
+
+            // Generate author info text
+            const authorNames = authors.map(a => a.name).join(' & ');
+            const authorTeams = [...new Set(authors.map(a => a.team))].join(' / ');
+            const authorRoles = authors.length === 1
+                ? (authors[0].role || 'Contributor')
+                : authors.map(a => a.role || 'Contributor').join(' & ');
 
             // Convert relative image paths to absolute paths
             let processedContent = content;
@@ -2350,10 +2600,10 @@
             return `
                 <div class="contribution-card" data-article-id="${articleId}">
                     <div class="card-header" onclick="toggleContributionCard(this)">
-                        <img src="${authorInfo.avatar}" alt="Author Avatar" class="author-avatar">
+                        ${avatarHtml}
                         <div class="card-title-area">
                             <h3 class="contribution-title">${metadata.title}</h3>
-                            <div class="author-name">${authorInfo.name} · ${authorInfo.team}<span class="author-role-tag">${authorInfo.role || 'Contributor'}</span></div>
+                            <div class="author-name">${authorNames} · ${authorTeams}<span class="author-role-tag">${authorRoles}</span></div>
                         </div>
                         <div class="card-stats">
                             <span class="stat-likes">
@@ -2450,7 +2700,7 @@
 
         // Pre-fetch all contributor authors for header display
         async function prefetchContributors(vol, folders) {
-            const basePath = `${PUBLISHED_DIR}/vol-${vol}/contributions`;
+            const basePath = `${CONTENT_DIR}/vol-${vol}/contributions`;
 
             // Fetch all contribution metadata in parallel
             const fetchPromises = folders.map(async (folder) => {
@@ -2459,15 +2709,19 @@
                     if (!response.ok) return null;
                     const content = await response.text();
                     const { metadata } = parseFrontmatter(content);
-                    return metadata.author_id || null;
+                    // Support multi-author mode
+                    if (metadata.author_ids && Array.isArray(metadata.author_ids)) {
+                        return metadata.author_ids.slice(0, 2);
+                    }
+                    return metadata.author_id ? [metadata.author_id] : null;
                 } catch {
                     return null;
                 }
             });
 
-            const authorIds = await Promise.all(fetchPromises);
-            authorIds.forEach(id => {
-                if (id) contributorIds.add(id);
+            const authorIdArrays = await Promise.all(fetchPromises);
+            authorIdArrays.forEach(ids => {
+                if (ids) ids.forEach(id => contributorIds.add(id));
             });
             renderContributors();
         }
@@ -2504,7 +2758,7 @@
             if (loadedContributions >= contributionFolders.length) return;
 
             const contributionsGrid = document.querySelector('.contributions-grid');
-            const basePath = `${PUBLISHED_DIR}/vol-${currentVolume}/contributions`;
+            const basePath = `${CONTENT_DIR}/vol-${currentVolume}/contributions`;
 
             // Remove loading sentinel if exists
             const sentinel = document.getElementById('contributions-sentinel');
@@ -2520,8 +2774,10 @@
                     const { metadata, content: markdownContent } = parseFrontmatter(content);
                     const articleId = `${currentVolume}-${folder}`;
                     const folderPath = `${basePath}/${folder}`;
-                    // Collect contributor author_id
-                    if (metadata.author_id) {
+                    // Collect contributor author_ids (support multi-author)
+                    if (metadata.author_ids && Array.isArray(metadata.author_ids)) {
+                        metadata.author_ids.slice(0, 2).forEach(id => contributorIds.add(id));
+                    } else if (metadata.author_id) {
                         contributorIds.add(metadata.author_id);
                     }
                     return { html: renderContribution(metadata, markdownContent, articleId, folderPath), folder };
@@ -2641,10 +2897,11 @@
 
             // Load radar content - this is important for the main view
             try {
-                const radarContent = await loadMarkdown(`${PUBLISHED_DIR}/vol-${vol}/radar.md`);
+                const volPath = `${CONTENT_DIR}/vol-${vol}`;
+                const radarContent = await loadMarkdown(`${volPath}/radar.md`);
                 if (radarContent) {
                     const { metadata, content } = parseFrontmatter(radarContent);
-                    renderRadar(metadata, content);
+                    renderRadar(metadata, content, volPath);
                 } else {
                     console.warn(`No radar content found for vol-${vol}`);
                     // Show a message in trending section
