@@ -888,18 +888,7 @@
             transform: translateY(0);
         }
 
-        .trending-details p {
-            margin: 0;
-        }
-
-        .trending-details code {
-            background: rgba(0, 243, 255, 0.1);
-            padding: 0.1rem 0.4rem;
-            border-radius: 3px;
-            font-family: var(--font-mono);
-            font-size: 0.85em;
-            color: var(--accent-cyan);
-        }
+        /* Trending-specific code styling handled by shared markdown styles above */
 
         .badge {
             font-family: var(--font-mono);
@@ -988,6 +977,26 @@
             border: 2px solid var(--accent-cyan);
             object-fit: cover;
             flex-shrink: 0;
+        }
+
+        /* Multi-author avatar group */
+        .card-header .author-avatars {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .card-header .author-avatars .author-avatar {
+            margin-left: -12px;
+            box-shadow: 0 0 0 2px var(--bg-card);
+        }
+
+        .card-header .author-avatars .author-avatar:first-child {
+            margin-left: 0;
+        }
+
+        .card-header .author-avatars .author-avatar:nth-child(2) {
+            border-color: var(--accent-pink);
         }
 
         .card-header .card-title-area {
@@ -1093,8 +1102,224 @@
             max-width: 100%;
             height: auto;
             border-radius: var(--radius-sm);
-            margin: var(--spacing-sm) 0;
+            margin: var(--spacing-md) 0;
             display: block;
+        }
+
+        /* ==================== MARKDOWN TYPOGRAPHY (Typora-like) ==================== */
+        /* Shared markdown content styling for card-body-inner and trending-details-inner */
+        .card-body-inner,
+        .trending-details-inner {
+            line-height: 1.8;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+        }
+
+        /* Paragraphs */
+        .card-body-inner p,
+        .trending-details-inner p {
+            margin: 0 0 1.2em 0;
+            line-height: 1.8;
+        }
+
+        .card-body-inner p:last-child,
+        .trending-details-inner p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Headings */
+        .card-body-inner h1,
+        .card-body-inner h2,
+        .card-body-inner h3,
+        .card-body-inner h4,
+        .card-body-inner h5,
+        .card-body-inner h6,
+        .trending-details-inner h1,
+        .trending-details-inner h2,
+        .trending-details-inner h3,
+        .trending-details-inner h4,
+        .trending-details-inner h5,
+        .trending-details-inner h6 {
+            color: var(--text-primary);
+            font-weight: 600;
+            line-height: 1.4;
+            margin-top: 1.8em;
+            margin-bottom: 0.8em;
+        }
+
+        .card-body-inner h1:first-child,
+        .card-body-inner h2:first-child,
+        .card-body-inner h3:first-child,
+        .trending-details-inner h1:first-child,
+        .trending-details-inner h2:first-child,
+        .trending-details-inner h3:first-child {
+            margin-top: 0;
+        }
+
+        .card-body-inner h1,
+        .trending-details-inner h1 {
+            font-size: 1.6em;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+            padding-bottom: 0.4em;
+        }
+
+        .card-body-inner h2,
+        .trending-details-inner h2 {
+            font-size: 1.35em;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 0.3em;
+        }
+
+        .card-body-inner h3,
+        .trending-details-inner h3 {
+            font-size: 1.15em;
+        }
+
+        .card-body-inner h4,
+        .trending-details-inner h4 {
+            font-size: 1.05em;
+        }
+
+        /* Lists */
+        .card-body-inner ul,
+        .card-body-inner ol,
+        .trending-details-inner ul,
+        .trending-details-inner ol {
+            margin: 0 0 1.2em 0;
+            padding-left: 1.8em;
+        }
+
+        .card-body-inner li,
+        .trending-details-inner li {
+            margin-bottom: 0.5em;
+            line-height: 1.7;
+        }
+
+        .card-body-inner li:last-child,
+        .trending-details-inner li:last-child {
+            margin-bottom: 0;
+        }
+
+        .card-body-inner ul ul,
+        .card-body-inner ul ol,
+        .card-body-inner ol ul,
+        .card-body-inner ol ol,
+        .trending-details-inner ul ul,
+        .trending-details-inner ul ol,
+        .trending-details-inner ol ul,
+        .trending-details-inner ol ol {
+            margin-top: 0.5em;
+            margin-bottom: 0.5em;
+        }
+
+        /* Blockquotes */
+        .card-body-inner blockquote,
+        .trending-details-inner blockquote {
+            margin: 1.2em 0;
+            padding: 0.8em 1.2em;
+            border-left: 4px solid var(--accent-cyan);
+            background: rgba(0, 243, 255, 0.05);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .card-body-inner blockquote p:last-child,
+        .trending-details-inner blockquote p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Inline code */
+        .card-body-inner code:not([class*="language-"]),
+        .trending-details-inner code:not([class*="language-"]) {
+            background: rgba(0, 243, 255, 0.1);
+            color: var(--accent-cyan);
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.88em;
+            white-space: nowrap;
+        }
+
+        /* Strong and emphasis */
+        .card-body-inner strong,
+        .trending-details-inner strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .card-body-inner em,
+        .trending-details-inner em {
+            color: var(--accent-cyan);
+            font-style: italic;
+        }
+
+        /* Horizontal rule */
+        .card-body-inner hr,
+        .trending-details-inner hr {
+            border: none;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.3), transparent);
+            margin: 2em 0;
+        }
+
+        /* Tables */
+        .card-body-inner table,
+        .trending-details-inner table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.2em 0;
+            font-size: 0.9em;
+        }
+
+        .card-body-inner th,
+        .card-body-inner td,
+        .trending-details-inner th,
+        .trending-details-inner td {
+            padding: 0.7em 1em;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: left;
+        }
+
+        .card-body-inner th,
+        .trending-details-inner th {
+            background: rgba(0, 243, 255, 0.1);
+            color: var(--accent-cyan);
+            font-weight: 600;
+            font-family: var(--font-mono);
+            font-size: 0.85em;
+        }
+
+        .card-body-inner tr:nth-child(even),
+        .trending-details-inner tr:nth-child(even) {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Definition lists */
+        .card-body-inner dl,
+        .trending-details-inner dl {
+            margin: 1.2em 0;
+        }
+
+        .card-body-inner dt,
+        .trending-details-inner dt {
+            font-weight: 600;
+            color: var(--accent-cyan);
+            margin-top: 1em;
+        }
+
+        .card-body-inner dd,
+        .trending-details-inner dd {
+            margin-left: 1.5em;
+            margin-bottom: 0.5em;
+            color: var(--text-secondary);
+        }
+
+        /* Task lists (checkboxes) */
+        .card-body-inner input[type="checkbox"],
+        .trending-details-inner input[type="checkbox"] {
+            margin-right: 0.5em;
+            accent-color: var(--accent-cyan);
         }
 
         .contribution-title {
@@ -2274,15 +2499,48 @@
 
         // Render contribution card with collapsible structure
         function renderContribution(metadata, content, articleId, folderPath = '') {
-            // Get author data from authorsData using author_id
-            const author = metadata.author_id ? authorsData[metadata.author_id] : null;
+            // Support multi-author mode: author_ids (array) or author_id (single)
+            let authors = [];
+
+            if (metadata.author_ids && Array.isArray(metadata.author_ids)) {
+                // Multi-author mode: use author_ids array (limit to 2)
+                authors = metadata.author_ids.slice(0, 2)
+                    .map(id => authorsData[id])
+                    .filter(a => a);
+            } else if (metadata.author_id) {
+                // Single author mode: use author_id
+                const author = authorsData[metadata.author_id];
+                if (author) authors = [author];
+            }
 
             // Fallback to old format if author is embedded in metadata
-            const authorInfo = author || metadata.author || {
-                name: 'Unknown Author',
-                team: 'Unknown Team',
-                avatar: '/assets/images/avatars/default.jpg'
-            };
+            if (authors.length === 0 && metadata.author) {
+                authors = [metadata.author];
+            }
+
+            // Default fallback
+            if (authors.length === 0) {
+                authors = [{
+                    name: 'Unknown Author',
+                    team: 'Unknown Team',
+                    avatar: '/assets/images/avatars/default.jpg',
+                    role: 'Contributor'
+                }];
+            }
+
+            // Generate avatar HTML based on number of authors
+            const avatarHtml = authors.length === 1
+                ? `<img src="${authors[0].avatar}" alt="Author Avatar" class="author-avatar">`
+                : `<div class="author-avatars">
+                    ${authors.map(a => `<img src="${a.avatar}" alt="Author Avatar" class="author-avatar">`).join('')}
+                   </div>`;
+
+            // Generate author info text
+            const authorNames = authors.map(a => a.name).join(' & ');
+            const authorTeams = [...new Set(authors.map(a => a.team))].join(' / ');
+            const authorRoles = authors.length === 1
+                ? (authors[0].role || 'Contributor')
+                : authors.map(a => a.role || 'Contributor').join(' & ');
 
             // Convert relative image paths to absolute paths
             let processedContent = content;
@@ -2350,10 +2608,10 @@
             return `
                 <div class="contribution-card" data-article-id="${articleId}">
                     <div class="card-header" onclick="toggleContributionCard(this)">
-                        <img src="${authorInfo.avatar}" alt="Author Avatar" class="author-avatar">
+                        ${avatarHtml}
                         <div class="card-title-area">
                             <h3 class="contribution-title">${metadata.title}</h3>
-                            <div class="author-name">${authorInfo.name} · ${authorInfo.team}<span class="author-role-tag">${authorInfo.role || 'Contributor'}</span></div>
+                            <div class="author-name">${authorNames} · ${authorTeams}<span class="author-role-tag">${authorRoles}</span></div>
                         </div>
                         <div class="card-stats">
                             <span class="stat-likes">
@@ -2459,15 +2717,19 @@
                     if (!response.ok) return null;
                     const content = await response.text();
                     const { metadata } = parseFrontmatter(content);
-                    return metadata.author_id || null;
+                    // Support multi-author mode
+                    if (metadata.author_ids && Array.isArray(metadata.author_ids)) {
+                        return metadata.author_ids.slice(0, 2);
+                    }
+                    return metadata.author_id ? [metadata.author_id] : null;
                 } catch {
                     return null;
                 }
             });
 
-            const authorIds = await Promise.all(fetchPromises);
-            authorIds.forEach(id => {
-                if (id) contributorIds.add(id);
+            const authorIdArrays = await Promise.all(fetchPromises);
+            authorIdArrays.forEach(ids => {
+                if (ids) ids.forEach(id => contributorIds.add(id));
             });
             renderContributors();
         }
@@ -2520,8 +2782,10 @@
                     const { metadata, content: markdownContent } = parseFrontmatter(content);
                     const articleId = `${currentVolume}-${folder}`;
                     const folderPath = `${basePath}/${folder}`;
-                    // Collect contributor author_id
-                    if (metadata.author_id) {
+                    // Collect contributor author_ids (support multi-author)
+                    if (metadata.author_ids && Array.isArray(metadata.author_ids)) {
+                        metadata.author_ids.slice(0, 2).forEach(id => contributorIds.add(id));
+                    } else if (metadata.author_id) {
                         contributorIds.add(metadata.author_id);
                     }
                     return { html: renderContribution(metadata, markdownContent, articleId, folderPath), folder };
