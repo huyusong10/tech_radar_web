@@ -925,15 +925,29 @@ app.get('/api/stats', rateLimitMiddleware('read'), async (req, res) => {
                 .map(([authorId, data]) => ({ authorId, count: data.likes }))
                 .sort((a, b) => b.count - a.count);
 
-            // Calculate total views
+            // Calculate totals
             const totalViews = Object.values(viewsData).reduce((sum, v) => sum + v, 0);
+            const totalContributions = contributionRanking.reduce((sum, r) => sum + r.count, 0);
+            const totalLikes = likeRanking.reduce((sum, r) => sum + r.count, 0);
+            const totalAuthors = Object.keys(authorStats).length;
+            const totalVolumes = volumes.length;
+
+            // Calculate averages
+            const avgLikesPerArticle = totalContributions > 0 ? (totalLikes / totalContributions).toFixed(1) : 0;
+            const avgViewsPerVolume = totalVolumes > 0 ? Math.round(totalViews / totalVolumes) : 0;
+            const avgArticlesPerVolume = totalVolumes > 0 ? (totalContributions / totalVolumes).toFixed(1) : 0;
 
             stats = {
                 contributionRanking,
                 likeRanking,
-                totalContributions: contributionRanking.reduce((sum, r) => sum + r.count, 0),
-                totalLikes: likeRanking.reduce((sum, r) => sum + r.count, 0),
-                totalViews
+                totalContributions,
+                totalLikes,
+                totalViews,
+                totalAuthors,
+                totalVolumes,
+                avgLikesPerArticle,
+                avgViewsPerVolume,
+                avgArticlesPerVolume
             };
 
             cache.set(cacheKey, stats, CONFIG.CACHE_TTL.contributions);
