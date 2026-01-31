@@ -26,6 +26,10 @@ const ASSETS_DIR = path.join(CONTENTS_DIR, 'assets');
 const DATA_DIR = path.join(CONTENTS_DIR, 'data');
 const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
 const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
+const LIKE_RECORDS_FILE = path.join(DATA_DIR, 'like-records.json');
+
+// Crypto for generating visitor IDs
+const crypto = require('crypto');
 
 // ==================== LOAD TEST MODE ====================
 // Set LOAD_TEST_MODE=true to relax rate limits and connection limits for benchmarking
@@ -223,6 +227,7 @@ const writeQueue = new WriteQueue();
 // In-memory data store (loaded on startup, persisted periodically)
 let likesData = {};
 let viewsData = {};
+let likeRecordsData = {}; // { visitorKey: [articleId1, articleId2, ...] }
 let dataLoaded = false;
 
 // Global watcher reference (declared here so gracefulShutdown can access it)
@@ -253,6 +258,13 @@ async function loadDataFiles() {
         viewsData = {};
     }
 
+    try {
+        const likeRecordsContent = await fsPromises.readFile(LIKE_RECORDS_FILE, 'utf8');
+        likeRecordsData = JSON.parse(likeRecordsContent);
+    } catch {
+        likeRecordsData = {};
+    }
+
     dataLoaded = true;
     console.log('Data files loaded into memory');
 }
@@ -260,6 +272,7 @@ async function loadDataFiles() {
 // Periodic persistence (every 5 seconds if dirty)
 let likesDirty = false;
 let viewsDirty = false;
+let likeRecordsDirty = false;
 
 async function persistData() {
     if (likesDirty) {
@@ -277,6 +290,15 @@ async function persistData() {
             viewsDirty = false;
         } catch (error) {
             console.error('Failed to persist views:', error);
+        }
+    }
+
+    if (likeRecordsDirty) {
+        try {
+            await writeQueue.scheduleWrite(LIKE_RECORDS_FILE, likeRecordsData);
+            likeRecordsDirty = false;
+        } catch (error) {
+            console.error('Failed to persist like records:', error);
         }
     }
 }
@@ -343,6 +365,79 @@ function getClientIP(req) {
     return req.headers['x-forwarded-for']?.split(',')[0].trim() ||
            req.connection.remoteAddress ||
            'unknown';
+}
+
+// ==================== VISITOR ID & LIKE TRACKING ====================
+
+// Parse cookies from request header
+function parseCookies(req) {
+    const cookies = {};
+    const cookieHeader = req.headers.cookie;
+    if (cookieHeader) {
+        cookieHeader.split(';').forEach(cookie => {
+            const [name, ...rest] = cookie.split('=');
+            cookies[name.trim()] = rest.join('=').trim();
+        });
+    }
+    return cookies;
+}
+
+// Generate a unique visitor ID
+function generateVisitorId() {
+    return crypto.randomBytes(16).toString('hex');
+}
+
+// Get or create visitor ID from cookies
+function getVisitorId(req, res) {
+    const cookies = parseCookies(req);
+    let visitorId = cookies['visitor_id'];
+
+    if (!visitorId) {
+        visitorId = generateVisitorId();
+        // Set cookie with 1 year expiry, httpOnly for security
+        res.setHeader('Set-Cookie', `visitor_id=${visitorId}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax`);
+    }
+
+    return visitorId;
+}
+
+// Generate unique visitor key combining visitorId and IP
+function getVisitorKey(visitorId, ip) {
+    // Hash the combination to create a consistent key
+    return crypto.createHash('sha256').update(`${visitorId}:${ip}`).digest('hex').substring(0, 32);
+}
+
+// Check if visitor has already liked an article
+function hasVisitorLiked(visitorKey, articleId) {
+    const likedArticles = likeRecordsData[visitorKey] || [];
+    return likedArticles.includes(articleId);
+}
+
+// Record visitor's like
+function recordVisitorLike(visitorKey, articleId) {
+    if (!likeRecordsData[visitorKey]) {
+        likeRecordsData[visitorKey] = [];
+    }
+    if (!likeRecordsData[visitorKey].includes(articleId)) {
+        likeRecordsData[visitorKey].push(articleId);
+        likeRecordsDirty = true;
+    }
+}
+
+// Remove visitor's like
+function removeVisitorLike(visitorKey, articleId) {
+    if (likeRecordsData[visitorKey]) {
+        const index = likeRecordsData[visitorKey].indexOf(articleId);
+        if (index > -1) {
+            likeRecordsData[visitorKey].splice(index, 1);
+            likeRecordsDirty = true;
+        }
+    }
+}
+
+// Get all articles liked by a visitor
+function getVisitorLikedArticles(visitorKey) {
+    return likeRecordsData[visitorKey] || [];
 }
 
 // ==================== MIDDLEWARE ====================
@@ -604,6 +699,17 @@ app.get('/api/likes', rateLimitMiddleware('read'), (req, res) => {
     res.json(likesData);
 });
 
+// GET /api/user-likes - Get current user's liked articles
+app.get('/api/user-likes', rateLimitMiddleware('read'), (req, res) => {
+    const visitorId = getVisitorId(req, res);
+    const ip = getClientIP(req);
+    const visitorKey = getVisitorKey(visitorId, ip);
+
+    const likedArticles = getVisitorLikedArticles(visitorKey);
+    res.set('Cache-Control', 'private, no-cache');
+    res.json({ likedArticles });
+});
+
 // Helper to validate article existence
 async function validateArticleExists(articleId) {
     // articleId format: "vol-folderName" e.g., "001-05-architecture-diagram"
@@ -629,9 +735,15 @@ async function validateArticleExists(articleId) {
 }
 
 // POST /api/likes/:articleId - Toggle like for an article (with concurrency control)
+// Uses Cookie + IP combination to prevent duplicate likes
 app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res) => {
     const { articleId } = req.params;
     const { action } = req.body;
+
+    // Get visitor identification
+    const visitorId = getVisitorId(req, res);
+    const ip = getClientIP(req);
+    const visitorKey = getVisitorKey(visitorId, ip);
 
     // Validate input
     if (!action || !['like', 'unlike'].includes(action)) {
@@ -648,6 +760,29 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
         return res.status(404).json({ error: 'Article not found' });
     }
 
+    // Check if user already liked this article
+    const alreadyLiked = hasVisitorLiked(visitorKey, articleId);
+
+    // Prevent duplicate like
+    if (action === 'like' && alreadyLiked) {
+        return res.status(409).json({
+            error: 'Already liked',
+            articleId,
+            likes: likesData[articleId] || 0,
+            userLiked: true
+        });
+    }
+
+    // Prevent unlike if not liked
+    if (action === 'unlike' && !alreadyLiked) {
+        return res.status(409).json({
+            error: 'Not liked yet',
+            articleId,
+            likes: likesData[articleId] || 0,
+            userLiked: false
+        });
+    }
+
     const lockKey = `likes:${articleId}`;
     let releaseLock;
 
@@ -660,12 +795,18 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
 
         if (action === 'like') {
             likesData[articleId]++;
+            recordVisitorLike(visitorKey, articleId);
         } else if (action === 'unlike' && likesData[articleId] > 0) {
             likesData[articleId]--;
+            removeVisitorLike(visitorKey, articleId);
         }
 
         likesDirty = true;
-        res.json({ articleId, likes: likesData[articleId] });
+        res.json({
+            articleId,
+            likes: likesData[articleId],
+            userLiked: action === 'like'
+        });
     } catch (error) {
         if (error.message.includes('Lock timeout')) {
             return res.status(503).json({ error: 'Service busy, please retry' });

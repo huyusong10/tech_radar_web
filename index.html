@@ -2448,13 +2448,40 @@
             }
         }
 
+        // Fetch user's liked articles from server (Cookie + IP based)
+        async function fetchUserLikes() {
+            try {
+                const response = await fetchWithRetry('/api/user-likes', {
+                    credentials: 'include' // Include cookies
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    return new Set(data.likedArticles || []);
+                }
+                return new Set();
+            } catch (error) {
+                console.error('Failed to fetch user likes:', error);
+                return new Set();
+            }
+        }
+
         async function updateLike(articleId, action) {
             try {
                 const response = await fetchWithRetry(`/api/likes/${articleId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action })
+                    body: JSON.stringify({ action }),
+                    credentials: 'include' // Include cookies for visitor tracking
                 });
+
+                const data = await response.json();
+
+                // Handle conflict responses (already liked / not liked)
+                if (response.status === 409) {
+                    console.warn('Like conflict:', data.error);
+                    return data; // Still return data with current state
+                }
+
                 if (!response.ok) {
                     if (response.status === 404) {
                         console.warn('Article not found:', articleId);
@@ -2463,28 +2490,28 @@
                     }
                     return null;
                 }
-                return await response.json();
+                return data;
             } catch (error) {
                 console.error('Failed to update like:', error);
                 return null;
             }
         }
 
-        // Check if current user has liked an article (stored in localStorage)
+        // User likes state (fetched from server, based on Cookie + IP)
+        let userLikedArticles = new Set();
+
+        // Check if current user has liked an article
         function hasUserLiked(articleId) {
-            const likedArticles = JSON.parse(localStorage.getItem('likedArticles') || '{}');
-            return !!likedArticles[articleId];
+            return userLikedArticles.has(articleId);
         }
 
-        // Save user's like status to localStorage
+        // Update local state when like status changes
         function setUserLiked(articleId, liked) {
-            const likedArticles = JSON.parse(localStorage.getItem('likedArticles') || '{}');
             if (liked) {
-                likedArticles[articleId] = true;
+                userLikedArticles.add(articleId);
             } else {
-                delete likedArticles[articleId];
+                userLikedArticles.delete(articleId);
             }
-            localStorage.setItem('likedArticles', JSON.stringify(likedArticles));
         }
 
         // Store server likes data
@@ -2882,12 +2909,18 @@
             await Promise.all([configPromise, authorsPromise]);
             applySiteConfig();
 
-            // Load likes data - MUST complete before rendering contributions
+            // Load likes data and user's liked articles - MUST complete before rendering contributions
             try {
-                serverLikes = await fetchLikes();
+                const [likesData, userLikes] = await Promise.all([
+                    fetchLikes(),
+                    fetchUserLikes()
+                ]);
+                serverLikes = likesData;
+                userLikedArticles = userLikes;
             } catch (err) {
                 console.error('Failed to load likes:', err);
                 serverLikes = {};
+                userLikedArticles = new Set();
             }
 
             // Increment and display page views (non-critical)
@@ -3014,14 +3047,19 @@
                 const result = await updateLike(articleId, action);
 
                 if (result) {
-                    // Update UI
-                    if (isCurrentlyLiked) {
-                        button.classList.remove('liked');
-                        setUserLiked(articleId, false);
-                    } else {
+                    // Use server's authoritative state (handles conflicts gracefully)
+                    const newLikedState = result.userLiked !== undefined ? result.userLiked : !isCurrentlyLiked;
+
+                    // Update UI based on server response
+                    if (newLikedState) {
                         button.classList.add('liked');
                         setUserLiked(articleId, true);
+                    } else {
+                        button.classList.remove('liked');
+                        setUserLiked(articleId, false);
                     }
+
+                    // Update counts
                     likeCountSpan.textContent = result.likes;
                     if (likeCountHeader) {
                         likeCountHeader.textContent = result.likes;
