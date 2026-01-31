@@ -1815,6 +1815,26 @@
             list-style: none;
             padding: 0;
             margin: 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .stats-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .stats-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+
+        .stats-list::-webkit-scrollbar-thumb {
+            background: var(--accent-cyan);
+            border-radius: 3px;
+        }
+
+        .stats-list::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-pink);
         }
 
         .stats-item {
@@ -3389,13 +3409,8 @@
                         cachedAuthors = await authorsResponse.json();
                     }
 
-                    // Build authors map
-                    const authorsMap = {};
-                    if (cachedAuthors && cachedAuthors.authors) {
-                        cachedAuthors.authors.forEach(author => {
-                            authorsMap[author.id] = author;
-                        });
-                    }
+                    // The /api/authors returns { authorId: authorObject } directly
+                    const authorsMap = cachedAuthors || {};
 
                     // Render stats
                     modalBody.innerHTML = renderStats(stats, authorsMap);
