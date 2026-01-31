@@ -711,17 +711,29 @@
 
         /* ==================== VOLUME TITLE ==================== */
         .volume-title-section {
-            padding: var(--spacing-sm) 0;
+            padding: 0;
             text-align: center;
+            margin-top: var(--spacing-md);
+            margin-bottom: calc(-1 * var(--spacing-md));
         }
 
         .volume-title {
             font-family: var(--font-mono);
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--accent-pink);
-            text-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-secondary);
             margin: 0;
+            letter-spacing: 2px;
+        }
+
+        .volume-title::before {
+            content: '「 ';
+            color: var(--accent-cyan);
+        }
+
+        .volume-title::after {
+            content: ' 」';
+            color: var(--accent-cyan);
         }
 
         /* ==================== TRENDING SECTION ==================== */
@@ -2152,6 +2164,15 @@
         body.exporting *::-moz-selection {
             background: transparent !important;
             color: inherit !important;
+        }
+
+        /* Fix gradient text for html2canvas (it doesn't support background-clip: text) */
+        body.exporting .glow-text {
+            background: none !important;
+            -webkit-background-clip: unset !important;
+            background-clip: unset !important;
+            -webkit-text-fill-color: var(--accent-cyan) !important;
+            color: var(--accent-cyan) !important;
         }
 
         /* ==================== RESPONSIVE DESIGN ==================== */
@@ -3957,11 +3978,18 @@
                 // Wait for animations to complete while overlay is still blocking
                 await new Promise(resolve => setTimeout(resolve, 800));
 
-                // Clear any text selection
+                // Clear any text selection and blur focus
                 window.getSelection()?.removeAllRanges();
+                document.activeElement?.blur();
 
                 // Add class to disable selection styling during export
                 document.body.classList.add('exporting');
+
+                // Force a reflow to ensure styles are applied
+                void document.body.offsetHeight;
+
+                // Wait a bit more for selection styles to clear
+                await new Promise(resolve => setTimeout(resolve, 100));
 
                 // Now hide elements just before capture
                 elementsToHide.forEach(el => {
