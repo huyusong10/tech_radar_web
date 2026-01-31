@@ -686,24 +686,29 @@
         .glitch::before {
             left: 2px;
             text-shadow: -2px 0 var(--accent-pink);
-            clip: rect(24px, 550px, 90px, 0);
-            animation: glitch-anim 3s infinite linear alternate-reverse;
+            clip-path: inset(30% 0 40% 0);
+            animation: glitch-anim-1 4s infinite steps(2) alternate-reverse;
         }
 
         .glitch::after {
             left: -2px;
             text-shadow: -2px 0 var(--accent-cyan);
-            clip: rect(85px, 550px, 140px, 0);
-            animation: glitch-anim 2.5s infinite linear alternate-reverse;
+            clip-path: inset(60% 0 10% 0);
+            animation: glitch-anim-2 3.5s infinite steps(2) alternate-reverse;
         }
 
-        @keyframes glitch-anim {
-            0% { clip: rect(61px, 9999px, 52px, 0); }
-            20% { clip: rect(84px, 9999px, 67px, 0); }
-            40% { clip: rect(14px, 9999px, 31px, 0); }
-            60% { clip: rect(35px, 9999px, 105px, 0); }
-            80% { clip: rect(71px, 9999px, 24px, 0); }
-            100% { clip: rect(46px, 9999px, 88px, 0); }
+        @keyframes glitch-anim-1 {
+            0%, 100% { clip-path: inset(20% 0 60% 0); }
+            25% { clip-path: inset(40% 0 30% 0); }
+            50% { clip-path: inset(10% 0 70% 0); }
+            75% { clip-path: inset(50% 0 20% 0); }
+        }
+
+        @keyframes glitch-anim-2 {
+            0%, 100% { clip-path: inset(70% 0 10% 0); }
+            25% { clip-path: inset(30% 0 50% 0); }
+            50% { clip-path: inset(80% 0 5% 0); }
+            75% { clip-path: inset(15% 0 65% 0); }
         }
 
         /* ==================== TRENDING SECTION ==================== */
@@ -1851,6 +1856,21 @@
         ::-webkit-scrollbar-thumb:hover {
             background: var(--accent-pink);
         }
+
+        /* ==================== PERFORMANCE OPTIMIZATIONS ==================== */
+        /* Pause animations on hidden modal elements */
+        .modal-overlay:not(.active) * {
+            animation-play-state: paused !important;
+        }
+
+        /* Reduce motion for users who prefer it */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2050,6 +2070,13 @@
         let PUBLISHED_DIR = '/contents/published';
         let SHARED_DIR = '/contents/shared';
         let ASSETS_DIR = '/contents/assets';
+        let CONTENT_DIR = '/contents/published'; // Active content directory (published or draft)
+
+        // Check if we're in draft mode
+        function isDraftMode() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('draft') === 'true';
+        }
 
         // Load site paths from API (for dynamic configuration)
         async function loadSitePaths() {
@@ -2065,6 +2092,8 @@
                 // Use defaults if API not available
                 console.log('Using default content paths');
             }
+            // Set active content directory based on draft mode
+            CONTENT_DIR = isDraftMode() ? '/contents/draft' : PUBLISHED_DIR;
         }
 
         // Parse frontmatter from markdown
@@ -2330,9 +2359,23 @@
         }
 
         // Render radar items
-        function renderRadar(metadata, content) {
+        function renderRadar(metadata, content, volPath = '') {
             // Update header with issue-specific VOL and date
             document.getElementById('header-meta').innerHTML = `VOL.${metadata.vol}<span>|</span>${metadata.date}`;
+
+            // Convert relative image paths to absolute paths for radar.md content
+            let processedContent = content;
+            if (volPath) {
+                const normalizedPath = volPath.startsWith('/') ? volPath : `/${volPath}`;
+                // Replace relative image paths like ./image.svg or image.svg
+                processedContent = content.replace(
+                    /!\[([^\]]*)\]\(\.\/([^)]+)\)/g,
+                    `![$1](${normalizedPath}/$2)`
+                ).replace(
+                    /!\[([^\]]*)\]\((?!\/|https?:\/\/)([^)]+)\)/g,
+                    `![$1](${normalizedPath}/$2)`
+                );
+            }
 
             // Render editors from radar.md metadata (per-issue editors)
             // Editors reference authors from content/authors.md by author_id
@@ -2378,7 +2421,7 @@
             // Parse trending items from markdown
             // Line endings are already normalized in parseFrontmatter, but handle here too for safety
             const trendingSection = document.querySelector('.trending-list');
-            const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const normalizedContent = processedContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             const lines = normalizedContent.split('\n');
             const items = [];
 
@@ -2708,7 +2751,7 @@
 
         // Pre-fetch all contributor authors for header display
         async function prefetchContributors(vol, folders) {
-            const basePath = `${PUBLISHED_DIR}/vol-${vol}/contributions`;
+            const basePath = `${CONTENT_DIR}/vol-${vol}/contributions`;
 
             // Fetch all contribution metadata in parallel
             const fetchPromises = folders.map(async (folder) => {
@@ -2766,7 +2809,7 @@
             if (loadedContributions >= contributionFolders.length) return;
 
             const contributionsGrid = document.querySelector('.contributions-grid');
-            const basePath = `${PUBLISHED_DIR}/vol-${currentVolume}/contributions`;
+            const basePath = `${CONTENT_DIR}/vol-${currentVolume}/contributions`;
 
             // Remove loading sentinel if exists
             const sentinel = document.getElementById('contributions-sentinel');
@@ -2905,10 +2948,11 @@
 
             // Load radar content - this is important for the main view
             try {
-                const radarContent = await loadMarkdown(`${PUBLISHED_DIR}/vol-${vol}/radar.md`);
+                const volPath = `${CONTENT_DIR}/vol-${vol}`;
+                const radarContent = await loadMarkdown(`${volPath}/radar.md`);
                 if (radarContent) {
                     const { metadata, content } = parseFrontmatter(radarContent);
-                    renderRadar(metadata, content);
+                    renderRadar(metadata, content, volPath);
                 } else {
                     console.warn(`No radar content found for vol-${vol}`);
                     // Show a message in trending section
