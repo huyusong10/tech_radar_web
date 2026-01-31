@@ -1956,9 +1956,15 @@
             display: none;
         }
 
-        .stats-tooltip-clone {
-            position: fixed;
-            z-index: 10000;
+        /* Override all .author-tooltip styles for the cloned version */
+        .stats-tooltip-clone.author-tooltip {
+            position: fixed !important;
+            bottom: auto !important;
+            left: auto !important;
+            right: auto !important;
+            top: auto !important;
+            transform: none !important;
+            z-index: 10000 !important;
             opacity: 0;
             visibility: hidden;
             transition: opacity 0.2s ease;
@@ -1967,54 +1973,14 @@
             border: 1px solid rgba(0, 243, 255, 0.4);
             border-radius: var(--radius-md);
             padding: var(--spacing-sm);
-            min-width: 160px;
+            min-width: 180px;
             max-width: 250px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 243, 255, 0.2);
+            display: block !important;
         }
 
-        .stats-tooltip-clone .tooltip-header {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: var(--spacing-sm);
-            margin-bottom: var(--spacing-xs);
-            padding-bottom: var(--spacing-xs);
-            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
-        }
-
-        .stats-tooltip-clone .tooltip-header img {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            border: 2px solid var(--accent-cyan);
-        }
-
-        .stats-tooltip-clone .tooltip-name {
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: var(--accent-cyan);
-        }
-
-        .stats-tooltip-clone .tooltip-info {
-            display: flex;
-            flex-direction: column;
-            gap: 0.3rem;
-        }
-
-        .stats-tooltip-clone .tooltip-row {
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-xs);
-            font-size: 0.75rem;
-        }
-
-        .stats-tooltip-clone .tooltip-label {
-            color: var(--text-secondary);
-            min-width: 40px;
-        }
-
-        .stats-tooltip-clone .tooltip-value {
-            color: var(--text-primary);
+        .stats-tooltip-clone.author-tooltip::after {
+            display: none !important;
         }
 
         .stats-count {
