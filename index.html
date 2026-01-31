@@ -1783,21 +1783,31 @@
 
         .stats-section-title {
             font-family: var(--font-mono);
-            font-size: 1rem;
-            font-weight: 700;
             margin-bottom: var(--spacing-md);
             padding-bottom: var(--spacing-xs);
             border-bottom: 1px solid rgba(0, 243, 255, 0.2);
             display: flex;
-            align-items: center;
-            gap: var(--spacing-xs);
+            flex-direction: column;
+            gap: 0.2rem;
         }
 
-        .stats-section-title.contributions {
+        .stats-title-en {
+            font-size: 1rem;
+            font-weight: 700;
+        }
+
+        .stats-title-cn {
+            font-size: 0.75rem;
+            opacity: 0.7;
+        }
+
+        .stats-section-title.contributions .stats-title-en,
+        .stats-section-title.contributions .stats-title-cn {
             color: var(--accent-green);
         }
 
-        .stats-section-title.likes {
+        .stats-section-title.likes .stats-title-en,
+        .stats-section-title.likes .stats-title-cn {
             color: var(--accent-pink);
         }
 
@@ -1932,14 +1942,17 @@
         }
 
         .stats-total-label {
+            display: block;
             font-size: 0.8rem;
             color: var(--text-secondary);
+            margin-top: 0.25rem;
         }
 
         .stats-total-label-cn {
+            display: block;
             font-size: 0.7rem;
             color: var(--text-secondary);
-            opacity: 0.8;
+            opacity: 0.7;
         }
 
         .stats-empty {
@@ -1947,6 +1960,11 @@
             font-style: italic;
             text-align: center;
             padding: var(--spacing-md);
+        }
+
+        .stats-empty-cn {
+            font-size: 0.85em;
+            opacity: 0.7;
         }
 
         /* ==================== RESPONSIVE DESIGN ==================== */
@@ -3393,12 +3411,7 @@
             const { contributionRanking, likeRanking, totalContributions, totalLikes, totalViews } = stats;
 
             // Default avatar as data URI (simple user icon)
-            const defaultAvatar = 'data:image/svg+xml,' + encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%239ca3af">
-                    <circle cx="12" cy="8" r="4"/>
-                    <path d="M12 14c-6 0-8 3-8 6v1h16v-1c0-3-2-6-8-6z"/>
-                </svg>
-            `);
+            const defaultAvatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#9ca3af"><circle cx="12" cy="8" r="4"/><path d="M12 14c-6 0-8 3-8 6v1h16v-1c0-3-2-6-8-6z"/></svg>');
 
             const renderRankingItem = (item, index, type) => {
                 const author = authorsMap[item.authorId] || { name: item.authorId, avatar: '', team: '', role: '' };
@@ -3434,11 +3447,11 @@
 
             const contributionsList = contributionRanking.length > 0
                 ? `<ul class="stats-list">${contributionRanking.map((item, i) => renderRankingItem(item, i, 'contributions')).join('')}</ul>`
-                : '<p class="stats-empty">No contributions yet / 暂无投稿</p>';
+                : '<p class="stats-empty">No contributions yet<br><span class="stats-empty-cn">暂无投稿</span></p>';
 
             const likesList = likeRanking.length > 0
                 ? `<ul class="stats-list">${likeRanking.map((item, i) => renderRankingItem(item, i, 'likes')).join('')}</ul>`
-                : '<p class="stats-empty">No likes yet / 暂无点赞</p>';
+                : '<p class="stats-empty">No likes yet<br><span class="stats-empty-cn">暂无点赞</span></p>';
 
             return `
                 <div class="stats-summary">
@@ -3460,11 +3473,17 @@
                 </div>
                 <div class="stats-container">
                     <div class="stats-section">
-                        <div class="stats-section-title contributions">📝 Contribution Ranking / 投稿排名</div>
+                        <div class="stats-section-title contributions">
+                            <span class="stats-title-en">📝 Contribution Ranking</span>
+                            <span class="stats-title-cn">投稿排名</span>
+                        </div>
                         ${contributionsList}
                     </div>
                     <div class="stats-section">
-                        <div class="stats-section-title likes">❤️ Like Ranking / 点赞排名</div>
+                        <div class="stats-section-title likes">
+                            <span class="stats-title-en">❤️ Like Ranking</span>
+                            <span class="stats-title-cn">点赞排名</span>
+                        </div>
                         ${likesList}
                     </div>
                 </div>
