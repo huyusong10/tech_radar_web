@@ -1953,19 +1953,68 @@
         }
 
         .stats-author .author-tooltip {
+            display: none;
+        }
+
+        .stats-tooltip-clone {
             position: fixed;
-            bottom: auto;
-            left: 0;
-            transform: none;
-            z-index: 3000;
+            z-index: 10000;
             opacity: 0;
             visibility: hidden;
             transition: opacity 0.2s ease;
             pointer-events: none;
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 243, 255, 0.4);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-sm);
+            min-width: 160px;
+            max-width: 250px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 243, 255, 0.2);
         }
 
-        .stats-author .author-tooltip::after {
-            display: none;
+        .stats-tooltip-clone .tooltip-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-xs);
+            padding-bottom: var(--spacing-xs);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        .stats-tooltip-clone .tooltip-header img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid var(--accent-cyan);
+        }
+
+        .stats-tooltip-clone .tooltip-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .stats-tooltip-clone .tooltip-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .stats-tooltip-clone .tooltip-row {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            font-size: 0.75rem;
+        }
+
+        .stats-tooltip-clone .tooltip-label {
+            color: var(--text-secondary);
+            min-width: 40px;
+        }
+
+        .stats-tooltip-clone .tooltip-value {
+            color: var(--text-primary);
         }
 
         .stats-count {
@@ -3726,21 +3775,31 @@
             `;
         }
 
+        // Global tooltip element for stats
+        let activeStatsTooltip = null;
+
         function setupStatsTooltips() {
             const statsAuthors = document.querySelectorAll('.stats-author');
             statsAuthors.forEach(author => {
-                const tooltip = author.querySelector('.author-tooltip');
-                if (!tooltip) return;
+                const tooltipTemplate = author.querySelector('.author-tooltip');
+                if (!tooltipTemplate) return;
 
                 author.addEventListener('mouseenter', (e) => {
-                    // Temporarily make tooltip visible to measure it
-                    tooltip.style.visibility = 'hidden';
-                    tooltip.style.opacity = '0';
-                    tooltip.style.display = 'block';
+                    // Remove any existing tooltip
+                    if (activeStatsTooltip) {
+                        activeStatsTooltip.remove();
+                        activeStatsTooltip = null;
+                    }
 
+                    // Clone the tooltip and add to body
+                    activeStatsTooltip = tooltipTemplate.cloneNode(true);
+                    activeStatsTooltip.classList.add('stats-tooltip-clone');
+                    document.body.appendChild(activeStatsTooltip);
+
+                    // Get dimensions
                     const rect = author.getBoundingClientRect();
-                    const tooltipWidth = tooltip.offsetWidth || 200;
-                    const tooltipHeight = tooltip.offsetHeight || 120;
+                    const tooltipWidth = activeStatsTooltip.offsetWidth || 200;
+                    const tooltipHeight = activeStatsTooltip.offsetHeight || 120;
 
                     // Position tooltip above the author, centered
                     let top = rect.top - tooltipHeight - 15;
@@ -3758,17 +3817,17 @@
                         left = window.innerWidth - tooltipWidth - padding;
                     }
 
-                    tooltip.style.top = top + 'px';
-                    tooltip.style.left = left + 'px';
-
-                    // Now show the tooltip
-                    tooltip.style.visibility = 'visible';
-                    tooltip.style.opacity = '1';
+                    activeStatsTooltip.style.top = top + 'px';
+                    activeStatsTooltip.style.left = left + 'px';
+                    activeStatsTooltip.style.visibility = 'visible';
+                    activeStatsTooltip.style.opacity = '1';
                 });
 
                 author.addEventListener('mouseleave', () => {
-                    tooltip.style.visibility = 'hidden';
-                    tooltip.style.opacity = '0';
+                    if (activeStatsTooltip) {
+                        activeStatsTooltip.remove();
+                        activeStatsTooltip = null;
+                    }
                 });
             });
         }
@@ -3777,6 +3836,12 @@
             const modal = document.getElementById('stats-modal');
             modal.classList.remove('active');
             document.body.style.overflow = '';
+
+            // Clean up any active tooltip
+            if (activeStatsTooltip) {
+                activeStatsTooltip.remove();
+                activeStatsTooltip = null;
+            }
         }
 
         // Close modal on overlay click
@@ -3915,20 +3980,21 @@
                     card.classList.add('expanded');
                 });
 
-                // Hide elements that shouldn't be in the export
+                // Hide elements that shouldn't be in the export (but NOT the overlay - it blocks interaction)
                 const elementsToHide = [
                     document.querySelector('.sidebar'),
                     document.querySelector('.mobile-menu-toggle'),
                     document.querySelector('.export-button'),
-                    document.querySelector('.submit-button'),
-                    exportOverlay
+                    document.querySelector('.submit-button')
                 ];
+
+                // Wait for animations to complete while overlay is still blocking
+                await new Promise(resolve => setTimeout(resolve, 800));
+
+                // Now hide elements just before capture
                 elementsToHide.forEach(el => {
                     if (el) el.style.visibility = 'hidden';
                 });
-
-                // Wait for animations to complete
-                await new Promise(resolve => setTimeout(resolve, 800));
 
                 // Get the main content element
                 const mainContent = document.querySelector('.main-content');
