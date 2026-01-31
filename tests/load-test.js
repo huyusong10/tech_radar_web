@@ -6,6 +6,10 @@
  * - HTTP API requests (GET/POST)
  * - SSE connections
  * - Volume switching simulation
+ * - Automatic benchmark to find max concurrency
+ *
+ * IMPORTANT: Start server with LOAD_TEST_MODE=true to disable rate limits:
+ *   LOAD_TEST_MODE=true npm start
  *
  * Usage:
  *   node tests/load-test.js [options]
@@ -14,14 +18,19 @@
  *   --target <url>       Target server URL (default: http://localhost:5090)
  *   --concurrency <n>    Number of concurrent clients (default: 100)
  *   --duration <s>       Test duration in seconds (default: 30)
- *   --test <type>        Test type: api, sse, mixed (default: mixed)
+ *   --test <type>        Test type: api, sse, mixed, volume, benchmark (default: mixed)
  *   --ramp-up <s>        Ramp-up time in seconds (default: 5)
  *   --help               Show help
  *
  * Examples:
+ *   # First, start server in load test mode
+ *   LOAD_TEST_MODE=true npm start
+ *
+ *   # Then run tests
  *   node tests/load-test.js --concurrency 500 --duration 60
  *   node tests/load-test.js --test sse --concurrency 100
  *   node tests/load-test.js --test api --concurrency 1000 --duration 30
+ *   node tests/load-test.js --test benchmark  # Auto-find max concurrency
  */
 
 const http = require('http');
@@ -65,6 +74,9 @@ function parseArgs() {
                 console.log(`
 Load Test Script for Tech Radar Weekly
 
+IMPORTANT: Start server with LOAD_TEST_MODE=true to disable rate limits:
+  LOAD_TEST_MODE=true npm start
+
 Usage:
   node tests/load-test.js [options]
 
@@ -72,14 +84,22 @@ Options:
   --target <url>       Target server URL (default: http://localhost:5090)
   --concurrency <n>    Number of concurrent clients (default: 100)
   --duration <s>       Test duration in seconds (default: 30)
-  --test <type>        Test type: api, sse, mixed (default: mixed)
+  --test <type>        Test type: api, sse, mixed, volume, benchmark (default: mixed)
   --ramp-up <s>        Ramp-up time in seconds (default: 5)
   --help               Show help
+
+Test Types:
+  api        - Pure HTTP API load test
+  sse        - SSE connection stress test
+  mixed      - Combined API (80%) + SSE (20%) test
+  volume     - Simulate users switching volumes
+  benchmark  - Auto-detect maximum sustainable concurrency
 
 Examples:
   node tests/load-test.js --concurrency 500 --duration 60
   node tests/load-test.js --test sse --concurrency 100
   node tests/load-test.js --test api --concurrency 1000 --duration 30
+  node tests/load-test.js --test benchmark
 `);
                 process.exit(0);
         }
@@ -106,6 +126,15 @@ class Statistics {
             messages: 0,
             errors: 0
         };
+        this.startTime = Date.now();
+        this.errors = [];
+    }
+
+    reset() {
+        this.requests = { total: 0, success: 0, failed: 0, timeout: 0 };
+        this.responseTimes = [];
+        this.statusCodes = {};
+        this.sse = { connected: 0, disconnected: 0, messages: 0, errors: 0 };
         this.startTime = Date.now();
         this.errors = [];
     }
@@ -161,6 +190,15 @@ class Statistics {
         return sorted[Math.max(0, index)];
     }
 
+    getSuccessRate() {
+        return this.requests.total > 0 ? this.requests.success / this.requests.total : 0;
+    }
+
+    getRPS() {
+        const duration = (Date.now() - this.startTime) / 1000;
+        return duration > 0 ? this.requests.total / duration : 0;
+    }
+
     getReport() {
         const duration = (Date.now() - this.startTime) / 1000;
         const avgResponseTime = this.responseTimes.length > 0
@@ -171,7 +209,8 @@ class Statistics {
             duration: duration.toFixed(2) + 's',
             requests: {
                 ...this.requests,
-                rps: (this.requests.total / duration).toFixed(2)
+                rps: (this.requests.total / duration).toFixed(2),
+                successRate: (this.getSuccessRate() * 100).toFixed(1) + '%'
             },
             responseTimes: {
                 avg: avgResponseTime.toFixed(2) + 'ms',
@@ -194,19 +233,20 @@ class Statistics {
         console.log('='.repeat(60));
 
         console.log('\n[Requests]');
-        console.log(`  Total:     ${report.requests.total}`);
-        console.log(`  Success:   ${report.requests.success}`);
-        console.log(`  Failed:    ${report.requests.failed}`);
-        console.log(`  Timeout:   ${report.requests.timeout}`);
-        console.log(`  RPS:       ${report.requests.rps}`);
+        console.log(`  Total:        ${report.requests.total}`);
+        console.log(`  Success:      ${report.requests.success}`);
+        console.log(`  Failed:       ${report.requests.failed}`);
+        console.log(`  Timeout:      ${report.requests.timeout}`);
+        console.log(`  Success Rate: ${report.requests.successRate}`);
+        console.log(`  RPS:          ${report.requests.rps}`);
 
         console.log('\n[Response Times]');
-        console.log(`  Average:   ${report.responseTimes.avg}`);
-        console.log(`  Min:       ${report.responseTimes.min}`);
-        console.log(`  Max:       ${report.responseTimes.max}`);
-        console.log(`  P50:       ${report.responseTimes.p50}`);
-        console.log(`  P95:       ${report.responseTimes.p95}`);
-        console.log(`  P99:       ${report.responseTimes.p99}`);
+        console.log(`  Average:      ${report.responseTimes.avg}`);
+        console.log(`  Min:          ${report.responseTimes.min}`);
+        console.log(`  Max:          ${report.responseTimes.max}`);
+        console.log(`  P50:          ${report.responseTimes.p50}`);
+        console.log(`  P95:          ${report.responseTimes.p95}`);
+        console.log(`  P99:          ${report.responseTimes.p99}`);
 
         console.log('\n[Status Codes]');
         for (const [code, count] of Object.entries(report.statusCodes)) {
@@ -356,7 +396,7 @@ class SSEClient extends EventEmitter {
 
 // ==================== Test Runners ====================
 
-async function runAPITest(config, stats) {
+async function runAPITest(config, stats, silent = false) {
     const endpoints = [
         { path: '/api/config', method: 'GET' },
         { path: '/api/authors', method: 'GET' },
@@ -371,11 +411,13 @@ async function runAPITest(config, stats) {
     const endTime = Date.now() + (config.duration * 1000);
     const clientDelay = (config.rampUp * 1000) / config.concurrency;
 
-    console.log(`\nStarting API load test...`);
-    console.log(`  Target: ${config.target}`);
-    console.log(`  Concurrency: ${config.concurrency}`);
-    console.log(`  Duration: ${config.duration}s`);
-    console.log(`  Ramp-up: ${config.rampUp}s`);
+    if (!silent) {
+        console.log(`\nStarting API load test...`);
+        console.log(`  Target: ${config.target}`);
+        console.log(`  Concurrency: ${config.concurrency}`);
+        console.log(`  Duration: ${config.duration}s`);
+        console.log(`  Ramp-up: ${config.rampUp}s`);
+    }
 
     const workers = [];
 
@@ -407,7 +449,7 @@ async function runAPITest(config, stats) {
                 }
 
                 // Small delay between requests per client
-                await new Promise(r => setTimeout(r, 50 + Math.random() * 100));
+                await new Promise(r => setTimeout(r, 10 + Math.random() * 40));
             }
         })();
 
@@ -415,28 +457,33 @@ async function runAPITest(config, stats) {
     }
 
     // Progress reporting
-    const progressInterval = setInterval(() => {
-        const elapsed = (Date.now() - stats.startTime) / 1000;
-        const remaining = config.duration - elapsed;
-        if (remaining > 0) {
-            process.stdout.write(`\r  Progress: ${elapsed.toFixed(0)}s / ${config.duration}s | Requests: ${stats.requests.total} | RPS: ${(stats.requests.total / elapsed).toFixed(0)}    `);
-        }
-    }, 1000);
+    let progressInterval;
+    if (!silent) {
+        progressInterval = setInterval(() => {
+            const elapsed = (Date.now() - stats.startTime) / 1000;
+            const remaining = config.duration - elapsed;
+            if (remaining > 0) {
+                process.stdout.write(`\r  Progress: ${elapsed.toFixed(0)}s / ${config.duration}s | Requests: ${stats.requests.total} | RPS: ${(stats.requests.total / elapsed).toFixed(0)} | Success: ${(stats.getSuccessRate() * 100).toFixed(1)}%    `);
+            }
+        }, 1000);
+    }
 
     await Promise.all(workers);
-    clearInterval(progressInterval);
-    console.log('\n  API test completed.');
+    if (progressInterval) clearInterval(progressInterval);
+    if (!silent) console.log('\n  API test completed.');
 }
 
-async function runSSETest(config, stats) {
+async function runSSETest(config, stats, silent = false) {
     const endTime = Date.now() + (config.duration * 1000);
     const clientDelay = (config.rampUp * 1000) / config.concurrency;
 
-    console.log(`\nStarting SSE load test...`);
-    console.log(`  Target: ${config.target}/api/hot-reload`);
-    console.log(`  Connections: ${config.concurrency}`);
-    console.log(`  Duration: ${config.duration}s`);
-    console.log(`  Ramp-up: ${config.rampUp}s`);
+    if (!silent) {
+        console.log(`\nStarting SSE load test...`);
+        console.log(`  Target: ${config.target}/api/hot-reload`);
+        console.log(`  Connections: ${config.concurrency}`);
+        console.log(`  Duration: ${config.duration}s`);
+        console.log(`  Ramp-up: ${config.rampUp}s`);
+    }
 
     const clients = [];
     let activeConnections = 0;
@@ -469,10 +516,14 @@ async function runSSETest(config, stats) {
         clients.push(client);
 
         // Progress
-        process.stdout.write(`\r  Connecting: ${i + 1} / ${config.concurrency} | Active: ${activeConnections}    `);
+        if (!silent) {
+            process.stdout.write(`\r  Connecting: ${i + 1} / ${config.concurrency} | Active: ${activeConnections}    `);
+        }
     }
 
-    console.log(`\n  All clients connected. Maintaining connections...`);
+    if (!silent) {
+        console.log(`\n  All clients connected. Maintaining connections...`);
+    }
 
     // Maintain connections for the remaining duration
     const remainingTime = endTime - Date.now();
@@ -481,14 +532,16 @@ async function runSSETest(config, stats) {
     }
 
     // Disconnect all clients
-    console.log('  Disconnecting clients...');
+    if (!silent) console.log('  Disconnecting clients...');
     for (const client of clients) {
         client.disconnect();
     }
 
     // Wait for disconnections
     await new Promise(r => setTimeout(r, 1000));
-    console.log('  SSE test completed.');
+    if (!silent) console.log('  SSE test completed.');
+
+    return activeConnections;
 }
 
 async function runMixedTest(config, stats) {
@@ -503,9 +556,11 @@ async function runMixedTest(config, stats) {
 
     // Run both tests in parallel
     await Promise.all([
-        runAPITest(apiConfig, stats),
-        runSSETest(sseConfig, stats)
+        runAPITest(apiConfig, stats, true),
+        runSSETest(sseConfig, stats, true)
     ]);
+
+    console.log('  Mixed test completed.');
 }
 
 // ==================== Volume Switch Simulation ====================
@@ -587,6 +642,97 @@ async function runVolumeSwitchTest(config, stats) {
     console.log('\n  Volume switch test completed.');
 }
 
+// ==================== Benchmark Test ====================
+
+async function runBenchmarkTest(config, stats) {
+    console.log('\n' + '='.repeat(60));
+    console.log('BENCHMARK TEST - Finding Maximum Sustainable Concurrency');
+    console.log('='.repeat(60));
+    console.log(`\nTarget: ${config.target}`);
+    console.log('This test will incrementally increase load to find your server\'s limits.\n');
+
+    const results = [];
+    const testDuration = 10; // Short tests for each level
+    const targetSuccessRate = 0.95; // 95% success rate threshold
+    const targetP95 = 500; // 500ms P95 threshold
+
+    // Test levels to try
+    const levels = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000];
+
+    for (const concurrency of levels) {
+        console.log(`\nTesting ${concurrency} concurrent connections...`);
+
+        const testStats = new Statistics();
+        const testConfig = {
+            ...config,
+            concurrency,
+            duration: testDuration,
+            rampUp: 2
+        };
+
+        try {
+            await runAPITest(testConfig, testStats, true);
+        } catch (e) {
+            console.log(`  Failed: ${e.message}`);
+            break;
+        }
+
+        const successRate = testStats.getSuccessRate();
+        const rps = testStats.getRPS();
+        const p95 = testStats.getPercentile(95);
+
+        const passed = successRate >= targetSuccessRate && p95 < targetP95;
+        const status = passed ? '✓ PASS' : '✗ FAIL';
+
+        results.push({
+            concurrency,
+            rps: rps.toFixed(0),
+            successRate: (successRate * 100).toFixed(1),
+            p95: p95.toFixed(0),
+            passed
+        });
+
+        console.log(`  ${status} | RPS: ${rps.toFixed(0)} | Success: ${(successRate * 100).toFixed(1)}% | P95: ${p95.toFixed(0)}ms`);
+
+        if (!passed) {
+            console.log(`  Stopping benchmark - thresholds exceeded`);
+            break;
+        }
+
+        // Small delay between tests
+        await new Promise(r => setTimeout(r, 2000));
+    }
+
+    // Print summary
+    console.log('\n' + '='.repeat(60));
+    console.log('BENCHMARK RESULTS');
+    console.log('='.repeat(60));
+    console.log('\nThresholds: Success Rate >= 95%, P95 < 500ms\n');
+
+    console.log('Concurrency | RPS     | Success Rate | P95 (ms) | Status');
+    console.log('-'.repeat(60));
+    for (const r of results) {
+        const status = r.passed ? 'PASS' : 'FAIL';
+        console.log(`${r.concurrency.toString().padStart(11)} | ${r.rps.padStart(7)} | ${r.successRate.padStart(11)}% | ${r.p95.padStart(8)} | ${status}`);
+    }
+
+    const passedResults = results.filter(r => r.passed);
+    if (passedResults.length > 0) {
+        const maxPassed = passedResults[passedResults.length - 1];
+        console.log('\n' + '='.repeat(60));
+        console.log(`MAXIMUM SUSTAINABLE CONCURRENCY: ${maxPassed.concurrency}`);
+        console.log(`  - RPS: ${maxPassed.rps}`);
+        console.log(`  - Success Rate: ${maxPassed.successRate}%`);
+        console.log(`  - P95 Response Time: ${maxPassed.p95}ms`);
+        console.log('='.repeat(60));
+    } else {
+        console.log('\n⚠️  No concurrency level passed the thresholds.');
+        console.log('   Check if the server is running with LOAD_TEST_MODE=true');
+    }
+
+    return results;
+}
+
 // ==================== Main ====================
 
 async function main() {
@@ -598,8 +744,11 @@ async function main() {
     console.log('='.repeat(60));
     console.log(`\nTest Type: ${config.testType}`);
     console.log(`Target: ${config.target}`);
-    console.log(`Concurrency: ${config.concurrency}`);
-    console.log(`Duration: ${config.duration}s`);
+
+    if (config.testType !== 'benchmark') {
+        console.log(`Concurrency: ${config.concurrency}`);
+        console.log(`Duration: ${config.duration}s`);
+    }
 
     try {
         // Check if server is accessible
@@ -610,6 +759,12 @@ async function main() {
             process.exit(1);
         }
         console.log('Server is accessible.');
+
+        // Check for rate limit warning
+        if (config.concurrency > 100 && config.testType !== 'benchmark') {
+            console.log('\n⚠️  High concurrency test - make sure server is started with:');
+            console.log('   LOAD_TEST_MODE=true npm start\n');
+        }
 
         // Run the selected test
         switch (config.testType) {
@@ -625,6 +780,9 @@ async function main() {
             case 'volume':
                 await runVolumeSwitchTest(config, stats);
                 break;
+            case 'benchmark':
+                await runBenchmarkTest(config, stats);
+                return; // Benchmark handles its own output
             default:
                 console.error(`Unknown test type: ${config.testType}`);
                 process.exit(1);
@@ -636,7 +794,9 @@ async function main() {
         // Exit with error if too many failures
         const failureRate = stats.requests.failed / stats.requests.total;
         if (failureRate > 0.1) {
-            console.log(`\nWARNING: High failure rate (${(failureRate * 100).toFixed(1)}%)`);
+            console.log(`\n⚠️  WARNING: High failure rate (${(failureRate * 100).toFixed(1)}%)`);
+            console.log('   This may indicate rate limiting. Try running with:');
+            console.log('   LOAD_TEST_MODE=true npm start');
             process.exit(1);
         }
 
