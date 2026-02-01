@@ -2899,6 +2899,14 @@
             });
             if (currentItem) items.push(currentItem);
 
+            // Hide or show trending section based on content
+            const trendingSectionEl = document.getElementById('trending-section');
+            if (items.length === 0) {
+                trendingSectionEl.style.display = 'none';
+                return;
+            }
+            trendingSectionEl.style.display = '';
+
             // Render trending items with expandable details
             trendingSection.innerHTML = items.map((item, index) => {
                 const badgeClass = badgeClassMap[item.badge] || 'default';
@@ -3275,6 +3283,7 @@
         // Load and render contributions with lazy loading
         async function loadContributions(vol) {
             const contributionsGrid = document.querySelector('.contributions-grid');
+            const contributionsSectionEl = document.getElementById('contributions-section');
             contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading contributions...</p>';
 
             currentVolume = vol;
@@ -3283,10 +3292,13 @@
             contributorIds = new Set(); // Reset contributors for new volume
 
             if (contributionFolders.length === 0) {
-                contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No contributions yet</p>';
+                // Hide contributions section when no contributions
+                contributionsSectionEl.style.display = 'none';
                 renderContributors();
                 return;
             }
+            // Show contributions section when there are contributions
+            contributionsSectionEl.style.display = '';
 
             // Pre-fetch all contributor authors for header (non-blocking)
             prefetchContributors(vol, contributionFolders);
@@ -3456,17 +3468,16 @@
                     renderRadar(metadata, content, volPath);
                 } else {
                     console.warn(`No radar content found for vol-${vol}`);
-                    // Show a message in trending section
-                    const trendingList = document.getElementById('trending-list');
-                    if (trendingList) {
-                        trendingList.innerHTML = '<p style="color: var(--text-secondary); padding: var(--spacing-md);">No trending items available for this volume.</p>';
-                    }
+                    // Hide trending section when radar.md doesn't exist
+                    document.getElementById('trending-section').style.display = 'none';
                 }
                 // Mark header and trending as loaded
                 document.getElementById('main-header').classList.add('loaded');
                 document.getElementById('trending-list').classList.add('loaded');
             } catch (error) {
                 console.error('Failed to load radar content:', error);
+                // Hide trending section on error
+                document.getElementById('trending-section').style.display = 'none';
                 document.getElementById('main-header').classList.add('loaded');
                 document.getElementById('trending-list').classList.add('loaded');
             }
