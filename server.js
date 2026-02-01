@@ -916,14 +916,29 @@ app.get('/api/stats', rateLimitMiddleware('read'), async (req, res) => {
                 }
             }
 
-            // Convert to sorted arrays
-            const contributionRanking = Object.entries(authorStats)
+            // Convert to sorted arrays, filter out zero counts, and calculate ranks with ties
+            const contributionRankingSorted = Object.entries(authorStats)
                 .map(([authorId, data]) => ({ authorId, count: data.contributions }))
+                .filter(item => item.count > 0)
                 .sort((a, b) => b.count - a.count);
 
-            const likeRanking = Object.entries(authorStats)
+            // Calculate ranks with ties for contributions
+            const contributionRanking = contributionRankingSorted.map((item, index, arr) => {
+                // Find the first item with the same count to determine the rank
+                const rank = arr.findIndex(i => i.count === item.count) + 1;
+                return { ...item, rank };
+            });
+
+            const likeRankingSorted = Object.entries(authorStats)
                 .map(([authorId, data]) => ({ authorId, count: data.likes }))
+                .filter(item => item.count > 0)
                 .sort((a, b) => b.count - a.count);
+
+            // Calculate ranks with ties for likes
+            const likeRanking = likeRankingSorted.map((item, index, arr) => {
+                const rank = arr.findIndex(i => i.count === item.count) + 1;
+                return { ...item, rank };
+            });
 
             // Calculate totals
             const totalViews = Object.values(viewsData).reduce((sum, v) => sum + v, 0);
