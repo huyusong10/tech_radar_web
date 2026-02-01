@@ -3,7 +3,7 @@ vol: "001"
 date: "2026.01.04"
 title: "微服务架构专刊"
 editors:
-  - author_id: "hys"
+  - author_id: "huyusong"
     role: "Chief Editor"
   - author_id: "dev_ops"
     role: "Technical Reviewer"

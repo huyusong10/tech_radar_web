@@ -12,6 +12,8 @@ Tech Radar Weekly 是一个赛博朋克风格的技术周刊单页应用模板�
 - 热重载：文件变更自动刷新浏览器
 - 草稿预览：通过 `/draft` URL 路径预览未发布内容
 - 交互功能：点赞、阅读量统计、侧边栏导航
+- 统计面板：作者投稿排名、点赞排名（支持并列排名，过滤零值）
+- 灵活内容：Trending 和 Developer's Space 部分可独立存在或隐藏
 
 ## 技术栈
 
@@ -45,18 +47,16 @@ tech_radar_web/
 ├── CLAUDE.md               # AI 助手指南（本文件）
 └── contents/               # 内容目录（路径可在 site.config.js 中配置）
     ├── published/          # 已发布的周刊
-    │   ├── vol-001/
-    │   │   ├── radar.md
-    │   │   └── contributions/
-    │   │       ├── 01-article-name/
-    │   │       │   ├── index.md
-    │   │       │   └── *.svg/png
-    │   │       └── ...
-    │   └── vol-002/
+    │   └── vol-001/
+    │       ├── radar.md            # 可选：Trending 内容
+    │       └── contributions/      # 可选：投稿文件夹
+    │           └── 01-article-name/
+    │               ├── index.md
+    │               └── *.svg/png
     ├── draft/              # 草稿（通过 /draft 路径预览）
     │   └── vol-001/
     ├── shared/             # 共享配置文件
-    │   ├── config.md       # 站点标题、slogan、footer
+    │   ├── config.md       # 站点标题、slogan、徽章配置
     │   ├── authors.md      # 统一作者档案
     │   └── submit-guide.md # 投稿指南（弹窗内容）
     ├── assets/             # 静态资源
@@ -78,12 +78,17 @@ tech_radar_web/
    - `published/`：已发布的正式内容
    - `draft/`：草稿预览，通过 `/draft` URL 路径访问
 
-3. **共享资源**：
-   - `shared/config.md`：全局配置（title, slogan）
+3. **灵活的内容结构**：
+   - `radar.md` 和 `contributions/` 都是可选的
+   - 如果 `radar.md` 不存在或没有 Trending 内容，Trending 部分自动隐藏
+   - 如果 `contributions/` 不存在或为空，Developer's Space 部分自动隐藏
+
+4. **共享资源**：
+   - `shared/config.md`：全局配置（title, slogan, 徽章颜色）
    - `shared/authors.md`：统一作者档案
    - `assets/`：静态资源（头像等）
 
-4. **运行时数据**：
+5. **运行时数据**：
    - `data/likes.json`：点赞数据
    - `data/views.json`：阅读量数据
    - 服务器自动管理，定期持久化
@@ -97,9 +102,9 @@ tech_radar_web/
 ↓
 加载 /api/volumes → 渲染侧边栏导航
 ↓
-加载 radar.md → 渲染 Trending 部分
+加载 radar.md → 渲染 Trending 部分（如果有内容）
 ↓
-加载 contributions/* → 渲染投稿卡片
+加载 contributions/* → 渲染投稿卡片（如果有投稿）
 ↓
 建立 SSE 连接 → 监听热重载事件
 ```
@@ -132,17 +137,30 @@ notifyHotReload()           // 通过 SSE 通知客户端刷新
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/api/site-config` | GET | 获取路径配置 |
-| `/api/config` | GET | 获取站点配置（title, slogan） |
+| `/api/config` | GET | 获取站点配置（title, slogan, badges） |
 | `/api/authors` | GET | 获取所有作者 |
 | `/api/authors/:id` | GET | 获取单个作者 |
 | `/api/volumes` | GET | 获取期刊列表（支持 `?draft=true` 参数） |
 | `/api/contributions/:vol` | GET | 获取某期投稿列表 |
+| `/api/stats` | GET | 获取作者统计（投稿排名、点赞排名） |
 | `/api/likes` | GET | 获取所有点赞数据 |
 | `/api/likes/:articleId` | POST | 点赞/取消点赞 |
 | `/api/views/:vol` | GET | 获取阅读量 |
 | `/api/views/:vol` | POST | 增加阅读量 |
 | `/api/hot-reload` | GET | SSE 热重载连接 |
 | `/api/health` | GET | 健康检查 |
+
+### Stats API 说明
+
+`/api/stats` 返回作者统计数据：
+- `contributionRanking`：投稿数排名（过滤 count=0，支持并列排名）
+- `likeRanking`：点赞数排名（过滤 count=0，支持并列排名）
+- `totalContributions`：文章总数
+- `totalLikes`：点赞总数
+- `totalViews`：阅读总数
+- `totalAuthors`：作者总数
+- `totalVolumes`：期刊总数
+- 各类平均值统计
 
 ### 配置参数（CONFIG 对象）
 
@@ -174,7 +192,8 @@ CONFIG = {
 ```markdown
 ---
 vol: "001"
-date: "2024.05.20"
+date: "2026.01.20"
+title: "本期主题（可选）"
 editors:
   - author_id: "huyusong"
     role: "Chief Editor"
@@ -191,11 +210,15 @@ editors:
 详细内容...
 ```
 
-**徽章样式映射：**
+**徽章样式映射（可在 config.md 中自定义）：**
 - `[架构决策]` → 青色
 - `[债务预警]` → 橙色
 - `[工具推荐]` → 绿色
 - `[安全更新]` → 粉色
+- `[性能优化]` → 紫色
+- `[重要通知]` → 黄色
+
+**注意**：如果 `radar.md` 不存在或没有 `### [徽章] 标题` 格式的内容，Trending 部分会自动隐藏。
 
 ### 投稿文件夹 (contributions/文章名/)
 
@@ -208,11 +231,11 @@ editors:
 └── screenshot.png        # 可选：截图
 ```
 
-**index.md 格式：**
+**index.md 格式（单作者模式）：**
 
 ```markdown
 ---
-author_id: "zhang_wei"        # 单作者模式
+author_id: "zhang_wei"
 title: "文章标题"
 description: "简短描述（1-2 句话）"
 ---
@@ -230,7 +253,7 @@ description: "简短描述（1-2 句话）"
 
 ```markdown
 ---
-author_ids:                   # 多作者模式（使用 author_ids 数组）
+author_ids:
   - "zhang_wei"
   - "lisa_chen"
 title: "协作文章标题"
@@ -240,7 +263,7 @@ description: "由两位作者共同撰写的文章"
 正文内容...
 ```
 
-> **注意**：`author_id` 和 `author_ids` 二选一。多作者模式最多支持 2 位作者，超出部分将被忽略。
+> **注意**：`author_id` 和 `author_ids` 二选一。多作者模式最多支持 2 位作者，超出部分将被忽略。如果 `contributions/` 文件夹不存在或为空，Developer's Space 部分会自动隐藏。
 
 ### 统一作者文件 (shared/authors.md)
 
@@ -269,6 +292,26 @@ authors:
 | `team` | 所属团队 | "Core Platform Team" |
 | `avatar` | 头像路径 | "/contents/assets/images/avatars/zhang_wei.jpg" |
 | `role` | 职位/角色 | "Senior Developer" |
+
+### 站点配置文件 (shared/config.md)
+
+```markdown
+---
+site:
+  title: "Tech Radar Weekly"
+  slogan: "Navigating the bleeding edge of technology"
+  footer: "© 2026 Tech Radar Weekly"
+
+badges:
+  架构决策:
+    color: "#00f3ff"
+    bg: "rgba(0, 243, 255, 0.2)"
+  债务预警:
+    color: "#ff6b35"
+    bg: "rgba(255, 107, 53, 0.2)"
+  # 可添加更多自定义徽章...
+---
+```
 
 ## 样式系统
 
@@ -307,6 +350,7 @@ authors:
 - `.badge`：徽章标签
 - `.like-button`：点赞按钮
 - `.stat-item`：统计项（阅读量）
+- `.stats-container`：统计面板容器
 
 **状态类：**
 - `.active`：激活状态（用于导航链接）
@@ -322,13 +366,14 @@ authors:
 mkdir -p contents/published/vol-002/contributions
 ```
 
-2. **创建 radar.md**
+2. **创建 radar.md**（可选）
 ```bash
-cp contents/published/vol-001/radar.md contents/published/vol-002/radar.md
-# 编辑 vol-002/radar.md，更新 frontmatter（vol, date, editors）和内容
+# 如果需要 Trending 部分
+touch contents/published/vol-002/radar.md
+# 编辑并添加 frontmatter 和 Trending 内容
 ```
 
-3. **创建投稿文章**
+3. **创建投稿文章**（可选）
 ```bash
 mkdir contents/published/vol-002/contributions/01-article-name
 # 在文件夹中创建 index.md
@@ -337,7 +382,20 @@ mkdir contents/published/vol-002/contributions/01-article-name
 4. **服务器自动检测**
    - 热重载会自动检测文件变化
    - 或重启服务器：`node server.js`
-   - `archive.json` 会自动生成
+
+### 只有 Trending 的期刊
+
+如果某期只有 Trending 而没有投稿：
+1. 创建 `vol-XXX/radar.md` 文件
+2. 不创建 `contributions/` 文件夹（或保持为空）
+3. Developer's Space 部分会自动隐藏
+
+### 只有投稿的期刊
+
+如果某期只有投稿而没有 Trending：
+1. 不创建 `radar.md` 文件
+2. 创建 `contributions/` 文件夹并添加投稿
+3. Trending 部分会自动隐藏
 
 ### 草稿预览
 
@@ -360,12 +418,12 @@ const config = {
 
 ### 添加新的徽章类型
 
-在 `index.html` 的 CSS 中添加：
-```css
-.badge.newtype {
-    background: rgba(R, G, B, 0.2);
-    color: var(--accent-color);
-}
+在 `contents/shared/config.md` 中添加：
+```yaml
+badges:
+  新徽章:
+    color: "#00ff00"
+    bg: "rgba(0, 255, 0, 0.2)"
 ```
 
 ## 编码规范
@@ -419,5 +477,5 @@ const config = {
 
 ---
 
-**最后更新**：2026.01.27
+**最后更新**：2026.02.02
 **维护者**：Tech Radar Team

@@ -8,9 +8,11 @@
 - **Markdown 内容管理**：内容与展示完全解耦
 - **响应式布局**：完美适配移动端和桌面端
 - **交互功能**：点赞、阅读量统计、侧边栏导航
+- **统计面板**：作者投稿排名、点赞排名（支持并列排名）
 - **代码高亮**：支持多种编程语言的语法高亮
 - **热重载**：文件变更自动刷新浏览器
 - **草稿预览**：支持草稿模式预览未发布内容
+- **灵活内容**：Trending 和 Developer's Space 可独立存在或隐藏
 
 ## 项目结构
 
@@ -24,18 +26,16 @@ tech_radar_web/
 ├── CLAUDE.md               # AI 助手指南
 └── contents/               # 内容目录（可配置外部路径）
     ├── published/          # 已发布的周刊
-    │   ├── vol-001/
-    │   │   ├── radar.md
-    │   │   └── contributions/
-    │   │       ├── 01-article-name/
-    │   │       │   ├── index.md
-    │   │       │   └── *.svg/png
-    │   │       └── ...
-    │   └── vol-002/
+    │   └── vol-001/
+    │       ├── radar.md            # 可选：Trending 内容
+    │       └── contributions/      # 可选：投稿文章
+    │           └── 01-article/
+    │               ├── index.md
+    │               └── *.svg/png
     ├── draft/              # 草稿（预览用）
     │   └── vol-001/
     ├── shared/             # 共享配置
-    │   ├── config.md       # 站点标题、slogan
+    │   ├── config.md       # 站点标题、slogan、徽章配置
     │   ├── authors.md      # 作者档案
     │   └── submit-guide.md # 投稿指南
     ├── assets/             # 静态资源
@@ -68,6 +68,7 @@ node server.js
 
 - 动态阅读量统计
 - 点赞功能
+- 作者统计排名（投稿数、点赞数）
 - 往期列表动态加载
 - 热重载（文件修改后自动刷新）
 - 并发控制与速率限制
@@ -76,7 +77,7 @@ node server.js
 
 ### 草稿预览
 
-访问 `http://localhost:5090?draft=true` 可预览 `contents/draft/` 目录下的草稿内容。
+访问 `http://localhost:5090/draft` 可预览 `contents/draft/` 目录下的草稿内容。
 
 ## 配置说明
 
@@ -103,17 +104,16 @@ const config = {
 mkdir -p contents/published/vol-002/contributions
 ```
 
-2. **创建 radar.md**
+2. **创建 radar.md**（可选，如果需要 Trending 部分）
 
 ```markdown
 ---
 vol: "002"
-date: "2024.05.27"
+date: "2026.02.01"
+title: "本期主题（可选）"
 editors:
   - author_id: "huyusong"
     role: "Chief Editor"
-  - author_id: "dev_ops"
-    role: "Technical Reviewer"
 ---
 
 ## Trending
@@ -122,7 +122,7 @@ editors:
 详细内容...
 ```
 
-3. **创建投稿文章**
+3. **创建投稿文章**（可选，如果需要 Developer's Space 部分）
 
 在 `contributions/` 下创建文章文件夹：
 
@@ -140,29 +140,40 @@ description: "简短描述"
 ---
 
 正文内容...
+```
 
-\```typescript
-// 代码示例
-\```
+**多作者模式：**
+
+```markdown
+---
+author_ids:
+  - "zhang_wei"
+  - "lisa_chen"
+title: "协作文章"
+description: "两位作者共同撰写"
+---
 ```
 
 4. **重启服务器**（或等待热重载）
 
-服务器会自动检测 `vol-*` 目录并生成 `archive.json`。
+> **注意**：`radar.md` 和 `contributions/` 文件夹都是可选的。如果某个不存在或为空，对应的页面部分会自动隐藏。
 
 ## Markdown 格式说明
 
 ### Radar 文章 (radar.md)
 
-支持的徽章样式：
+支持的徽章样式（可在 `config.md` 中自定义）：
 - `[架构决策]` - 青色
 - `[债务预警]` - 橙色
 - `[工具推荐]` - 绿色
 - `[安全更新]` - 粉色
+- `[性能优化]` - 紫色
+- `[重要通知]` - 黄色
 
 ### 投稿文章 (contributions/*/index.md)
 
-- `author_id`：引用 `contents/shared/authors.md` 中的作者 ID
+- `author_id`：单作者模式，引用 `authors.md` 中的作者 ID
+- `author_ids`：多作者模式（最多 2 位），使用数组格式
 - 图片使用相对路径（如 `./diagram.svg`）
 - 阅读量和点赞数由服务器动态管理
 
@@ -213,8 +224,9 @@ authors:
 |------|------|------|
 | `/api/config` | GET | 获取站点配置 |
 | `/api/authors` | GET | 获取所有作者 |
-| `/api/volumes` | GET | 获取期刊列表 |
+| `/api/volumes` | GET | 获取期刊列表（支持 `?draft=true`） |
 | `/api/contributions/:vol` | GET | 获取某期投稿列表 |
+| `/api/stats` | GET | 获取作者统计排名 |
 | `/api/likes` | GET | 获取点赞数据 |
 | `/api/likes/:articleId` | POST | 点赞/取消点赞 |
 | `/api/views/:vol` | GET/POST | 获取/增加阅读量 |

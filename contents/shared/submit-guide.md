@@ -6,7 +6,7 @@ title: "How to Submit Your Work"
 
 我们欢迎所有工程师分享技术见解、代码片段、架构图和最佳实践。
 
-请花2～3分钟阅读本文档，写一个漂亮的说明文档(.md)，然后提交给主编～
+请花 2~3 分钟阅读本文档，写一个漂亮的说明文档(.md)，然后提交给主编。
 
 ### 文件夹结构
 
@@ -21,6 +21,8 @@ your-article-name/
 ```
 
 ### index.md 格式
+
+#### 单作者模式
 
 ```markdown
 ---
@@ -40,13 +42,34 @@ description: "简短描述（1-2句话）"
 \`\`\`
 ```
 
+#### 多作者模式（最多 2 位）
+
+如果是协作文章，可以使用 `author_ids` 数组：
+
+```markdown
+---
+author_ids:
+  - "author1_id"
+  - "author2_id"
+title: "协作文章标题"
+description: "两位作者共同完成的技术分享"
+---
+
+正文内容...
+```
+
+> **注意**：`author_id` 和 `author_ids` 二选一，不要同时使用。
+
 ### Frontmatter 字段说明
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `author_id` | 是 | 你在 authors.md 中的 ID |
+| `author_id` | 是* | 单作者模式：你在 authors.md 中的 ID |
+| `author_ids` | 是* | 多作者模式：作者 ID 数组（最多 2 位） |
 | `title` | 是 | 文章标题 |
 | `description` | 是 | 简短描述（显示在卡片中） |
+
+*`author_id` 和 `author_ids` 二选一
 
 ### 图片使用
 
@@ -55,6 +78,8 @@ description: "简短描述（1-2句话）"
 - 建议尺寸：宽度不超过 1000px
 
 ### 示例投稿
+
+#### 单人投稿
 
 ```
 my-awesome-tip/
@@ -82,6 +107,30 @@ description: "这是一个能提升开发效率的小技巧。"
 \`\`\`typescript
 const awesome = () => "Hello, Tech Radar!";
 \`\`\`
+```
+
+#### 双人协作投稿
+
+```
+team-best-practice/
+├── index.md
+└── architecture.svg
+```
+
+**index.md 内容：**
+
+```markdown
+---
+author_ids:
+  - "zhang_wei"
+  - "lisa_chen"
+title: "前后端协作最佳实践"
+description: "前端和后端工程师共同总结的协作规范。"
+---
+
+## 背景
+
+本文由前端工程师 @lisa_chen 和后端工程师 @zhang_wei 共同撰写...
 ```
 
 ### 提交流程
