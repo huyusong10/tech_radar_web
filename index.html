@@ -1517,12 +1517,13 @@
 
         .footer-content {
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
             flex-wrap: wrap;
             gap: var(--spacing-md);
             font-size: 0.875rem;
             color: var(--text-secondary);
+            text-align: center;
         }
 
         .export-button {
@@ -2379,14 +2380,16 @@
                 </button>
             </div>
             <div class="footer-content">
-                <div class="copyright" id="site-footer">
-                    © 2024 Tech Radar Weekly | Powered by Engineers, for Engineers
-                </div>
                 <button class="export-button" onclick="exportAsImage()">
                     <span class="btn-icon">📸</span>
                     <span class="btn-text-en">Export</span>
                     <span class="btn-text-cn">导出图片</span>
                 </button>
+            </div>
+            <div class="footer-content">
+                <div class="copyright" id="site-footer">
+                    © 2024 Tech Radar Weekly | Powered by Engineers, for Engineers
+                </div>
             </div>
         </div>
     </footer>
@@ -4013,8 +4016,6 @@
                 // Apply export-specific styles directly to DOM (simpler than onclone)
                 document.body.style.background = '#0a0a0a';
                 mainContent.style.marginLeft = '0';
-                mainContent.style.width = '100%';
-                mainContent.style.maxWidth = '100%';
                 mainContent.style.position = 'relative';
                 mainContent.style.left = '0';
 
@@ -4025,14 +4026,20 @@
                 void mainContent.offsetHeight;
                 await new Promise(resolve => setTimeout(resolve, 100));
 
-                // Use simple html2canvas configuration
+                // Get the actual content width (container max-width is 1200px + padding)
+                const container = mainContent.querySelector('.container');
+                const contentWidth = container ? Math.min(container.offsetWidth + 48, mainContent.scrollWidth) : mainContent.scrollWidth;
+
+                // Use html2canvas with specific width to avoid black borders
                 const canvas = await html2canvas(mainContent, {
                     backgroundColor: '#0a0a0a',
                     scale: 2,
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
-                    removeContainer: true
+                    removeContainer: true,
+                    width: contentWidth,
+                    windowWidth: contentWidth
                 });
 
                 // Restore original styles
