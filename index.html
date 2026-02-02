@@ -1406,14 +1406,10 @@
             background: rgba(255, 0, 255, 0.2);
             border-color: var(--accent-pink);
             color: var(--accent-pink);
-            cursor: default;
-            pointer-events: none;
         }
 
         .like-button.liked:hover {
-            /* No hover effect for liked buttons */
-            transform: none;
-            box-shadow: none;
+            box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
         }
 
         .like-icon {
@@ -1421,7 +1417,7 @@
             transition: transform 0.3s ease;
         }
 
-        .like-button:not(.liked):active .like-icon {
+        .like-button:active .like-icon {
             transform: scale(1.3);
         }
 
@@ -3021,9 +3017,13 @@
             return userLikedArticles.has(articleId);
         }
 
-        // Mark article as liked (IP-based, cannot be undone)
-        function markAsLiked(articleId) {
-            userLikedArticles.add(articleId);
+        // Update local like state
+        function setUserLiked(articleId, liked) {
+            if (liked) {
+                userLikedArticles.add(articleId);
+            } else {
+                userLikedArticles.delete(articleId);
+            }
         }
 
         // Store server likes data
@@ -3533,17 +3533,12 @@
             }
         }
 
-        // Like button functionality (IP-based, one like per IP, no unlike)
+        // Like button functionality (IP-based, one like per IP, can toggle)
         const likeInProgress = new Set();
 
-        async function handleLike(button) {
+        async function toggleLike(button) {
             const card = button.closest('.contribution-card');
             const articleId = card.dataset.articleId;
-
-            // Already liked - do nothing (button should be disabled anyway)
-            if (button.classList.contains('liked')) {
-                return;
-            }
 
             // Prevent rapid clicking - check if request is already in progress
             if (likeInProgress.has(articleId)) {
@@ -3559,13 +3554,17 @@
             button.style.pointerEvents = 'none';
 
             try {
-                // Send like to server
+                // Send toggle request to server
                 const result = await sendLike(articleId);
 
                 if (result) {
-                    // Update UI - mark as liked (permanent)
-                    button.classList.add('liked');
-                    markAsLiked(articleId);
+                    // Update UI based on server response
+                    if (result.userLiked) {
+                        button.classList.add('liked');
+                    } else {
+                        button.classList.remove('liked');
+                    }
+                    setUserLiked(articleId, result.userLiked);
 
                     // Update counts from server response
                     likeCountSpan.textContent = result.likes;
@@ -3573,25 +3572,14 @@
                         likeCountHeader.textContent = result.likes;
                     }
                     serverLikes[articleId] = result.likes;
-
-                    // Keep button visually disabled since already liked
-                    button.style.opacity = '';
-                    button.style.cursor = 'default';
                 }
             } finally {
-                // Clean up in-progress tracking
+                // Clean up in-progress tracking and restore button
                 likeInProgress.delete(articleId);
-
-                // Only restore full interactivity if not liked
-                if (!button.classList.contains('liked')) {
-                    button.style.opacity = '';
-                    button.style.pointerEvents = '';
-                }
+                button.style.opacity = '';
+                button.style.pointerEvents = '';
             }
         }
-
-        // Alias for backwards compatibility with onclick handlers
-        const toggleLike = handleLike;
 
         // Submit modal functions
         let submitGuideLoaded = false;

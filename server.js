@@ -492,6 +492,19 @@ function recordIPLike(articleId, ip) {
     return false;
 }
 
+// Remove IP's like from an article
+function removeIPLike(articleId, ip) {
+    if (likeIpsData[articleId]) {
+        const index = likeIpsData[articleId].indexOf(ip);
+        if (index > -1) {
+            likeIpsData[articleId].splice(index, 1);
+            likeIpsDirty = true;
+            return true;
+        }
+    }
+    return false;
+}
+
 // Get all articles liked by an IP
 function getIPLikedArticles(ip) {
     const likedArticles = [];
@@ -804,8 +817,8 @@ async function validateArticleExists(articleId) {
     }
 }
 
-// POST /api/likes/:articleId - Like an article (IP-based, one like per IP, no unlike)
-// Each IP can only like an article once and cannot remove the like
+// POST /api/likes/:articleId - Toggle like for an article (IP-based, one like per IP)
+// Each IP can like/unlike an article, but only counts as one like at a time
 app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res) => {
     const { articleId } = req.params;
 
@@ -836,45 +849,36 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
         return res.status(404).json({ error: 'Article not found' });
     }
 
-    // Check if this IP already liked this article (before acquiring lock for efficiency)
-    if (hasIPLiked(articleId, ip)) {
-        return res.status(409).json({
-            error: 'Already liked',
-            message: 'You have already liked this article',
-            articleId,
-            likes: likesData[articleId] || 0,
-            userLiked: true
-        });
-    }
-
     const lockKey = `likes:${articleId}`;
     let releaseLock;
 
     try {
         releaseLock = await mutex.acquire(lockKey);
 
-        // Double-check after acquiring lock (race condition prevention)
-        if (hasIPLiked(articleId, ip)) {
-            return res.status(409).json({
-                error: 'Already liked',
-                message: 'You have already liked this article',
-                articleId,
-                likes: likesData[articleId] || 0,
-                userLiked: true
-            });
+        // Check current like status (inside lock for consistency)
+        const alreadyLiked = hasIPLiked(articleId, ip);
+
+        if (alreadyLiked) {
+            // Unlike: remove the IP from the list
+            removeIPLike(articleId, ip);
+        } else {
+            // Like: add the IP to the list
+            recordIPLike(articleId, ip);
         }
 
-        // Record the like
-        recordIPLike(articleId, ip);
-
         // Update likes count (should match IP array length)
-        likesData[articleId] = likeIpsData[articleId].length;
+        const newCount = (likeIpsData[articleId] || []).length;
+        if (newCount > 0) {
+            likesData[articleId] = newCount;
+        } else {
+            delete likesData[articleId];
+        }
         likesDirty = true;
 
         res.json({
             articleId,
-            likes: likesData[articleId],
-            userLiked: true
+            likes: likesData[articleId] || 0,
+            userLiked: !alreadyLiked
         });
     } catch (error) {
         if (error.message.includes('Lock timeout')) {
