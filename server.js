@@ -26,10 +26,7 @@ const ASSETS_DIR = path.join(CONTENTS_DIR, 'assets');
 const DATA_DIR = path.join(CONTENTS_DIR, 'data');
 const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
 const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
-const LIKE_RECORDS_FILE = path.join(DATA_DIR, 'like-records.json');
-
-// Crypto for generating visitor IDs
-const crypto = require('crypto');
+const LIKE_IPS_FILE = path.join(DATA_DIR, 'like-ips.json');
 
 // ==================== LOAD TEST MODE ====================
 // Set LOAD_TEST_MODE=true to relax rate limits and connection limits for benchmarking
@@ -227,7 +224,7 @@ const writeQueue = new WriteQueue();
 // In-memory data store (loaded on startup, persisted periodically)
 let likesData = {};
 let viewsData = {};
-let likeRecordsData = {}; // { visitorKey: [articleId1, articleId2, ...] }
+let likeIpsData = {}; // { articleId: [ip1, ip2, ...] } - IPs that liked each article
 let dataLoaded = false;
 
 // Global watcher reference (declared here so gracefulShutdown can access it)
@@ -259,20 +256,60 @@ async function loadDataFiles() {
     }
 
     try {
-        const likeRecordsContent = await fsPromises.readFile(LIKE_RECORDS_FILE, 'utf8');
-        likeRecordsData = JSON.parse(likeRecordsContent);
+        const likeIpsContent = await fsPromises.readFile(LIKE_IPS_FILE, 'utf8');
+        likeIpsData = JSON.parse(likeIpsContent);
+        // Validate and sanitize loaded data
+        for (const articleId of Object.keys(likeIpsData)) {
+            if (!Array.isArray(likeIpsData[articleId])) {
+                likeIpsData[articleId] = [];
+            }
+        }
     } catch {
-        likeRecordsData = {};
+        likeIpsData = {};
     }
+
+    // Validate consistency: ensure likesData count matches likeIpsData array length
+    validateAndSyncLikesCounts();
 
     dataLoaded = true;
     console.log('Data files loaded into memory');
 }
 
+// Ensure likes counts are consistent with IP records
+function validateAndSyncLikesCounts() {
+    let corrected = false;
+
+    // Sync from IP records to likes count
+    for (const articleId of Object.keys(likeIpsData)) {
+        const ipCount = likeIpsData[articleId].length;
+        if (likesData[articleId] !== ipCount) {
+            console.log(`Correcting likes count for ${articleId}: ${likesData[articleId] || 0} -> ${ipCount}`);
+            likesData[articleId] = ipCount;
+            corrected = true;
+        }
+    }
+
+    // Remove likes entries that have no IP records
+    for (const articleId of Object.keys(likesData)) {
+        if (!likeIpsData[articleId] || likeIpsData[articleId].length === 0) {
+            if (likesData[articleId] > 0) {
+                console.log(`Removing orphan likes count for ${articleId}: ${likesData[articleId]}`);
+                delete likesData[articleId];
+                corrected = true;
+            }
+        }
+    }
+
+    if (corrected) {
+        likesDirty = true;
+        likeIpsDirty = true;
+    }
+}
+
 // Periodic persistence (every 5 seconds if dirty)
 let likesDirty = false;
 let viewsDirty = false;
-let likeRecordsDirty = false;
+let likeIpsDirty = false;
 
 async function persistData() {
     if (likesDirty) {
@@ -293,12 +330,12 @@ async function persistData() {
         }
     }
 
-    if (likeRecordsDirty) {
+    if (likeIpsDirty) {
         try {
-            await writeQueue.scheduleWrite(LIKE_RECORDS_FILE, likeRecordsData);
-            likeRecordsDirty = false;
+            await writeQueue.scheduleWrite(LIKE_IPS_FILE, likeIpsData);
+            likeIpsDirty = false;
         } catch (error) {
-            console.error('Failed to persist like records:', error);
+            console.error('Failed to persist like IPs:', error);
         }
     }
 }
@@ -360,84 +397,123 @@ function getVolumesDir(isDraft) {
     return isDraft ? DRAFT_DIR : PUBLISHED_DIR;
 }
 
-// Get client IP (handles proxies)
+// ==================== IP-BASED LIKE TRACKING ====================
+
+// Validate IP address format (IPv4 or IPv6)
+function isValidIP(ip) {
+    if (!ip || typeof ip !== 'string') return false;
+
+    // IPv4 pattern
+    const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    // IPv6 pattern (simplified, covers most cases including ::1)
+    const ipv6Pattern = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$|^::1$|^::$/;
+    // IPv4-mapped IPv6 (::ffff:192.168.1.1)
+    const ipv4MappedPattern = /^::ffff:(\d{1,3}\.){3}\d{1,3}$/i;
+
+    if (ipv4Pattern.test(ip)) {
+        // Validate each octet is 0-255
+        const octets = ip.split('.').map(Number);
+        return octets.every(o => o >= 0 && o <= 255);
+    }
+
+    return ipv6Pattern.test(ip) || ipv4MappedPattern.test(ip);
+}
+
+// Normalize IP address (extract IPv4 from IPv4-mapped IPv6, trim whitespace)
+function normalizeIP(ip) {
+    if (!ip) return null;
+
+    ip = ip.trim();
+
+    // Extract IPv4 from IPv4-mapped IPv6 format (::ffff:192.168.1.1)
+    const ipv4MappedMatch = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
+    if (ipv4MappedMatch) {
+        return ipv4MappedMatch[1];
+    }
+
+    // Handle localhost variations
+    if (ip === '::1' || ip === '::ffff:127.0.0.1') {
+        return '127.0.0.1';
+    }
+
+    return ip;
+}
+
+// Get client IP with security considerations
 function getClientIP(req) {
-    return req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-           req.connection.remoteAddress ||
-           'unknown';
-}
+    let ip = null;
 
-// ==================== VISITOR ID & LIKE TRACKING ====================
-
-// Parse cookies from request header
-function parseCookies(req) {
-    const cookies = {};
-    const cookieHeader = req.headers.cookie;
-    if (cookieHeader) {
-        cookieHeader.split(';').forEach(cookie => {
-            const [name, ...rest] = cookie.split('=');
-            cookies[name.trim()] = rest.join('=').trim();
-        });
-    }
-    return cookies;
-}
-
-// Generate a unique visitor ID
-function generateVisitorId() {
-    return crypto.randomBytes(16).toString('hex');
-}
-
-// Get or create visitor ID from cookies
-function getVisitorId(req, res) {
-    const cookies = parseCookies(req);
-    let visitorId = cookies['visitor_id'];
-
-    if (!visitorId) {
-        visitorId = generateVisitorId();
-        // Set cookie with 1 year expiry, httpOnly for security
-        res.setHeader('Set-Cookie', `visitor_id=${visitorId}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax`);
+    // Priority 1: X-Forwarded-For (first IP in chain, set by reverse proxy)
+    // Note: Only trust this if you have a trusted reverse proxy configured
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    if (xForwardedFor) {
+        // Take the first IP (original client), trim whitespace
+        ip = xForwardedFor.split(',')[0].trim();
     }
 
-    return visitorId;
-}
-
-// Generate unique visitor key combining visitorId and IP
-function getVisitorKey(visitorId, ip) {
-    // Hash the combination to create a consistent key
-    return crypto.createHash('sha256').update(`${visitorId}:${ip}`).digest('hex').substring(0, 32);
-}
-
-// Check if visitor has already liked an article
-function hasVisitorLiked(visitorKey, articleId) {
-    const likedArticles = likeRecordsData[visitorKey] || [];
-    return likedArticles.includes(articleId);
-}
-
-// Record visitor's like
-function recordVisitorLike(visitorKey, articleId) {
-    if (!likeRecordsData[visitorKey]) {
-        likeRecordsData[visitorKey] = [];
+    // Priority 2: X-Real-IP (set by some proxies like nginx)
+    if (!ip && req.headers['x-real-ip']) {
+        ip = req.headers['x-real-ip'].trim();
     }
-    if (!likeRecordsData[visitorKey].includes(articleId)) {
-        likeRecordsData[visitorKey].push(articleId);
-        likeRecordsDirty = true;
+
+    // Priority 3: Direct connection
+    if (!ip) {
+        ip = req.connection?.remoteAddress ||
+             req.socket?.remoteAddress ||
+             req.ip;
     }
+
+    // Normalize and validate
+    ip = normalizeIP(ip);
+
+    if (!ip || !isValidIP(ip)) {
+        return null;
+    }
+
+    return ip;
 }
 
-// Remove visitor's like
-function removeVisitorLike(visitorKey, articleId) {
-    if (likeRecordsData[visitorKey]) {
-        const index = likeRecordsData[visitorKey].indexOf(articleId);
+// Check if an IP has already liked an article
+function hasIPLiked(articleId, ip) {
+    const likedIPs = likeIpsData[articleId] || [];
+    return likedIPs.includes(ip);
+}
+
+// Record IP's like for an article
+function recordIPLike(articleId, ip) {
+    if (!likeIpsData[articleId]) {
+        likeIpsData[articleId] = [];
+    }
+    if (!likeIpsData[articleId].includes(ip)) {
+        likeIpsData[articleId].push(ip);
+        likeIpsDirty = true;
+        return true;
+    }
+    return false;
+}
+
+// Remove IP's like from an article
+function removeIPLike(articleId, ip) {
+    if (likeIpsData[articleId]) {
+        const index = likeIpsData[articleId].indexOf(ip);
         if (index > -1) {
-            likeRecordsData[visitorKey].splice(index, 1);
-            likeRecordsDirty = true;
+            likeIpsData[articleId].splice(index, 1);
+            likeIpsDirty = true;
+            return true;
         }
     }
+    return false;
 }
 
-// Get all articles liked by a visitor
-function getVisitorLikedArticles(visitorKey) {
-    return likeRecordsData[visitorKey] || [];
+// Get all articles liked by an IP
+function getIPLikedArticles(ip) {
+    const likedArticles = [];
+    for (const [articleId, ips] of Object.entries(likeIpsData)) {
+        if (ips.includes(ip)) {
+            likedArticles.push(articleId);
+        }
+    }
+    return likedArticles;
 }
 
 // ==================== MIDDLEWARE ====================
@@ -448,7 +524,7 @@ app.use(express.json({ limit: '10kb' }));
 // Rate limiting middleware
 function rateLimitMiddleware(type = 'read') {
     return (req, res, next) => {
-        const ip = getClientIP(req);
+        const ip = getClientIP(req) || 'unknown';
         if (!rateLimiter.isAllowed(ip, type)) {
             return res.status(429).json({
                 error: 'Too many requests',
@@ -696,19 +772,146 @@ app.get('/api/contributions/:vol', rateLimitMiddleware('read'), async (req, res)
     res.json(contributions);
 });
 
+// GET /api/search - Search across all published volumes
+// Query params: q (search query), limit (max results, default 20)
+app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
+    const query = (req.query.q || '').trim().toLowerCase();
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+
+    if (!query || query.length < 2) {
+        return res.json({ results: [], query: '' });
+    }
+
+    const cacheKey = `search:${query}:${limit}`;
+    let cachedResults = cache.get(cacheKey);
+
+    if (cachedResults) {
+        res.set('Cache-Control', 'public, max-age=30');
+        return res.json(cachedResults);
+    }
+
+    try {
+        const results = [];
+        const volumesDir = PUBLISHED_DIR; // Only search published, not draft
+
+        // Check if volumes directory exists
+        try {
+            await fsPromises.access(volumesDir);
+        } catch {
+            return res.json({ results: [], query });
+        }
+
+        // Get all volumes
+        const volDirs = await fsPromises.readdir(volumesDir, { withFileTypes: true });
+        const volumes = volDirs
+            .filter(d => d.isDirectory() && d.name.startsWith('vol-'))
+            .map(d => d.name.replace('vol-', ''))
+            .sort((a, b) => b.localeCompare(a)); // Latest first
+
+        // Search each volume
+        for (const vol of volumes) {
+            // Search radar.md (Trending section)
+            const radarPath = path.join(volumesDir, `vol-${vol}`, 'radar.md');
+            try {
+                const radarContent = await fsPromises.readFile(radarPath, 'utf8');
+                const radarFrontmatter = parseYamlFrontmatter(radarContent);
+
+                // Extract trending items (### [Badge] Title format)
+                const trendingMatches = radarContent.matchAll(/###\s*\[([^\]]+)\]\s*(.+)/g);
+                for (const match of trendingMatches) {
+                    const badge = match[1];
+                    const title = match[2].trim();
+
+                    if (title.toLowerCase().includes(query) || badge.toLowerCase().includes(query)) {
+                        results.push({
+                            type: 'trending',
+                            vol,
+                            title,
+                            badge,
+                            date: radarFrontmatter.date || '',
+                            articleId: null
+                        });
+                    }
+                }
+            } catch {
+                // radar.md doesn't exist or can't be read
+            }
+
+            // Search contributions
+            const contributionsDir = path.join(volumesDir, `vol-${vol}`, 'contributions');
+            try {
+                const contribDirs = await fsPromises.readdir(contributionsDir, { withFileTypes: true });
+
+                for (const dir of contribDirs) {
+                    if (!dir.isDirectory()) continue;
+
+                    const indexPath = path.join(contributionsDir, dir.name, 'index.md');
+                    try {
+                        const content = await fsPromises.readFile(indexPath, 'utf8');
+                        const frontmatter = parseYamlFrontmatter(content);
+
+                        const title = frontmatter.title || dir.name;
+                        const description = frontmatter.description || '';
+                        const authorIds = frontmatter.author_ids || (frontmatter.author_id ? [frontmatter.author_id] : []);
+
+                        // Search in title, description, and author IDs
+                        const searchText = `${title} ${description} ${authorIds.join(' ')}`.toLowerCase();
+
+                        if (searchText.includes(query)) {
+                            results.push({
+                                type: 'contribution',
+                                vol,
+                                title,
+                                description: description.length > 100 ? description.substring(0, 100) + '...' : description,
+                                authorIds,
+                                articleId: `${vol}-${dir.name}`,
+                                folderName: dir.name
+                            });
+                        }
+                    } catch {
+                        // index.md doesn't exist
+                    }
+                }
+            } catch {
+                // contributions directory doesn't exist
+            }
+
+            // Early exit if we have enough results
+            if (results.length >= limit) break;
+        }
+
+        const response = {
+            results: results.slice(0, limit),
+            query,
+            total: results.length
+        };
+
+        cache.set(cacheKey, response, 30000); // Cache for 30 seconds
+        res.set('Cache-Control', 'public, max-age=30');
+        res.json(response);
+    } catch (error) {
+        console.error('Search error:', error);
+        res.status(500).json({ error: 'Search failed', results: [] });
+    }
+});
+
 // GET /api/likes - Get all likes
 app.get('/api/likes', rateLimitMiddleware('read'), (req, res) => {
     res.set('Cache-Control', 'private, max-age=5');
     res.json(likesData);
 });
 
-// GET /api/user-likes - Get current user's liked articles
+// GET /api/user-likes - Get current user's liked articles (IP-based)
 app.get('/api/user-likes', rateLimitMiddleware('read'), (req, res) => {
-    const visitorId = getVisitorId(req, res);
     const ip = getClientIP(req);
-    const visitorKey = getVisitorKey(visitorId, ip);
 
-    const likedArticles = getVisitorLikedArticles(visitorKey);
+    if (!ip) {
+        // Can't identify user, return empty list
+        res.set('Cache-Control', 'private, no-cache');
+        return res.json({ likedArticles: [] });
+    }
+
+    const likedArticles = getIPLikedArticles(ip);
     res.set('Cache-Control', 'private, no-cache');
     res.json({ likedArticles });
 });
@@ -737,24 +940,30 @@ async function validateArticleExists(articleId) {
     }
 }
 
-// POST /api/likes/:articleId - Toggle like for an article (with concurrency control)
-// Uses Cookie + IP combination to prevent duplicate likes
+// POST /api/likes/:articleId - Toggle like for an article (IP-based, one like per IP)
+// Each IP can like/unlike an article, but only counts as one like at a time
 app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res) => {
     const { articleId } = req.params;
-    const { action } = req.body;
 
-    // Get visitor identification
-    const visitorId = getVisitorId(req, res);
+    // Get client IP
     const ip = getClientIP(req);
-    const visitorKey = getVisitorKey(visitorId, ip);
 
-    // Validate input
-    if (!action || !['like', 'unlike'].includes(action)) {
-        return res.status(400).json({ error: 'Invalid action' });
+    // Validate IP - must have a valid IP to like
+    if (!ip) {
+        return res.status(400).json({
+            error: 'Unable to identify client',
+            message: 'A valid IP address is required to like an article'
+        });
     }
 
+    // Validate article ID format and length
     if (!articleId || articleId.length > 100) {
         return res.status(400).json({ error: 'Invalid article ID' });
+    }
+
+    // Validate article ID format more strictly (vol-folder format)
+    if (!/^\d{3}-[\w-]+$/.test(articleId)) {
+        return res.status(400).json({ error: 'Invalid article ID format' });
     }
 
     // Validate that the article actually exists
@@ -763,52 +972,36 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
         return res.status(404).json({ error: 'Article not found' });
     }
 
-    // Check if user already liked this article
-    const alreadyLiked = hasVisitorLiked(visitorKey, articleId);
-
-    // Prevent duplicate like
-    if (action === 'like' && alreadyLiked) {
-        return res.status(409).json({
-            error: 'Already liked',
-            articleId,
-            likes: likesData[articleId] || 0,
-            userLiked: true
-        });
-    }
-
-    // Prevent unlike if not liked
-    if (action === 'unlike' && !alreadyLiked) {
-        return res.status(409).json({
-            error: 'Not liked yet',
-            articleId,
-            likes: likesData[articleId] || 0,
-            userLiked: false
-        });
-    }
-
     const lockKey = `likes:${articleId}`;
     let releaseLock;
 
     try {
         releaseLock = await mutex.acquire(lockKey);
 
-        if (!likesData[articleId]) {
-            likesData[articleId] = 0;
+        // Check current like status (inside lock for consistency)
+        const alreadyLiked = hasIPLiked(articleId, ip);
+
+        if (alreadyLiked) {
+            // Unlike: remove the IP from the list
+            removeIPLike(articleId, ip);
+        } else {
+            // Like: add the IP to the list
+            recordIPLike(articleId, ip);
         }
 
-        if (action === 'like') {
-            likesData[articleId]++;
-            recordVisitorLike(visitorKey, articleId);
-        } else if (action === 'unlike' && likesData[articleId] > 0) {
-            likesData[articleId]--;
-            removeVisitorLike(visitorKey, articleId);
+        // Update likes count (should match IP array length)
+        const newCount = (likeIpsData[articleId] || []).length;
+        if (newCount > 0) {
+            likesData[articleId] = newCount;
+        } else {
+            delete likesData[articleId];
         }
-
         likesDirty = true;
+
         res.json({
             articleId,
-            likes: likesData[articleId],
-            userLiked: action === 'like'
+            likes: likesData[articleId] || 0,
+            userLiked: !alreadyLiked
         });
     } catch (error) {
         if (error.message.includes('Lock timeout')) {
@@ -1128,7 +1321,7 @@ function stopSSEHeartbeat() {
 
 // SSE endpoint for hot reload notifications
 app.get('/api/hot-reload', (req, res) => {
-    const clientIP = getClientIP(req);
+    const clientIP = getClientIP(req) || 'unknown';
 
     // Check global limit
     if (sseClients.size >= SSE_CONFIG.MAX_CLIENTS_TOTAL) {
