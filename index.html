@@ -302,6 +302,168 @@
             margin-left: 80px;
         }
 
+        /* ==================== SEARCH BOX ==================== */
+        .search-container {
+            position: relative;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .search-input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.6rem 2.5rem 0.6rem 0.8rem;
+            background: rgba(0, 243, 255, 0.05);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .search-input::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
+        .search-input:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+            background: rgba(0, 243, 255, 0.08);
+        }
+
+        .search-icon {
+            position: absolute;
+            right: 0.8rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            pointer-events: none;
+        }
+
+        .search-clear {
+            position: absolute;
+            right: 0.6rem;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0.2rem;
+            display: none;
+            transition: color 0.2s;
+        }
+
+        .search-clear:hover {
+            color: var(--accent-pink);
+        }
+
+        .search-input:not(:placeholder-shown) ~ .search-icon {
+            display: none;
+        }
+
+        .search-input:not(:placeholder-shown) ~ .search-clear {
+            display: block;
+        }
+
+        .search-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 4px;
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: var(--radius-md);
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 200;
+            display: none;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .search-dropdown.active {
+            display: block;
+        }
+
+        .search-result-item {
+            padding: 0.8rem;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.1);
+            transition: all 0.2s ease;
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-item:hover,
+        .search-result-item.selected {
+            background: rgba(0, 243, 255, 0.1);
+        }
+
+        .search-result-type {
+            font-size: 0.65rem;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.3rem;
+        }
+
+        .search-result-type.trending {
+            color: var(--accent-orange);
+        }
+
+        .search-result-type.contribution {
+            color: var(--accent-green);
+        }
+
+        .search-result-title {
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            margin-bottom: 0.2rem;
+            line-height: 1.3;
+        }
+
+        .search-result-meta {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+        }
+
+        .search-result-badge {
+            display: inline-block;
+            padding: 0.1rem 0.4rem;
+            background: rgba(255, 107, 53, 0.2);
+            color: var(--accent-orange);
+            border-radius: 3px;
+            font-size: 0.65rem;
+            margin-right: 0.3rem;
+        }
+
+        .search-no-results {
+            padding: 1rem;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .search-loading {
+            padding: 1rem;
+            text-align: center;
+            color: var(--accent-cyan);
+            font-size: 0.8rem;
+        }
+
+        .sidebar.collapsed .search-container {
+            display: none;
+        }
+
         /* Mobile Menu Toggle */
         .sidebar-toggle {
             display: none;
@@ -2287,6 +2449,15 @@
                 <span id="collapse-icon">◀</span>
             </button>
         </div>
+        <!-- Search Box -->
+        <div class="search-container">
+            <div class="search-input-wrapper">
+                <input type="text" class="search-input" id="search-input" placeholder="Search articles..." autocomplete="off">
+                <span class="search-icon">🔍</span>
+                <button class="search-clear" id="search-clear" onclick="clearSearch()">×</button>
+            </div>
+            <div class="search-dropdown" id="search-dropdown"></div>
+        </div>
         <ul class="archive-list">
             <li class="archive-item"><span class="loading-skeleton" style="display: block; width: 100%; height: 2.5em; margin-bottom: 0.5em;"></span></li>
             <li class="archive-item"><span class="loading-skeleton" style="display: block; width: 100%; height: 2.5em; margin-bottom: 0.5em;"></span></li>
@@ -3497,6 +3668,9 @@
                     contributionsGrid.classList.add('loaded');
                 }
             }
+
+            // Initialize search functionality
+            initSearch();
         }
 
         // Sidebar toggle functionality (for mobile)
@@ -3579,6 +3753,330 @@
                 button.style.opacity = '';
                 button.style.pointerEvents = '';
             }
+        }
+
+        // ==================== SEARCH FUNCTIONALITY ====================
+        let searchTimeout = null;
+        let searchResults = [];
+        let selectedSearchIndex = -1;
+
+        // Initialize search
+        function initSearch() {
+            const searchInput = document.getElementById('search-input');
+            const searchDropdown = document.getElementById('search-dropdown');
+
+            if (!searchInput) return;
+
+            // Input event - debounced search
+            searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.trim();
+
+                // Clear previous timeout
+                if (searchTimeout) {
+                    clearTimeout(searchTimeout);
+                }
+
+                // Reset selection
+                selectedSearchIndex = -1;
+
+                if (query.length < 2) {
+                    hideSearchDropdown();
+                    return;
+                }
+
+                // Show loading
+                showSearchLoading();
+
+                // Debounce search
+                searchTimeout = setTimeout(() => {
+                    performSearch(query);
+                }, 300);
+            });
+
+            // Keyboard navigation
+            searchInput.addEventListener('keydown', (e) => {
+                if (!searchDropdown.classList.contains('active')) return;
+
+                switch (e.key) {
+                    case 'ArrowDown':
+                        e.preventDefault();
+                        navigateSearchResults(1);
+                        break;
+                    case 'ArrowUp':
+                        e.preventDefault();
+                        navigateSearchResults(-1);
+                        break;
+                    case 'Enter':
+                        e.preventDefault();
+                        if (selectedSearchIndex >= 0 && selectedSearchIndex < searchResults.length) {
+                            selectSearchResult(searchResults[selectedSearchIndex]);
+                        }
+                        break;
+                    case 'Escape':
+                        hideSearchDropdown();
+                        searchInput.blur();
+                        break;
+                }
+            });
+
+            // Click outside to close
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.search-container')) {
+                    hideSearchDropdown();
+                }
+            });
+
+            // Focus to show results if there are any
+            searchInput.addEventListener('focus', () => {
+                if (searchResults.length > 0) {
+                    showSearchDropdown();
+                }
+            });
+        }
+
+        // Perform search API call
+        async function performSearch(query) {
+            try {
+                const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=15`);
+                const data = await response.json();
+
+                searchResults = data.results || [];
+                renderSearchResults(searchResults, query);
+            } catch (error) {
+                console.error('Search failed:', error);
+                renderSearchError();
+            }
+        }
+
+        // Render search results
+        function renderSearchResults(results, query) {
+            const dropdown = document.getElementById('search-dropdown');
+
+            if (results.length === 0) {
+                dropdown.innerHTML = `<div class="search-no-results">No results for "${query}"</div>`;
+                showSearchDropdown();
+                return;
+            }
+
+            dropdown.innerHTML = results.map((result, index) => {
+                if (result.type === 'trending') {
+                    return `
+                        <div class="search-result-item" data-index="${index}" onclick="selectSearchResult(searchResults[${index}])">
+                            <div class="search-result-type trending">Trending</div>
+                            <div class="search-result-title">
+                                <span class="search-result-badge">${escapeHtml(result.badge)}</span>
+                                ${escapeHtml(result.title)}
+                            </div>
+                            <div class="search-result-meta">Vol.${result.vol} ${result.date ? '· ' + result.date : ''}</div>
+                        </div>
+                    `;
+                } else {
+                    return `
+                        <div class="search-result-item" data-index="${index}" onclick="selectSearchResult(searchResults[${index}])">
+                            <div class="search-result-type contribution">Article</div>
+                            <div class="search-result-title">${escapeHtml(result.title)}</div>
+                            <div class="search-result-meta">Vol.${result.vol} ${result.authorIds ? '· ' + result.authorIds.join(', ') : ''}</div>
+                        </div>
+                    `;
+                }
+            }).join('');
+
+            showSearchDropdown();
+        }
+
+        // Show loading state
+        function showSearchLoading() {
+            const dropdown = document.getElementById('search-dropdown');
+            dropdown.innerHTML = '<div class="search-loading">Searching...</div>';
+            showSearchDropdown();
+        }
+
+        // Show error state
+        function renderSearchError() {
+            const dropdown = document.getElementById('search-dropdown');
+            dropdown.innerHTML = '<div class="search-no-results">Search failed. Please try again.</div>';
+            showSearchDropdown();
+        }
+
+        // Show/hide dropdown
+        function showSearchDropdown() {
+            document.getElementById('search-dropdown').classList.add('active');
+        }
+
+        function hideSearchDropdown() {
+            document.getElementById('search-dropdown').classList.remove('active');
+            selectedSearchIndex = -1;
+        }
+
+        // Clear search
+        function clearSearch() {
+            const searchInput = document.getElementById('search-input');
+            searchInput.value = '';
+            searchResults = [];
+            hideSearchDropdown();
+            searchInput.focus();
+        }
+
+        // Keyboard navigation
+        function navigateSearchResults(direction) {
+            const items = document.querySelectorAll('.search-result-item');
+            if (items.length === 0) return;
+
+            // Remove current selection
+            items.forEach(item => item.classList.remove('selected'));
+
+            // Update index
+            selectedSearchIndex += direction;
+            if (selectedSearchIndex < 0) selectedSearchIndex = items.length - 1;
+            if (selectedSearchIndex >= items.length) selectedSearchIndex = 0;
+
+            // Add selection to new item
+            items[selectedSearchIndex].classList.add('selected');
+            items[selectedSearchIndex].scrollIntoView({ block: 'nearest' });
+        }
+
+        // Select a search result and navigate
+        function selectSearchResult(result) {
+            hideSearchDropdown();
+            document.getElementById('search-input').value = '';
+
+            if (result.type === 'trending') {
+                // Navigate to the volume and scroll to trending section
+                navigateToVolume(result.vol, 'trending', result.title);
+            } else {
+                // Navigate to the volume and scroll to the article
+                navigateToVolume(result.vol, 'article', result.articleId);
+            }
+        }
+
+        // Navigate to a specific volume and element
+        async function navigateToVolume(vol, type, target) {
+            // Check if we're already on this volume
+            if (currentVol === vol) {
+                // Just scroll to the target
+                scrollToTarget(type, target);
+            } else {
+                // Need to load the volume first
+                // Update URL and trigger load
+                const isDraftMode = window.location.pathname === '/draft';
+                const newUrl = isDraftMode ? `/draft?vol=${vol}` : `/?vol=${vol}`;
+                window.history.pushState({ vol }, '', newUrl);
+                currentVol = vol;
+
+                // Load the volume content
+                await loadVolumeContent(vol, isDraftMode);
+
+                // Update sidebar active state
+                updateSidebarActiveState(vol);
+
+                // After content loads, scroll to target
+                // Use a small delay to ensure DOM is updated
+                setTimeout(() => {
+                    scrollToTarget(type, target);
+                }, 100);
+            }
+        }
+
+        // Load volume content (radar + contributions)
+        async function loadVolumeContent(vol, isDraftMode) {
+            const baseDir = isDraftMode ? '/contents/draft' : '/contents/published';
+            const volPath = `${baseDir}/vol-${vol}`;
+
+            // Load radar content
+            try {
+                const radarContent = await loadMarkdown(`${volPath}/radar.md`);
+                if (radarContent) {
+                    const { metadata, content } = parseFrontmatter(radarContent);
+                    renderRadar(metadata, content, volPath);
+                    document.getElementById('trending-section').style.display = '';
+                } else {
+                    document.getElementById('trending-section').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Failed to load radar:', error);
+                document.getElementById('trending-section').style.display = 'none';
+            }
+
+            // Load contributions
+            try {
+                await loadContributions(vol);
+            } catch (error) {
+                console.error('Failed to load contributions:', error);
+            }
+
+            // Update views
+            try {
+                const viewsResult = await fetchWithRetry(`/api/views/${vol}`, { method: 'POST' });
+                if (viewsResult.ok) {
+                    const viewsData = await viewsResult.json();
+                    document.getElementById('page-views').textContent = viewsData.views;
+                }
+            } catch (error) {
+                console.error('Failed to update views:', error);
+            }
+        }
+
+        // Update sidebar active state
+        function updateSidebarActiveState(vol) {
+            const sidebarLinks = document.querySelectorAll('.archive-link');
+            sidebarLinks.forEach(link => {
+                const linkVol = link.getAttribute('data-vol');
+                if (linkVol === vol) {
+                    link.classList.add('active');
+                } else {
+                    link.classList.remove('active');
+                }
+            });
+        }
+
+        // Scroll to target element
+        function scrollToTarget(type, target) {
+            if (type === 'trending') {
+                // Find the trending item by title
+                const trendingSection = document.getElementById('trending-container');
+                if (trendingSection) {
+                    // Try to find the specific trending item
+                    const items = trendingSection.querySelectorAll('.trending-item');
+                    for (const item of items) {
+                        const titleEl = item.querySelector('h3');
+                        if (titleEl && titleEl.textContent.includes(target)) {
+                            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            // Highlight briefly
+                            item.style.transition = 'box-shadow 0.3s ease';
+                            item.style.boxShadow = '0 0 20px rgba(0, 243, 255, 0.5)';
+                            setTimeout(() => {
+                                item.style.boxShadow = '';
+                            }, 2000);
+                            return;
+                        }
+                    }
+                    // Fallback: scroll to trending section
+                    trendingSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            } else if (type === 'article') {
+                // Find the article card by article ID
+                const card = document.querySelector(`.contribution-card[data-article-id="${target}"]`);
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Expand the card
+                    if (!card.classList.contains('expanded')) {
+                        card.classList.add('expanded');
+                    }
+                    // Highlight briefly
+                    card.style.transition = 'box-shadow 0.3s ease';
+                    card.style.boxShadow = '0 0 25px rgba(0, 243, 255, 0.6)';
+                    setTimeout(() => {
+                        card.style.boxShadow = '';
+                    }, 2000);
+                }
+            }
+        }
+
+        // Helper function to escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // Submit modal functions

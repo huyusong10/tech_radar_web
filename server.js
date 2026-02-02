@@ -772,6 +772,129 @@ app.get('/api/contributions/:vol', rateLimitMiddleware('read'), async (req, res)
     res.json(contributions);
 });
 
+// GET /api/search - Search across all published volumes
+// Query params: q (search query), limit (max results, default 20)
+app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
+    const query = (req.query.q || '').trim().toLowerCase();
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+
+    if (!query || query.length < 2) {
+        return res.json({ results: [], query: '' });
+    }
+
+    const cacheKey = `search:${query}:${limit}`;
+    let cachedResults = cache.get(cacheKey);
+
+    if (cachedResults) {
+        res.set('Cache-Control', 'public, max-age=30');
+        return res.json(cachedResults);
+    }
+
+    try {
+        const results = [];
+        const volumesDir = PUBLISHED_DIR; // Only search published, not draft
+
+        // Check if volumes directory exists
+        try {
+            await fsPromises.access(volumesDir);
+        } catch {
+            return res.json({ results: [], query });
+        }
+
+        // Get all volumes
+        const volDirs = await fsPromises.readdir(volumesDir, { withFileTypes: true });
+        const volumes = volDirs
+            .filter(d => d.isDirectory() && d.name.startsWith('vol-'))
+            .map(d => d.name.replace('vol-', ''))
+            .sort((a, b) => b.localeCompare(a)); // Latest first
+
+        // Search each volume
+        for (const vol of volumes) {
+            // Search radar.md (Trending section)
+            const radarPath = path.join(volumesDir, `vol-${vol}`, 'radar.md');
+            try {
+                const radarContent = await fsPromises.readFile(radarPath, 'utf8');
+                const radarFrontmatter = parseYamlFrontmatter(radarContent);
+
+                // Extract trending items (### [Badge] Title format)
+                const trendingMatches = radarContent.matchAll(/###\s*\[([^\]]+)\]\s*(.+)/g);
+                for (const match of trendingMatches) {
+                    const badge = match[1];
+                    const title = match[2].trim();
+
+                    if (title.toLowerCase().includes(query) || badge.toLowerCase().includes(query)) {
+                        results.push({
+                            type: 'trending',
+                            vol,
+                            title,
+                            badge,
+                            date: radarFrontmatter.date || '',
+                            articleId: null
+                        });
+                    }
+                }
+            } catch {
+                // radar.md doesn't exist or can't be read
+            }
+
+            // Search contributions
+            const contributionsDir = path.join(volumesDir, `vol-${vol}`, 'contributions');
+            try {
+                const contribDirs = await fsPromises.readdir(contributionsDir, { withFileTypes: true });
+
+                for (const dir of contribDirs) {
+                    if (!dir.isDirectory()) continue;
+
+                    const indexPath = path.join(contributionsDir, dir.name, 'index.md');
+                    try {
+                        const content = await fsPromises.readFile(indexPath, 'utf8');
+                        const frontmatter = parseYamlFrontmatter(content);
+
+                        const title = frontmatter.title || dir.name;
+                        const description = frontmatter.description || '';
+                        const authorIds = frontmatter.author_ids || (frontmatter.author_id ? [frontmatter.author_id] : []);
+
+                        // Search in title, description, and author IDs
+                        const searchText = `${title} ${description} ${authorIds.join(' ')}`.toLowerCase();
+
+                        if (searchText.includes(query)) {
+                            results.push({
+                                type: 'contribution',
+                                vol,
+                                title,
+                                description: description.length > 100 ? description.substring(0, 100) + '...' : description,
+                                authorIds,
+                                articleId: `${vol}-${dir.name}`,
+                                folderName: dir.name
+                            });
+                        }
+                    } catch {
+                        // index.md doesn't exist
+                    }
+                }
+            } catch {
+                // contributions directory doesn't exist
+            }
+
+            // Early exit if we have enough results
+            if (results.length >= limit) break;
+        }
+
+        const response = {
+            results: results.slice(0, limit),
+            query,
+            total: results.length
+        };
+
+        cache.set(cacheKey, response, 30000); // Cache for 30 seconds
+        res.set('Cache-Control', 'public, max-age=30');
+        res.json(response);
+    } catch (error) {
+        console.error('Search error:', error);
+        res.status(500).json({ error: 'Search failed', results: [] });
+    }
+});
+
 // GET /api/likes - Get all likes
 app.get('/api/likes', rateLimitMiddleware('read'), (req, res) => {
     res.set('Cache-Control', 'private, max-age=5');
