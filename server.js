@@ -889,9 +889,9 @@ app.get('/api/stats', rateLimitMiddleware('read'), async (req, res) => {
                         const indexPath = path.join(contributionsDir, dir.name, 'index.md');
                         try {
                             const content = await fsPromises.readFile(indexPath, 'utf8');
-                            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-                            if (frontmatterMatch) {
-                                const frontmatter = yaml.load(frontmatterMatch[1]);
+                            // Use parseYamlFrontmatter which normalizes CRLF line endings
+                            const frontmatter = parseYamlFrontmatter(content);
+                            if (frontmatter && Object.keys(frontmatter).length > 0) {
                                 const authorIds = frontmatter.author_ids || (frontmatter.author_id ? [frontmatter.author_id] : []);
 
                                 // Get likes for this article

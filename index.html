@@ -4011,16 +4011,44 @@
                 // Get the main content element
                 const mainContent = document.querySelector('.main-content');
 
-                // Capture the page
+                // Save scroll position and reset to ensure consistent capture
+                const savedScrollX = window.scrollX;
+                const savedScrollY = window.scrollY;
+                window.scrollTo(0, 0);
+
+                // Temporarily remove margin-left to fix Windows rendering issues
+                // html2canvas on Windows calculates positions differently with margin-left
+                const originalMarginLeft = mainContent.style.marginLeft;
+                mainContent.style.marginLeft = '0';
+
+                // Force a reflow to apply style changes
+                void mainContent.offsetHeight;
+
+                // Wait for style changes to take effect
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                // Capture the page with explicit positioning to fix cross-platform issues
                 const canvas = await html2canvas(mainContent, {
                     backgroundColor: '#0a0a0a',
                     scale: 2,
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
+                    width: mainContent.scrollWidth,
+                    height: mainContent.scrollHeight,
+                    x: 0,
+                    y: 0,
+                    scrollX: 0,
+                    scrollY: 0,
                     windowWidth: mainContent.scrollWidth,
                     windowHeight: mainContent.scrollHeight
                 });
+
+                // Restore margin-left
+                mainContent.style.marginLeft = originalMarginLeft;
+
+                // Restore scroll position
+                window.scrollTo(savedScrollX, savedScrollY);
 
                 // Restore hidden elements and remove exporting class
                 document.body.classList.remove('exporting');
