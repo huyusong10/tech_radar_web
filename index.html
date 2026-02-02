@@ -4078,10 +4078,13 @@
                             clonedMain.style.position = 'relative';
                         }
 
-                        // Fix header background
+                        // Fix header background and layout
                         const clonedHeader = clonedDoc.querySelector('header');
                         if (clonedHeader) {
                             clonedHeader.style.background = '#0a0a0a';
+                            clonedHeader.style.textAlign = 'center';
+                            clonedHeader.style.width = '100%';
+                            clonedHeader.style.display = 'block';
                         }
 
                         // Fix section backgrounds
@@ -4160,14 +4163,6 @@
                             clonedLogo.innerHTML = '<span style="color: #ff00ff;">Pre</span>' + logoText;
                             clonedLogo.style.display = 'block';
                             clonedLogo.style.textAlign = 'center';
-                        }
-
-                        // Ensure header is centered
-                        const clonedHeader = clonedDoc.querySelector('header');
-                        if (clonedHeader) {
-                            clonedHeader.style.textAlign = 'center';
-                            clonedHeader.style.width = '100%';
-                            clonedHeader.style.display = 'block';
                         }
 
                         // Fix header crew rows - ensure horizontal layout
