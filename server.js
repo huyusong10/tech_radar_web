@@ -26,10 +26,7 @@ const ASSETS_DIR = path.join(CONTENTS_DIR, 'assets');
 const DATA_DIR = path.join(CONTENTS_DIR, 'data');
 const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
 const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
-const LIKE_RECORDS_FILE = path.join(DATA_DIR, 'like-records.json');
-
-// Crypto for generating visitor IDs
-const crypto = require('crypto');
+const LIKE_IPS_FILE = path.join(DATA_DIR, 'like-ips.json');
 
 // ==================== LOAD TEST MODE ====================
 // Set LOAD_TEST_MODE=true to relax rate limits and connection limits for benchmarking
@@ -227,7 +224,7 @@ const writeQueue = new WriteQueue();
 // In-memory data store (loaded on startup, persisted periodically)
 let likesData = {};
 let viewsData = {};
-let likeRecordsData = {}; // { visitorKey: [articleId1, articleId2, ...] }
+let likeIpsData = {}; // { articleId: [ip1, ip2, ...] } - IPs that liked each article
 let dataLoaded = false;
 
 // Global watcher reference (declared here so gracefulShutdown can access it)
@@ -259,20 +256,60 @@ async function loadDataFiles() {
     }
 
     try {
-        const likeRecordsContent = await fsPromises.readFile(LIKE_RECORDS_FILE, 'utf8');
-        likeRecordsData = JSON.parse(likeRecordsContent);
+        const likeIpsContent = await fsPromises.readFile(LIKE_IPS_FILE, 'utf8');
+        likeIpsData = JSON.parse(likeIpsContent);
+        // Validate and sanitize loaded data
+        for (const articleId of Object.keys(likeIpsData)) {
+            if (!Array.isArray(likeIpsData[articleId])) {
+                likeIpsData[articleId] = [];
+            }
+        }
     } catch {
-        likeRecordsData = {};
+        likeIpsData = {};
     }
+
+    // Validate consistency: ensure likesData count matches likeIpsData array length
+    validateAndSyncLikesCounts();
 
     dataLoaded = true;
     console.log('Data files loaded into memory');
 }
 
+// Ensure likes counts are consistent with IP records
+function validateAndSyncLikesCounts() {
+    let corrected = false;
+
+    // Sync from IP records to likes count
+    for (const articleId of Object.keys(likeIpsData)) {
+        const ipCount = likeIpsData[articleId].length;
+        if (likesData[articleId] !== ipCount) {
+            console.log(`Correcting likes count for ${articleId}: ${likesData[articleId] || 0} -> ${ipCount}`);
+            likesData[articleId] = ipCount;
+            corrected = true;
+        }
+    }
+
+    // Remove likes entries that have no IP records
+    for (const articleId of Object.keys(likesData)) {
+        if (!likeIpsData[articleId] || likeIpsData[articleId].length === 0) {
+            if (likesData[articleId] > 0) {
+                console.log(`Removing orphan likes count for ${articleId}: ${likesData[articleId]}`);
+                delete likesData[articleId];
+                corrected = true;
+            }
+        }
+    }
+
+    if (corrected) {
+        likesDirty = true;
+        likeIpsDirty = true;
+    }
+}
+
 // Periodic persistence (every 5 seconds if dirty)
 let likesDirty = false;
 let viewsDirty = false;
-let likeRecordsDirty = false;
+let likeIpsDirty = false;
 
 async function persistData() {
     if (likesDirty) {
@@ -293,12 +330,12 @@ async function persistData() {
         }
     }
 
-    if (likeRecordsDirty) {
+    if (likeIpsDirty) {
         try {
-            await writeQueue.scheduleWrite(LIKE_RECORDS_FILE, likeRecordsData);
-            likeRecordsDirty = false;
+            await writeQueue.scheduleWrite(LIKE_IPS_FILE, likeIpsData);
+            likeIpsDirty = false;
         } catch (error) {
-            console.error('Failed to persist like records:', error);
+            console.error('Failed to persist like IPs:', error);
         }
     }
 }
@@ -360,84 +397,110 @@ function getVolumesDir(isDraft) {
     return isDraft ? DRAFT_DIR : PUBLISHED_DIR;
 }
 
-// Get client IP (handles proxies)
+// ==================== IP-BASED LIKE TRACKING ====================
+
+// Validate IP address format (IPv4 or IPv6)
+function isValidIP(ip) {
+    if (!ip || typeof ip !== 'string') return false;
+
+    // IPv4 pattern
+    const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    // IPv6 pattern (simplified, covers most cases including ::1)
+    const ipv6Pattern = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$|^::1$|^::$/;
+    // IPv4-mapped IPv6 (::ffff:192.168.1.1)
+    const ipv4MappedPattern = /^::ffff:(\d{1,3}\.){3}\d{1,3}$/i;
+
+    if (ipv4Pattern.test(ip)) {
+        // Validate each octet is 0-255
+        const octets = ip.split('.').map(Number);
+        return octets.every(o => o >= 0 && o <= 255);
+    }
+
+    return ipv6Pattern.test(ip) || ipv4MappedPattern.test(ip);
+}
+
+// Normalize IP address (extract IPv4 from IPv4-mapped IPv6, trim whitespace)
+function normalizeIP(ip) {
+    if (!ip) return null;
+
+    ip = ip.trim();
+
+    // Extract IPv4 from IPv4-mapped IPv6 format (::ffff:192.168.1.1)
+    const ipv4MappedMatch = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
+    if (ipv4MappedMatch) {
+        return ipv4MappedMatch[1];
+    }
+
+    // Handle localhost variations
+    if (ip === '::1' || ip === '::ffff:127.0.0.1') {
+        return '127.0.0.1';
+    }
+
+    return ip;
+}
+
+// Get client IP with security considerations
 function getClientIP(req) {
-    return req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-           req.connection.remoteAddress ||
-           'unknown';
-}
+    let ip = null;
 
-// ==================== VISITOR ID & LIKE TRACKING ====================
-
-// Parse cookies from request header
-function parseCookies(req) {
-    const cookies = {};
-    const cookieHeader = req.headers.cookie;
-    if (cookieHeader) {
-        cookieHeader.split(';').forEach(cookie => {
-            const [name, ...rest] = cookie.split('=');
-            cookies[name.trim()] = rest.join('=').trim();
-        });
-    }
-    return cookies;
-}
-
-// Generate a unique visitor ID
-function generateVisitorId() {
-    return crypto.randomBytes(16).toString('hex');
-}
-
-// Get or create visitor ID from cookies
-function getVisitorId(req, res) {
-    const cookies = parseCookies(req);
-    let visitorId = cookies['visitor_id'];
-
-    if (!visitorId) {
-        visitorId = generateVisitorId();
-        // Set cookie with 1 year expiry, httpOnly for security
-        res.setHeader('Set-Cookie', `visitor_id=${visitorId}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax`);
+    // Priority 1: X-Forwarded-For (first IP in chain, set by reverse proxy)
+    // Note: Only trust this if you have a trusted reverse proxy configured
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    if (xForwardedFor) {
+        // Take the first IP (original client), trim whitespace
+        ip = xForwardedFor.split(',')[0].trim();
     }
 
-    return visitorId;
-}
-
-// Generate unique visitor key combining visitorId and IP
-function getVisitorKey(visitorId, ip) {
-    // Hash the combination to create a consistent key
-    return crypto.createHash('sha256').update(`${visitorId}:${ip}`).digest('hex').substring(0, 32);
-}
-
-// Check if visitor has already liked an article
-function hasVisitorLiked(visitorKey, articleId) {
-    const likedArticles = likeRecordsData[visitorKey] || [];
-    return likedArticles.includes(articleId);
-}
-
-// Record visitor's like
-function recordVisitorLike(visitorKey, articleId) {
-    if (!likeRecordsData[visitorKey]) {
-        likeRecordsData[visitorKey] = [];
+    // Priority 2: X-Real-IP (set by some proxies like nginx)
+    if (!ip && req.headers['x-real-ip']) {
+        ip = req.headers['x-real-ip'].trim();
     }
-    if (!likeRecordsData[visitorKey].includes(articleId)) {
-        likeRecordsData[visitorKey].push(articleId);
-        likeRecordsDirty = true;
+
+    // Priority 3: Direct connection
+    if (!ip) {
+        ip = req.connection?.remoteAddress ||
+             req.socket?.remoteAddress ||
+             req.ip;
     }
+
+    // Normalize and validate
+    ip = normalizeIP(ip);
+
+    if (!ip || !isValidIP(ip)) {
+        return null;
+    }
+
+    return ip;
 }
 
-// Remove visitor's like
-function removeVisitorLike(visitorKey, articleId) {
-    if (likeRecordsData[visitorKey]) {
-        const index = likeRecordsData[visitorKey].indexOf(articleId);
-        if (index > -1) {
-            likeRecordsData[visitorKey].splice(index, 1);
-            likeRecordsDirty = true;
+// Check if an IP has already liked an article
+function hasIPLiked(articleId, ip) {
+    const likedIPs = likeIpsData[articleId] || [];
+    return likedIPs.includes(ip);
+}
+
+// Record IP's like for an article
+function recordIPLike(articleId, ip) {
+    if (!likeIpsData[articleId]) {
+        likeIpsData[articleId] = [];
+    }
+    if (!likeIpsData[articleId].includes(ip)) {
+        likeIpsData[articleId].push(ip);
+        likeIpsDirty = true;
+        return true;
+    }
+    return false;
+}
+
+// Get all articles liked by an IP
+function getIPLikedArticles(ip) {
+    const likedArticles = [];
+    for (const [articleId, ips] of Object.entries(likeIpsData)) {
+        if (ips.includes(ip)) {
+            likedArticles.push(articleId);
         }
     }
-}
-
-// Get all articles liked by a visitor
-function getVisitorLikedArticles(visitorKey) {
-    return likeRecordsData[visitorKey] || [];
+    return likedArticles;
 }
 
 // ==================== MIDDLEWARE ====================
@@ -448,7 +511,7 @@ app.use(express.json({ limit: '10kb' }));
 // Rate limiting middleware
 function rateLimitMiddleware(type = 'read') {
     return (req, res, next) => {
-        const ip = getClientIP(req);
+        const ip = getClientIP(req) || 'unknown';
         if (!rateLimiter.isAllowed(ip, type)) {
             return res.status(429).json({
                 error: 'Too many requests',
@@ -702,13 +765,17 @@ app.get('/api/likes', rateLimitMiddleware('read'), (req, res) => {
     res.json(likesData);
 });
 
-// GET /api/user-likes - Get current user's liked articles
+// GET /api/user-likes - Get current user's liked articles (IP-based)
 app.get('/api/user-likes', rateLimitMiddleware('read'), (req, res) => {
-    const visitorId = getVisitorId(req, res);
     const ip = getClientIP(req);
-    const visitorKey = getVisitorKey(visitorId, ip);
 
-    const likedArticles = getVisitorLikedArticles(visitorKey);
+    if (!ip) {
+        // Can't identify user, return empty list
+        res.set('Cache-Control', 'private, no-cache');
+        return res.json({ likedArticles: [] });
+    }
+
+    const likedArticles = getIPLikedArticles(ip);
     res.set('Cache-Control', 'private, no-cache');
     res.json({ likedArticles });
 });
@@ -737,24 +804,30 @@ async function validateArticleExists(articleId) {
     }
 }
 
-// POST /api/likes/:articleId - Toggle like for an article (with concurrency control)
-// Uses Cookie + IP combination to prevent duplicate likes
+// POST /api/likes/:articleId - Like an article (IP-based, one like per IP, no unlike)
+// Each IP can only like an article once and cannot remove the like
 app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res) => {
     const { articleId } = req.params;
-    const { action } = req.body;
 
-    // Get visitor identification
-    const visitorId = getVisitorId(req, res);
+    // Get client IP
     const ip = getClientIP(req);
-    const visitorKey = getVisitorKey(visitorId, ip);
 
-    // Validate input
-    if (!action || !['like', 'unlike'].includes(action)) {
-        return res.status(400).json({ error: 'Invalid action' });
+    // Validate IP - must have a valid IP to like
+    if (!ip) {
+        return res.status(400).json({
+            error: 'Unable to identify client',
+            message: 'A valid IP address is required to like an article'
+        });
     }
 
+    // Validate article ID format and length
     if (!articleId || articleId.length > 100) {
         return res.status(400).json({ error: 'Invalid article ID' });
+    }
+
+    // Validate article ID format more strictly (vol-folder format)
+    if (!/^\d{3}-[\w-]+$/.test(articleId)) {
+        return res.status(400).json({ error: 'Invalid article ID format' });
     }
 
     // Validate that the article actually exists
@@ -763,26 +836,14 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
         return res.status(404).json({ error: 'Article not found' });
     }
 
-    // Check if user already liked this article
-    const alreadyLiked = hasVisitorLiked(visitorKey, articleId);
-
-    // Prevent duplicate like
-    if (action === 'like' && alreadyLiked) {
+    // Check if this IP already liked this article (before acquiring lock for efficiency)
+    if (hasIPLiked(articleId, ip)) {
         return res.status(409).json({
             error: 'Already liked',
+            message: 'You have already liked this article',
             articleId,
             likes: likesData[articleId] || 0,
             userLiked: true
-        });
-    }
-
-    // Prevent unlike if not liked
-    if (action === 'unlike' && !alreadyLiked) {
-        return res.status(409).json({
-            error: 'Not liked yet',
-            articleId,
-            likes: likesData[articleId] || 0,
-            userLiked: false
         });
     }
 
@@ -792,23 +853,28 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
     try {
         releaseLock = await mutex.acquire(lockKey);
 
-        if (!likesData[articleId]) {
-            likesData[articleId] = 0;
+        // Double-check after acquiring lock (race condition prevention)
+        if (hasIPLiked(articleId, ip)) {
+            return res.status(409).json({
+                error: 'Already liked',
+                message: 'You have already liked this article',
+                articleId,
+                likes: likesData[articleId] || 0,
+                userLiked: true
+            });
         }
 
-        if (action === 'like') {
-            likesData[articleId]++;
-            recordVisitorLike(visitorKey, articleId);
-        } else if (action === 'unlike' && likesData[articleId] > 0) {
-            likesData[articleId]--;
-            removeVisitorLike(visitorKey, articleId);
-        }
+        // Record the like
+        recordIPLike(articleId, ip);
 
+        // Update likes count (should match IP array length)
+        likesData[articleId] = likeIpsData[articleId].length;
         likesDirty = true;
+
         res.json({
             articleId,
             likes: likesData[articleId],
-            userLiked: action === 'like'
+            userLiked: true
         });
     } catch (error) {
         if (error.message.includes('Lock timeout')) {
@@ -1128,7 +1194,7 @@ function stopSSEHeartbeat() {
 
 // SSE endpoint for hot reload notifications
 app.get('/api/hot-reload', (req, res) => {
-    const clientIP = getClientIP(req);
+    const clientIP = getClientIP(req) || 'unknown';
 
     // Check global limit
     if (sseClients.size >= SSE_CONFIG.MAX_CLIENTS_TOTAL) {

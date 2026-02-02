@@ -1406,10 +1406,14 @@
             background: rgba(255, 0, 255, 0.2);
             border-color: var(--accent-pink);
             color: var(--accent-pink);
+            cursor: default;
+            pointer-events: none;
         }
 
         .like-button.liked:hover {
-            box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
+            /* No hover effect for liked buttons */
+            transform: none;
+            box-shadow: none;
         }
 
         .like-icon {
@@ -1417,7 +1421,7 @@
             transition: transform 0.3s ease;
         }
 
-        .like-button:active .like-icon {
+        .like-button:not(.liked):active .like-icon {
             transform: scale(1.3);
         }
 
@@ -2961,12 +2965,10 @@
             }
         }
 
-        // Fetch user's liked articles from server (Cookie + IP based)
+        // Fetch user's liked articles from server (IP-based)
         async function fetchUserLikes() {
             try {
-                const response = await fetchWithRetry('/api/user-likes', {
-                    credentials: 'include' // Include cookies
-                });
+                const response = await fetchWithRetry('/api/user-likes');
                 if (response.ok) {
                     const data = await response.json();
                     return new Set(data.likedArticles || []);
@@ -2978,39 +2980,40 @@
             }
         }
 
-        async function updateLike(articleId, action) {
+        // Send like request to server (IP-based, no unlike supported)
+        async function sendLike(articleId) {
             try {
                 const response = await fetchWithRetry(`/api/likes/${articleId}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action }),
-                    credentials: 'include' // Include cookies for visitor tracking
+                    headers: { 'Content-Type': 'application/json' }
                 });
 
                 const data = await response.json();
 
-                // Handle conflict responses (already liked / not liked)
+                // Handle conflict response (already liked)
                 if (response.status === 409) {
-                    console.warn('Like conflict:', data.error);
-                    return data; // Still return data with current state
+                    console.info('Already liked:', articleId);
+                    return data; // Return data with current state
                 }
 
                 if (!response.ok) {
                     if (response.status === 404) {
                         console.warn('Article not found:', articleId);
+                    } else if (response.status === 400) {
+                        console.warn('Invalid request:', data.error);
                     } else {
-                        console.warn('Like update returned non-OK status:', response.status);
+                        console.warn('Like request failed:', response.status);
                     }
                     return null;
                 }
                 return data;
             } catch (error) {
-                console.error('Failed to update like:', error);
+                console.error('Failed to send like:', error);
                 return null;
             }
         }
 
-        // User likes state (fetched from server, based on Cookie + IP)
+        // User likes state (fetched from server, IP-based)
         let userLikedArticles = new Set();
 
         // Check if current user has liked an article
@@ -3018,13 +3021,9 @@
             return userLikedArticles.has(articleId);
         }
 
-        // Update local state when like status changes
-        function setUserLiked(articleId, liked) {
-            if (liked) {
-                userLikedArticles.add(articleId);
-            } else {
-                userLikedArticles.delete(articleId);
-            }
+        // Mark article as liked (IP-based, cannot be undone)
+        function markAsLiked(articleId) {
+            userLikedArticles.add(articleId);
         }
 
         // Store server likes data
@@ -3534,12 +3533,17 @@
             }
         }
 
-        // Like button functionality with debounce protection
+        // Like button functionality (IP-based, one like per IP, no unlike)
         const likeInProgress = new Set();
 
-        async function toggleLike(button) {
+        async function handleLike(button) {
             const card = button.closest('.contribution-card');
             const articleId = card.dataset.articleId;
+
+            // Already liked - do nothing (button should be disabled anyway)
+            if (button.classList.contains('liked')) {
+                return;
+            }
 
             // Prevent rapid clicking - check if request is already in progress
             if (likeInProgress.has(articleId)) {
@@ -3548,47 +3552,46 @@
 
             const likeCountSpan = button.querySelector('.like-count');
             const likeCountHeader = card.querySelector('.like-count-header');
-            const isCurrentlyLiked = button.classList.contains('liked');
 
             // Mark as in progress
             likeInProgress.add(articleId);
             button.style.opacity = '0.6';
             button.style.pointerEvents = 'none';
 
-            // Determine action
-            const action = isCurrentlyLiked ? 'unlike' : 'like';
-
             try {
-                // Update server
-                const result = await updateLike(articleId, action);
+                // Send like to server
+                const result = await sendLike(articleId);
 
                 if (result) {
-                    // Use server's authoritative state (handles conflicts gracefully)
-                    const newLikedState = result.userLiked !== undefined ? result.userLiked : !isCurrentlyLiked;
+                    // Update UI - mark as liked (permanent)
+                    button.classList.add('liked');
+                    markAsLiked(articleId);
 
-                    // Update UI based on server response
-                    if (newLikedState) {
-                        button.classList.add('liked');
-                        setUserLiked(articleId, true);
-                    } else {
-                        button.classList.remove('liked');
-                        setUserLiked(articleId, false);
-                    }
-
-                    // Update counts
+                    // Update counts from server response
                     likeCountSpan.textContent = result.likes;
                     if (likeCountHeader) {
                         likeCountHeader.textContent = result.likes;
                     }
                     serverLikes[articleId] = result.likes;
+
+                    // Keep button visually disabled since already liked
+                    button.style.opacity = '';
+                    button.style.cursor = 'default';
                 }
             } finally {
-                // Restore button state
+                // Clean up in-progress tracking
                 likeInProgress.delete(articleId);
-                button.style.opacity = '';
-                button.style.pointerEvents = '';
+
+                // Only restore full interactivity if not liked
+                if (!button.classList.contains('liked')) {
+                    button.style.opacity = '';
+                    button.style.pointerEvents = '';
+                }
             }
         }
+
+        // Alias for backwards compatibility with onclick handlers
+        const toggleLike = handleLike;
 
         // Submit modal functions
         let submitGuideLoaded = false;
