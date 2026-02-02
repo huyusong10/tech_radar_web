@@ -816,18 +816,35 @@ app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
                 const radarContent = await fsPromises.readFile(radarPath, 'utf8');
                 const radarFrontmatter = parseYamlFrontmatter(radarContent);
 
-                // Extract trending items (### [Badge] Title format)
-                const trendingMatches = radarContent.matchAll(/###\s*\[([^\]]+)\]\s*(.+)/g);
-                for (const match of trendingMatches) {
-                    const badge = match[1];
-                    const title = match[2].trim();
+                // Parse trending items with their content (### [Badge] Title format)
+                const lines = radarContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+                const trendingItems = [];
+                let currentItem = null;
 
-                    if (title.toLowerCase().includes(query) || badge.toLowerCase().includes(query)) {
+                for (const line of lines) {
+                    const headerMatch = line.match(/^###\s+\[(.+?)\]\s+(.+)$/);
+                    if (headerMatch) {
+                        if (currentItem) trendingItems.push(currentItem);
+                        currentItem = {
+                            badge: headerMatch[1],
+                            title: headerMatch[2].trim(),
+                            content: ''
+                        };
+                    } else if (currentItem && line.trim() && !line.startsWith('#')) {
+                        currentItem.content += (currentItem.content ? ' ' : '') + line.trim();
+                    }
+                }
+                if (currentItem) trendingItems.push(currentItem);
+
+                // Search in title, badge, and content
+                for (const item of trendingItems) {
+                    const searchText = `${item.title} ${item.badge} ${item.content}`.toLowerCase();
+                    if (searchText.includes(query)) {
                         results.push({
                             type: 'trending',
                             vol,
-                            title,
-                            badge,
+                            title: item.title,
+                            badge: item.badge,
                             date: radarFrontmatter.date || '',
                             articleId: null
                         });

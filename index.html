@@ -4178,14 +4178,18 @@
         function scrollToTarget(type, target) {
             if (type === 'trending') {
                 // Find the trending item by title
-                const trendingSection = document.getElementById('trending-container');
-                if (trendingSection) {
+                const trendingList = document.querySelector('.trending-list');
+                if (trendingList) {
                     // Try to find the specific trending item
-                    const items = trendingSection.querySelectorAll('.trending-item');
+                    const items = trendingList.querySelectorAll('.trending-item');
                     for (const item of items) {
-                        const titleEl = item.querySelector('h3');
+                        const titleEl = item.querySelector('.trending-title');
                         if (titleEl && titleEl.textContent.includes(target)) {
                             item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            // Expand if expandable
+                            if (item.classList.contains('expandable') && !item.classList.contains('expanded')) {
+                                item.classList.add('expanded');
+                            }
                             // Highlight briefly
                             item.style.transition = 'box-shadow 0.3s ease';
                             item.style.boxShadow = '0 0 20px rgba(0, 243, 255, 0.5)';
@@ -4196,7 +4200,7 @@
                         }
                     }
                     // Fallback: scroll to trending section
-                    trendingSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    trendingList.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             } else if (type === 'article') {
                 // Find the article card by article ID
