@@ -4067,10 +4067,15 @@
                         // Get the cloned main content
                         const clonedMain = clonedDoc.querySelector('.main-content');
                         if (clonedMain) {
-                            // Reset margin and set explicit background
+                            // Reset margin and set explicit layout properties
                             clonedMain.style.marginLeft = '0';
+                            clonedMain.style.marginRight = '0';
+                            clonedMain.style.width = '100%';
+                            clonedMain.style.maxWidth = 'none';
                             clonedMain.style.background = '#0a0a0a';
                             clonedMain.style.minHeight = 'auto';
+                            clonedMain.style.display = 'block';
+                            clonedMain.style.position = 'relative';
                         }
 
                         // Fix header background
@@ -4089,6 +4094,15 @@
                             container.style.background = 'transparent';
                         });
 
+                        // Fix section titles - ensure horizontal layout
+                        clonedDoc.querySelectorAll('.section-title').forEach(title => {
+                            title.style.display = 'inline-flex';
+                            title.style.flexDirection = 'row';
+                            title.style.alignItems = 'center';
+                            title.style.gap = '1rem';
+                            title.style.flexWrap = 'nowrap';
+                        });
+
                         // Fix glow-text elements (html2canvas doesn't support background-clip: text)
                         clonedDoc.querySelectorAll('.glow-text').forEach(el => {
                             el.style.background = 'none';
@@ -4096,6 +4110,12 @@
                             el.style.backgroundClip = 'unset';
                             el.style.webkitTextFillColor = '#00f3ff';
                             el.style.color = '#00f3ff';
+                            el.style.display = 'inline';
+                        });
+
+                        // Fix cn-text elements
+                        clonedDoc.querySelectorAll('.cn-text').forEach(el => {
+                            el.style.display = 'inline';
                         });
 
                         // Fix contribution cards - remove unsupported -webkit-mask
@@ -4132,15 +4152,66 @@
                             clonedTrendingList.style.gap = '1rem';
                         }
 
-                        // Fix logo - the ::before pseudo-element won't render
+                        // Fix logo - replace text content directly since ::before may or may not render
                         const clonedLogo = clonedDoc.querySelector('.logo');
                         if (clonedLogo) {
-                            // Create a span to replace the ::before content
-                            const preText = clonedDoc.createElement('span');
-                            preText.textContent = 'Pre';
-                            preText.style.color = '#ff00ff';
-                            clonedLogo.insertBefore(preText, clonedLogo.firstChild);
+                            // Clear and recreate content to avoid duplication
+                            const logoText = clonedLogo.textContent || 'Tech Radar Weekly';
+                            clonedLogo.innerHTML = '<span style="color: #ff00ff;">Pre</span>' + logoText;
+                            clonedLogo.style.display = 'block';
+                            clonedLogo.style.textAlign = 'center';
                         }
+
+                        // Ensure header is centered
+                        const clonedHeader = clonedDoc.querySelector('header');
+                        if (clonedHeader) {
+                            clonedHeader.style.textAlign = 'center';
+                            clonedHeader.style.width = '100%';
+                            clonedHeader.style.display = 'block';
+                        }
+
+                        // Fix header crew rows - ensure horizontal layout
+                        clonedDoc.querySelectorAll('.crew-row').forEach(row => {
+                            row.style.display = 'flex';
+                            row.style.flexDirection = 'row';
+                            row.style.alignItems = 'center';
+                            row.style.justifyContent = 'center';
+                            row.style.gap = '1rem';
+                            row.style.flexWrap = 'wrap';
+                        });
+
+                        // Fix header authors layout
+                        clonedDoc.querySelectorAll('.header-authors, .header-contributors').forEach(el => {
+                            el.style.display = 'flex';
+                            el.style.flexDirection = 'row';
+                            el.style.justifyContent = 'center';
+                            el.style.gap = '1rem';
+                            el.style.flexWrap = 'wrap';
+                        });
+
+                        // Fix header meta
+                        const headerMeta = clonedDoc.querySelector('.header-meta');
+                        if (headerMeta) {
+                            headerMeta.style.textAlign = 'center';
+                            headerMeta.style.display = 'block';
+                        }
+
+                        // Fix slogan
+                        const slogan = clonedDoc.querySelector('.slogan');
+                        if (slogan) {
+                            slogan.style.textAlign = 'center';
+                            slogan.style.display = 'block';
+                            slogan.style.margin = '0 auto';
+                        }
+
+                        // Ensure all containers are centered
+                        clonedDoc.querySelectorAll('.container').forEach(container => {
+                            container.style.maxWidth = '1200px';
+                            container.style.margin = '0 auto';
+                            container.style.padding = '0 1.5rem';
+                            container.style.width = '100%';
+                            container.style.boxSizing = 'border-box';
+                        });
 
                         // Fix any remaining elements with CSS variable backgrounds
                         clonedDoc.querySelectorAll('[style*="var("]').forEach(el => {
