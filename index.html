@@ -499,6 +499,101 @@
             position: relative;
         }
 
+        /* Header Search Bar */
+        .header-search-container {
+            position: relative;
+            max-width: 500px;
+            margin: 0 auto var(--spacing-lg) auto;
+        }
+
+        .header-search-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .header-search-icon {
+            position: absolute;
+            left: 1rem;
+            font-size: 1rem;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .header-search-input {
+            width: 100%;
+            padding: 0.8rem 2.5rem 0.8rem 2.8rem;
+            background: rgba(0, 243, 255, 0.05);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: 25px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .header-search-input::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.6;
+        }
+
+        .header-search-input:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.3);
+            background: rgba(0, 243, 255, 0.08);
+        }
+
+        .header-search-clear {
+            position: absolute;
+            right: 1rem;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.2rem;
+            display: none;
+            transition: color 0.2s;
+        }
+
+        .header-search-clear:hover {
+            color: var(--accent-pink);
+        }
+
+        .header-search-input:not(:placeholder-shown) ~ .header-search-clear {
+            display: block;
+        }
+
+        .header-search-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 8px;
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: var(--radius-lg);
+            max-height: 450px;
+            overflow-y: auto;
+            z-index: 300;
+            display: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            text-align: left;
+        }
+
+        .header-search-dropdown.active {
+            display: block;
+        }
+
+        .header-search-dropdown .search-result-item {
+            padding: 1rem;
+        }
+
+        .header-search-dropdown .search-result-title {
+            font-size: 0.95rem;
+        }
+
         .logo {
             font-family: var(--font-mono);
             font-size: 4rem;
@@ -2470,6 +2565,15 @@
     <!-- ==================== HEADER ==================== -->
     <header class="dynamic-content" id="main-header">
         <div class="container">
+            <!-- Header Search Bar -->
+            <div class="header-search-container">
+                <div class="header-search-wrapper">
+                    <span class="header-search-icon">🔍</span>
+                    <input type="text" class="header-search-input" id="header-search-input" placeholder="Search all articles..." autocomplete="off">
+                    <button class="header-search-clear" id="header-search-clear" onclick="clearHeaderSearch()">×</button>
+                </div>
+                <div class="header-search-dropdown" id="header-search-dropdown"></div>
+            </div>
             <div class="logo glitch" data-text="Tech Radar Weekly" id="site-title">Tech Radar Weekly</div>
             <div class="header-meta" id="header-meta">
                 <span class="loading-skeleton" style="display: inline-block; width: 120px; height: 1em;"></span>
@@ -2928,6 +3032,39 @@
         // Store authors data
         let authorsData = {};
 
+        // Default avatars for authors without custom avatar
+        const DEFAULT_AVATARS = [
+            '/contents/assets/images/avatars/default/avatar-1.svg',
+            '/contents/assets/images/avatars/default/avatar-2.svg',
+            '/contents/assets/images/avatars/default/avatar-3.svg',
+            '/contents/assets/images/avatars/default/avatar-4.svg',
+            '/contents/assets/images/avatars/default/avatar-5.svg',
+            '/contents/assets/images/avatars/default/avatar-6.svg'
+        ];
+
+        // Cache for consistent avatar assignment per author
+        const authorAvatarCache = new Map();
+
+        // Get avatar for an author (use configured or random default)
+        function getAuthorAvatar(author, authorId) {
+            if (author && author.avatar) {
+                return author.avatar;
+            }
+            // Use authorId for consistent random selection
+            const cacheKey = authorId || (author && author.id) || 'unknown';
+            if (!authorAvatarCache.has(cacheKey)) {
+                // Use hash of authorId for consistent random selection
+                let hash = 0;
+                for (let i = 0; i < cacheKey.length; i++) {
+                    hash = ((hash << 5) - hash) + cacheKey.charCodeAt(i);
+                    hash = hash & hash;
+                }
+                const index = Math.abs(hash) % DEFAULT_AVATARS.length;
+                authorAvatarCache.set(cacheKey, DEFAULT_AVATARS[index]);
+            }
+            return authorAvatarCache.get(cacheKey);
+        }
+
         // Load site configuration
         async function loadConfig() {
             try {
@@ -3019,24 +3156,25 @@
                         console.warn(`Author not found: ${editor.author_id}`);
                         return '';
                     }
+                    const avatarUrl = getAuthorAvatar(author, editor.author_id);
                     return `
                         <div class="author-badge" style="animation-delay: ${index * 0.5}s">
-                            <img src="${author.avatar}" alt="${author.name}">
+                            <img src="${avatarUrl}" alt="${author.name}">
                             <span class="author-name">${author.name}</span>
                             <span class="author-role">${editor.role}</span>
                             <div class="author-tooltip">
                                 <div class="tooltip-header">
-                                    <img src="${author.avatar}" alt="${author.name}">
+                                    <img src="${avatarUrl}" alt="${author.name}">
                                     <span class="tooltip-name">${author.name}</span>
                                 </div>
                                 <div class="tooltip-info">
                                     <div class="tooltip-row">
                                         <span class="tooltip-label">Team</span>
-                                        <span class="tooltip-value">${author.team}</span>
+                                        <span class="tooltip-value">${author.team || 'N/A'}</span>
                                     </div>
                                     <div class="tooltip-row">
                                         <span class="tooltip-label">Role</span>
-                                        <span class="tooltip-value">${author.role}</span>
+                                        <span class="tooltip-value">${author.role || 'N/A'}</span>
                                     </div>
                                     <div class="tooltip-row">
                                         <span class="tooltip-label">本期</span>
@@ -3236,11 +3374,11 @@
                 }];
             }
 
-            // Generate avatar HTML based on number of authors
+            // Generate avatar HTML based on number of authors (with default avatar support)
             const avatarHtml = authors.length === 1
-                ? `<img src="${authors[0].avatar}" alt="Author Avatar" class="author-avatar">`
+                ? `<img src="${getAuthorAvatar(authors[0], authors[0].id)}" alt="Author Avatar" class="author-avatar">`
                 : `<div class="author-avatars">
-                    ${authors.map(a => `<img src="${a.avatar}" alt="Author Avatar" class="author-avatar">`).join('')}
+                    ${authors.map(a => `<img src="${getAuthorAvatar(a, a.id)}" alt="Author Avatar" class="author-avatar">`).join('')}
                    </div>`;
 
             // Generate author info text - show complete info for each author
@@ -3397,23 +3535,25 @@
                 return;
             }
 
-            contributorsContainer.innerHTML = uniqueContributors.map(author => `
+            contributorsContainer.innerHTML = uniqueContributors.map(author => {
+                const avatarUrl = getAuthorAvatar(author, author.id);
+                return `
                 <div class="contributor-badge">
-                    <img src="${author.avatar}" alt="${author.name}">
+                    <img src="${avatarUrl}" alt="${author.name}">
                     <span class="contributor-name">${author.name}</span>
                     <div class="author-tooltip">
                         <div class="tooltip-header">
-                            <img src="${author.avatar}" alt="${author.name}">
+                            <img src="${avatarUrl}" alt="${author.name}">
                             <span class="tooltip-name">${author.name}</span>
                         </div>
                         <div class="tooltip-info">
                             <div class="tooltip-row">
                                 <span class="tooltip-label">Team</span>
-                                <span class="tooltip-value">${author.team}</span>
+                                <span class="tooltip-value">${author.team || 'N/A'}</span>
                             </div>
                             <div class="tooltip-row">
                                 <span class="tooltip-label">Role</span>
-                                <span class="tooltip-value">${author.role}</span>
+                                <span class="tooltip-value">${author.role || 'N/A'}</span>
                             </div>
                             <div class="tooltip-row">
                                 <span class="tooltip-label">本期</span>
@@ -3422,7 +3562,7 @@
                         </div>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
 
         // Pre-fetch all contributor authors for header display
@@ -3756,16 +3896,26 @@
         }
 
         // ==================== SEARCH FUNCTIONALITY ====================
+        // Shared search state
         let searchTimeout = null;
         let searchResults = [];
         let selectedSearchIndex = -1;
+        let activeSearchDropdown = null; // Track which dropdown is active
 
-        // Initialize search
+        // Initialize all search boxes
         function initSearch() {
-            const searchInput = document.getElementById('search-input');
-            const searchDropdown = document.getElementById('search-dropdown');
+            // Initialize sidebar search
+            initSearchBox('search-input', 'search-dropdown', '.search-container');
+            // Initialize header search
+            initSearchBox('header-search-input', 'header-search-dropdown', '.header-search-container');
+        }
 
-            if (!searchInput) return;
+        // Initialize a single search box
+        function initSearchBox(inputId, dropdownId, containerSelector) {
+            const searchInput = document.getElementById(inputId);
+            const searchDropdown = document.getElementById(dropdownId);
+
+            if (!searchInput || !searchDropdown) return;
 
             // Input event - debounced search
             searchInput.addEventListener('input', (e) => {
@@ -3778,18 +3928,20 @@
 
                 // Reset selection
                 selectedSearchIndex = -1;
+                activeSearchDropdown = searchDropdown;
 
                 if (query.length < 2) {
-                    hideSearchDropdown();
+                    searchDropdown.classList.remove('active');
                     return;
                 }
 
                 // Show loading
-                showSearchLoading();
+                searchDropdown.innerHTML = '<div class="search-loading">Searching...</div>';
+                searchDropdown.classList.add('active');
 
                 // Debounce search
                 searchTimeout = setTimeout(() => {
-                    performSearch(query);
+                    performSearch(query, searchDropdown);
                 }, 300);
             });
 
@@ -3800,68 +3952,68 @@
                 switch (e.key) {
                     case 'ArrowDown':
                         e.preventDefault();
-                        navigateSearchResults(1);
+                        navigateSearchResults(1, searchDropdown);
                         break;
                     case 'ArrowUp':
                         e.preventDefault();
-                        navigateSearchResults(-1);
+                        navigateSearchResults(-1, searchDropdown);
                         break;
                     case 'Enter':
                         e.preventDefault();
                         if (selectedSearchIndex >= 0 && selectedSearchIndex < searchResults.length) {
-                            selectSearchResult(searchResults[selectedSearchIndex]);
+                            selectSearchResult(searchResults[selectedSearchIndex], searchInput, searchDropdown);
                         }
                         break;
                     case 'Escape':
-                        hideSearchDropdown();
+                        searchDropdown.classList.remove('active');
                         searchInput.blur();
                         break;
                 }
             });
 
-            // Click outside to close
-            document.addEventListener('click', (e) => {
-                if (!e.target.closest('.search-container')) {
-                    hideSearchDropdown();
-                }
-            });
-
             // Focus to show results if there are any
             searchInput.addEventListener('focus', () => {
-                if (searchResults.length > 0) {
-                    showSearchDropdown();
+                activeSearchDropdown = searchDropdown;
+                if (searchResults.length > 0 && searchInput.value.trim().length >= 2) {
+                    searchDropdown.classList.add('active');
                 }
             });
         }
 
+        // Click outside to close all dropdowns
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-container') && !e.target.closest('.header-search-container')) {
+                document.getElementById('search-dropdown')?.classList.remove('active');
+                document.getElementById('header-search-dropdown')?.classList.remove('active');
+                selectedSearchIndex = -1;
+            }
+        });
+
         // Perform search API call
-        async function performSearch(query) {
+        async function performSearch(query, dropdown) {
             try {
                 const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=15`);
                 const data = await response.json();
 
                 searchResults = data.results || [];
-                renderSearchResults(searchResults, query);
+                renderSearchResults(searchResults, query, dropdown);
             } catch (error) {
                 console.error('Search failed:', error);
-                renderSearchError();
+                dropdown.innerHTML = '<div class="search-no-results">Search failed. Please try again.</div>';
             }
         }
 
         // Render search results
-        function renderSearchResults(results, query) {
-            const dropdown = document.getElementById('search-dropdown');
-
+        function renderSearchResults(results, query, dropdown) {
             if (results.length === 0) {
-                dropdown.innerHTML = `<div class="search-no-results">No results for "${query}"</div>`;
-                showSearchDropdown();
+                dropdown.innerHTML = `<div class="search-no-results">No results for "${escapeHtml(query)}"</div>`;
                 return;
             }
 
             dropdown.innerHTML = results.map((result, index) => {
                 if (result.type === 'trending') {
                     return `
-                        <div class="search-result-item" data-index="${index}" onclick="selectSearchResult(searchResults[${index}])">
+                        <div class="search-result-item" data-index="${index}">
                             <div class="search-result-type trending">Trending</div>
                             <div class="search-result-title">
                                 <span class="search-result-badge">${escapeHtml(result.badge)}</span>
@@ -3872,7 +4024,7 @@
                     `;
                 } else {
                     return `
-                        <div class="search-result-item" data-index="${index}" onclick="selectSearchResult(searchResults[${index}])">
+                        <div class="search-result-item" data-index="${index}">
                             <div class="search-result-type contribution">Article</div>
                             <div class="search-result-title">${escapeHtml(result.title)}</div>
                             <div class="search-result-meta">Vol.${result.vol} ${result.authorIds ? '· ' + result.authorIds.join(', ') : ''}</div>
@@ -3881,45 +4033,20 @@
                 }
             }).join('');
 
-            showSearchDropdown();
-        }
-
-        // Show loading state
-        function showSearchLoading() {
-            const dropdown = document.getElementById('search-dropdown');
-            dropdown.innerHTML = '<div class="search-loading">Searching...</div>';
-            showSearchDropdown();
-        }
-
-        // Show error state
-        function renderSearchError() {
-            const dropdown = document.getElementById('search-dropdown');
-            dropdown.innerHTML = '<div class="search-no-results">Search failed. Please try again.</div>';
-            showSearchDropdown();
-        }
-
-        // Show/hide dropdown
-        function showSearchDropdown() {
-            document.getElementById('search-dropdown').classList.add('active');
-        }
-
-        function hideSearchDropdown() {
-            document.getElementById('search-dropdown').classList.remove('active');
-            selectedSearchIndex = -1;
-        }
-
-        // Clear search
-        function clearSearch() {
-            const searchInput = document.getElementById('search-input');
-            searchInput.value = '';
-            searchResults = [];
-            hideSearchDropdown();
-            searchInput.focus();
+            // Add click handlers to results
+            dropdown.querySelectorAll('.search-result-item').forEach((item, index) => {
+                item.addEventListener('click', () => {
+                    const input = dropdown.id === 'header-search-dropdown'
+                        ? document.getElementById('header-search-input')
+                        : document.getElementById('search-input');
+                    selectSearchResult(searchResults[index], input, dropdown);
+                });
+            });
         }
 
         // Keyboard navigation
-        function navigateSearchResults(direction) {
-            const items = document.querySelectorAll('.search-result-item');
+        function navigateSearchResults(direction, dropdown) {
+            const items = dropdown.querySelectorAll('.search-result-item');
             if (items.length === 0) return;
 
             // Remove current selection
@@ -3935,16 +4062,34 @@
             items[selectedSearchIndex].scrollIntoView({ block: 'nearest' });
         }
 
+        // Clear sidebar search
+        function clearSearch() {
+            const searchInput = document.getElementById('search-input');
+            const searchDropdown = document.getElementById('search-dropdown');
+            searchInput.value = '';
+            searchResults = [];
+            searchDropdown.classList.remove('active');
+            searchInput.focus();
+        }
+
+        // Clear header search
+        function clearHeaderSearch() {
+            const searchInput = document.getElementById('header-search-input');
+            const searchDropdown = document.getElementById('header-search-dropdown');
+            searchInput.value = '';
+            searchResults = [];
+            searchDropdown.classList.remove('active');
+            searchInput.focus();
+        }
+
         // Select a search result and navigate
-        function selectSearchResult(result) {
-            hideSearchDropdown();
-            document.getElementById('search-input').value = '';
+        function selectSearchResult(result, input, dropdown) {
+            dropdown.classList.remove('active');
+            input.value = '';
 
             if (result.type === 'trending') {
-                // Navigate to the volume and scroll to trending section
                 navigateToVolume(result.vol, 'trending', result.title);
             } else {
-                // Navigate to the volume and scroll to the article
                 navigateToVolume(result.vol, 'article', result.articleId);
             }
         }
@@ -4156,14 +4301,11 @@
         function renderStats(stats, authorsMap) {
             const { contributionRanking, likeRanking, totalContributions, totalLikes, totalViews } = stats;
 
-            // Default avatar as data URI (simple user icon)
-            const defaultAvatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#9ca3af"><circle cx="12" cy="8" r="4"/><path d="M12 14c-6 0-8 3-8 6v1h16v-1c0-3-2-6-8-6z"/></svg>');
-
             const renderRankingItem = (item, index, type) => {
-                const author = authorsMap[item.authorId] || { name: item.authorId, avatar: '', team: '', role: '' };
+                const author = authorsMap[item.authorId] || { name: item.authorId, team: '', role: '' };
                 const rank = item.rank;
                 const rankClass = rank === 1 ? 'top-1' : rank === 2 ? 'top-2' : rank === 3 ? 'top-3' : '';
-                const avatarSrc = author.avatar || defaultAvatar;
+                const avatarSrc = getAuthorAvatar(author, item.authorId);
 
                 // Build tooltip HTML
                 const tooltipHtml = `
