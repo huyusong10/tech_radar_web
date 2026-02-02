@@ -4097,7 +4097,7 @@
         // Navigate to a specific volume and element
         async function navigateToVolume(vol, type, target) {
             // Check if we're already on this volume
-            if (currentVol === vol) {
+            if (currentVolume === vol) {
                 // Just scroll to the target
                 scrollToTarget(type, target);
             } else {
@@ -4106,7 +4106,7 @@
                 const isDraftMode = window.location.pathname === '/draft';
                 const newUrl = isDraftMode ? `/draft?vol=${vol}` : `/?vol=${vol}`;
                 window.history.pushState({ vol }, '', newUrl);
-                currentVol = vol;
+                currentVolume = vol;
 
                 // Load the volume content
                 await loadVolumeContent(vol, isDraftMode);
