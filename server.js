@@ -501,14 +501,17 @@ app.get('/draft', (req, res) => {
 // Generic static files (HTML, JS, CSS from project directory)
 app.use(express.static(__dirname, {
     index: 'index.html',
-    maxAge: '1h',
     etag: true,
+    lastModified: true,
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
-            res.setHeader('Cache-Control', 'public, max-age=3600');
+            // JS/CSS: cache for 1 hour but revalidate
+            res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
         }
         if (filePath.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'public, max-age=300');
+            // HTML: always revalidate with server (no-cache doesn't mean "don't cache")
+            // Browser will cache but must check ETag/Last-Modified before using
+            res.setHeader('Cache-Control', 'no-cache, must-revalidate');
         }
     }
 }));
@@ -889,9 +892,9 @@ app.get('/api/stats', rateLimitMiddleware('read'), async (req, res) => {
                         const indexPath = path.join(contributionsDir, dir.name, 'index.md');
                         try {
                             const content = await fsPromises.readFile(indexPath, 'utf8');
-                            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-                            if (frontmatterMatch) {
-                                const frontmatter = yaml.load(frontmatterMatch[1]);
+                            // Use parseYamlFrontmatter which normalizes CRLF line endings
+                            const frontmatter = parseYamlFrontmatter(content);
+                            if (frontmatter && Object.keys(frontmatter).length > 0) {
                                 const authorIds = frontmatter.author_ids || (frontmatter.author_id ? [frontmatter.author_id] : []);
 
                                 // Get likes for this article

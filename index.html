@@ -1517,12 +1517,13 @@
 
         .footer-content {
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
             flex-wrap: wrap;
             gap: var(--spacing-md);
             font-size: 0.875rem;
             color: var(--text-secondary);
+            text-align: center;
         }
 
         .export-button {
@@ -2379,14 +2380,16 @@
                 </button>
             </div>
             <div class="footer-content">
-                <div class="copyright" id="site-footer">
-                    © 2024 Tech Radar Weekly | Powered by Engineers, for Engineers
-                </div>
                 <button class="export-button" onclick="exportAsImage()">
                     <span class="btn-icon">📸</span>
                     <span class="btn-text-en">Export</span>
                     <span class="btn-text-cn">导出图片</span>
                 </button>
+            </div>
+            <div class="footer-content">
+                <div class="copyright" id="site-footer">
+                    © 2024 Tech Radar Weekly | Powered by Engineers, for Engineers
+                </div>
             </div>
         </div>
     </footer>
@@ -3979,7 +3982,7 @@
                     card.classList.add('expanded');
                 });
 
-                // Hide elements that shouldn't be in the export (but NOT the overlay - it blocks interaction)
+                // Hide elements that shouldn't be in the export
                 const elementsToHide = [
                     document.querySelector('.sidebar'),
                     document.querySelector('.mobile-menu-toggle'),
@@ -3987,8 +3990,12 @@
                     document.querySelector('.submit-button')
                 ];
 
-                // Wait for animations to complete while overlay is still blocking
-                await new Promise(resolve => setTimeout(resolve, 800));
+                elementsToHide.forEach(el => {
+                    if (el) el.style.display = 'none';
+                });
+
+                // Wait for animations to complete
+                await new Promise(resolve => setTimeout(resolve, 500));
 
                 // Clear any text selection and blur focus
                 window.getSelection()?.removeAllRanges();
@@ -3997,36 +4004,55 @@
                 // Add class to disable selection styling during export
                 document.body.classList.add('exporting');
 
-                // Force a reflow to ensure styles are applied
-                void document.body.offsetHeight;
-
-                // Wait a bit more for selection styles to clear
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                // Now hide elements just before capture
-                elementsToHide.forEach(el => {
-                    if (el) el.style.visibility = 'hidden';
-                });
-
                 // Get the main content element
                 const mainContent = document.querySelector('.main-content');
 
-                // Capture the page
+                // Save original styles
+                const originalStyles = {
+                    body: document.body.style.cssText,
+                    mainContent: mainContent.style.cssText
+                };
+
+                // Apply export-specific styles directly to DOM (simpler than onclone)
+                document.body.style.background = '#0a0a0a';
+                mainContent.style.marginLeft = '0';
+                mainContent.style.position = 'relative';
+                mainContent.style.left = '0';
+
+                // Scroll to top
+                window.scrollTo(0, 0);
+
+                // Force reflow
+                void mainContent.offsetHeight;
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // Get the actual content width (container max-width is 1200px + padding)
+                const container = mainContent.querySelector('.container');
+                const contentWidth = container ? Math.min(container.offsetWidth + 48, mainContent.scrollWidth) : mainContent.scrollWidth;
+
+                // Use html2canvas with specific width to avoid black borders
                 const canvas = await html2canvas(mainContent, {
                     backgroundColor: '#0a0a0a',
                     scale: 2,
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
-                    windowWidth: mainContent.scrollWidth,
-                    windowHeight: mainContent.scrollHeight
+                    removeContainer: true,
+                    width: contentWidth,
+                    windowWidth: contentWidth
                 });
 
-                // Restore hidden elements and remove exporting class
-                document.body.classList.remove('exporting');
+                // Restore original styles
+                document.body.style.cssText = originalStyles.body;
+                mainContent.style.cssText = originalStyles.mainContent;
+
+                // Restore hidden elements
                 elementsToHide.forEach(el => {
-                    if (el) el.style.visibility = '';
+                    if (el) el.style.display = '';
                 });
+
+                // Remove exporting class
+                document.body.classList.remove('exporting');
 
                 // Restore original states
                 trendingItems.forEach((item, i) => {
@@ -4055,7 +4081,18 @@
 
             } catch (error) {
                 console.error('Export failed:', error);
-                // Hide overlay on error
+                // Restore everything on error
+                document.body.classList.remove('exporting');
+                const elementsToShow = [
+                    document.querySelector('.sidebar'),
+                    document.querySelector('.mobile-menu-toggle'),
+                    document.querySelector('.export-button'),
+                    document.querySelector('.submit-button')
+                ];
+                elementsToShow.forEach(el => {
+                    if (el) el.style.display = '';
+                });
+
                 exportOverlay.classList.remove('active');
                 document.body.style.overflow = '';
                 exportBtn.innerHTML = '<span class="btn-icon">❌</span><span>Failed</span>';
