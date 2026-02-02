@@ -3,6 +3,13 @@ const fsPromises = require('fs').promises;
 // ==================== CONCURRENCY CONFIGURATION ====================
 // These defaults can be overridden but are central to the concurrency logic
 const DEFAULTS = {
+    // Cache TTL in milliseconds
+    CACHE_TTL: {
+        config: 60000,      // 1 minute for site config
+        authors: 60000,     // 1 minute for authors
+        volumes: 30000,     // 30 seconds for volumes list
+        contributions: 30000 // 30 seconds for contributions
+    },
     LOCK_TIMEOUT: 5000,
     WRITE_DEBOUNCE: 100,
     MAX_CONCURRENT_WRITES: 10,
