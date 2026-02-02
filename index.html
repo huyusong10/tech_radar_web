@@ -4027,7 +4027,22 @@
                 // Wait for style changes to take effect
                 await new Promise(resolve => setTimeout(resolve, 50));
 
-                // Capture the page with explicit positioning to fix cross-platform issues
+                // Get computed CSS variable values from the original document
+                const computedStyle = getComputedStyle(document.documentElement);
+                const cssVars = {
+                    '--bg-primary': computedStyle.getPropertyValue('--bg-primary').trim() || '#0a0a0a',
+                    '--bg-secondary': computedStyle.getPropertyValue('--bg-secondary').trim() || '#151515',
+                    '--bg-card': computedStyle.getPropertyValue('--bg-card').trim() || '#1a1a1a',
+                    '--text-primary': computedStyle.getPropertyValue('--text-primary').trim() || '#ededed',
+                    '--text-secondary': computedStyle.getPropertyValue('--text-secondary').trim() || '#9ca3af',
+                    '--accent-cyan': computedStyle.getPropertyValue('--accent-cyan').trim() || '#00f3ff',
+                    '--accent-pink': computedStyle.getPropertyValue('--accent-pink').trim() || '#ff00ff',
+                    '--accent-green': computedStyle.getPropertyValue('--accent-green').trim() || '#00ff88',
+                    '--accent-orange': computedStyle.getPropertyValue('--accent-orange').trim() || '#ff6b35',
+                    '--accent-purple': computedStyle.getPropertyValue('--accent-purple').trim() || '#a855f7',
+                };
+
+                // Capture the page with onclone callback to fix Windows rendering issues
                 const canvas = await html2canvas(mainContent, {
                     backgroundColor: '#0a0a0a',
                     scale: 2,
@@ -4041,7 +4056,109 @@
                     scrollX: 0,
                     scrollY: 0,
                     windowWidth: mainContent.scrollWidth,
-                    windowHeight: mainContent.scrollHeight
+                    windowHeight: mainContent.scrollHeight,
+                    onclone: (clonedDoc) => {
+                        // Fix CSS variables in the cloned document
+                        const clonedRoot = clonedDoc.documentElement;
+                        for (const [varName, value] of Object.entries(cssVars)) {
+                            clonedRoot.style.setProperty(varName, value);
+                        }
+
+                        // Get the cloned main content
+                        const clonedMain = clonedDoc.querySelector('.main-content');
+                        if (clonedMain) {
+                            // Reset margin and set explicit background
+                            clonedMain.style.marginLeft = '0';
+                            clonedMain.style.background = '#0a0a0a';
+                            clonedMain.style.minHeight = 'auto';
+                        }
+
+                        // Fix header background
+                        const clonedHeader = clonedDoc.querySelector('header');
+                        if (clonedHeader) {
+                            clonedHeader.style.background = '#0a0a0a';
+                        }
+
+                        // Fix section backgrounds
+                        clonedDoc.querySelectorAll('.section').forEach(section => {
+                            section.style.background = '#0a0a0a';
+                        });
+
+                        // Fix container backgrounds
+                        clonedDoc.querySelectorAll('.container').forEach(container => {
+                            container.style.background = 'transparent';
+                        });
+
+                        // Fix glow-text elements (html2canvas doesn't support background-clip: text)
+                        clonedDoc.querySelectorAll('.glow-text').forEach(el => {
+                            el.style.background = 'none';
+                            el.style.webkitBackgroundClip = 'unset';
+                            el.style.backgroundClip = 'unset';
+                            el.style.webkitTextFillColor = '#00f3ff';
+                            el.style.color = '#00f3ff';
+                        });
+
+                        // Fix contribution cards - remove unsupported -webkit-mask
+                        clonedDoc.querySelectorAll('.contribution-card').forEach(card => {
+                            card.style.background = '#1a1a1a';
+                            card.style.border = '1px solid rgba(0, 243, 255, 0.3)';
+                            // The ::before pseudo-element won't render, so we add a visible border
+                        });
+
+                        // Fix trending items
+                        clonedDoc.querySelectorAll('.trending-item').forEach(item => {
+                            item.style.background = '#1a1a1a';
+                            item.style.border = '1px solid rgba(0, 243, 255, 0.2)';
+                        });
+
+                        // Fix code blocks
+                        clonedDoc.querySelectorAll('.code-block, pre, code').forEach(el => {
+                            el.style.background = '#151515';
+                        });
+
+                        // Fix contributions grid - ensure proper layout
+                        const clonedGrid = clonedDoc.querySelector('.contributions-grid');
+                        if (clonedGrid) {
+                            clonedGrid.style.display = 'grid';
+                            clonedGrid.style.gridTemplateColumns = '1fr';
+                            clonedGrid.style.gap = '1.5rem';
+                        }
+
+                        // Fix trending list
+                        const clonedTrendingList = clonedDoc.querySelector('.trending-list');
+                        if (clonedTrendingList) {
+                            clonedTrendingList.style.display = 'flex';
+                            clonedTrendingList.style.flexDirection = 'column';
+                            clonedTrendingList.style.gap = '1rem';
+                        }
+
+                        // Fix logo - the ::before pseudo-element won't render
+                        const clonedLogo = clonedDoc.querySelector('.logo');
+                        if (clonedLogo) {
+                            // Create a span to replace the ::before content
+                            const preText = clonedDoc.createElement('span');
+                            preText.textContent = 'Pre';
+                            preText.style.color = '#ff00ff';
+                            clonedLogo.insertBefore(preText, clonedLogo.firstChild);
+                        }
+
+                        // Fix any remaining elements with CSS variable backgrounds
+                        clonedDoc.querySelectorAll('[style*="var("]').forEach(el => {
+                            const style = el.getAttribute('style');
+                            if (style) {
+                                let newStyle = style;
+                                for (const [varName, value] of Object.entries(cssVars)) {
+                                    newStyle = newStyle.replace(new RegExp(`var\\(${varName}\\)`, 'g'), value);
+                                }
+                                el.setAttribute('style', newStyle);
+                            }
+                        });
+
+                        // Ensure body has correct background
+                        clonedDoc.body.style.background = '#0a0a0a';
+                        clonedDoc.body.style.margin = '0';
+                        clonedDoc.body.style.padding = '0';
+                    }
                 });
 
                 // Restore margin-left
