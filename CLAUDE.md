@@ -40,7 +40,12 @@ Tech Radar Weekly 是一个赛博朋克风格的技术周刊单页应用模板�
 ```
 tech_radar_web/
 ├── index.html              # 前端页面（动态加载 Markdown）
-├── server.js               # Node.js 服务器
+├── server.js               # Node.js 服务器入口
+├── server/                 # 服务器模块目录
+│   ├── server.js           # 服务器完整副本（参考）
+│   └── utils/              # 工具模块
+│       ├── concurrency.js  # 并发控制类（Cache, AsyncMutex, RateLimiter, WriteQueue）
+│       └── ip.js           # IP 处理工具（getClientIP, isValidIP, normalizeIP）
 ├── site.config.js          # 站点配置（端口、内容目录路径）
 ├── package.json            # 依赖配置
 ├── README.md               # 用户文档
@@ -113,6 +118,9 @@ tech_radar_web/
 
 ### 核心功能模块
 
+服务器代码采用模块化架构，工具类位于 `server/utils/` 目录：
+
+**server/utils/concurrency.js：**
 ```javascript
 // 缓存系统
 class Cache                 // 内存缓存，支持 TTL 过期
@@ -122,6 +130,19 @@ class AsyncMutex            // 异步互斥锁，防止数据竞争
 class RateLimiter           // 速率限制（读 240/分钟，写 20/分钟）
 class WriteQueue            // 写入队列，防抖处理
 
+// 导出默认配置
+DEFAULTS = { CACHE_TTL, LOCK_TIMEOUT, WRITE_DEBOUNCE, MAX_CONCURRENT_WRITES, RATE_LIMIT }
+```
+
+**server/utils/ip.js：**
+```javascript
+getClientIP(req)            // 获取客户端 IP（支持代理头）
+isValidIP(ip)               // 验证 IP 格式
+normalizeIP(ip)             // 标准化 IP（处理 IPv6 映射）
+```
+
+**server.js 主入口：**
+```javascript
 // 数据持久化
 loadDataFiles()             // 启动时加载数据到内存
 persistData()               // 定期持久化（每 5 秒）
@@ -162,10 +183,10 @@ notifyHotReload()           // 通过 SSE 通知客户端刷新
 - `totalVolumes`：期刊总数
 - 各类平均值统计
 
-### 配置参数（CONFIG 对象）
+### 配置参数（DEFAULTS 对象，位于 server/utils/concurrency.js）
 
 ```javascript
-CONFIG = {
+DEFAULTS = {
     CACHE_TTL: {
         config: 60000,       // 1 分钟
         authors: 60000,      // 1 分钟
@@ -477,5 +498,5 @@ badges:
 
 ---
 
-**最后更新**：2026.02.02
+**最后更新**：2026.02.03
 **维护者**：Tech Radar Team

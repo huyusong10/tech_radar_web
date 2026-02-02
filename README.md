@@ -19,7 +19,11 @@
 ```
 tech_radar_web/
 ├── index.html              # 前端页面
-├── server.js               # Node.js 服务器（API + 热重载 + 并发控制）
+├── server.js               # Node.js 服务器入口（API + 热重载）
+├── server/                 # 服务器模块
+│   └── utils/
+│       ├── concurrency.js  # 并发控制（Cache, AsyncMutex, RateLimiter, WriteQueue）
+│       └── ip.js           # IP 处理工具（getClientIP, isValidIP）
 ├── site.config.js          # 站点配置文件
 ├── package.json            # 依赖配置
 ├── README.md               # 用户文档
