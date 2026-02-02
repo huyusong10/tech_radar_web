@@ -1,0 +1,217 @@
+Site Configuration:
+  Contents Dir: /Users/hys/dev/tech_radar_web/contents
+    - Published: /Users/hys/dev/tech_radar_web/contents/published
+    - Draft: /Users/hys/dev/tech_radar_web/contents/draft
+    - Shared: /Users/hys/dev/tech_radar_web/contents/shared
+    - Assets: /Users/hys/dev/tech_radar_web/contents/assets
+    - Data: /Users/hys/dev/tech_radar_web/contents/data
+Data files loaded into memory
+Generated archive.json with 2 volumes
+Generated draft archive.json with 1 volumes
+Setting up file watcher for: [
+  '/Users/hys/dev/tech_radar_web/contents/published',
+  '/Users/hys/dev/tech_radar_web/contents/draft',
+  '/Users/hys/dev/tech_radar_web/contents/shared'
+]
+Tech Radar server running at http://localhost:5090
+Concurrency optimizations enabled:
+  - In-memory caching with TTL
+  - Async file I/O
+  - Rate limiting (240 read, 20 write per minute)
+  - Proper mutex-based locking
+  - Debounced writes
+File watcher ready. Watching for changes...
+File changed: /Users/hys/dev/tech_radar_web/contents/draft/archive.json
+File changed: /Users/hys/dev/tech_radar_web/contents/published/archive.json
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read authors: TypeError: Cannot read properties of undefined (reading 'authors')
+    at /Users/hys/dev/tech_radar_web/server.js:409:59
+Failed to read volumes: TypeError: Cannot read properties of undefined (reading 'volumes')
+    at /Users/hys/dev/tech_radar_web/server.js:497:59
+Received SIGTERM. Shutting down gracefully...
+Closing file watcher...
+Persisting data...
+Shutdown complete.

@@ -6,8 +6,8 @@ const yaml = require('js-yaml');
 const chokidar = require('chokidar');
 
 // Import utilities
-const { Cache, AsyncMutex, RateLimiter, WriteQueue, DEFAULTS: CONFIG } = require('./server/utils/concurrency');
-const { getClientIP, isValidIP } = require('./server/utils/ip');
+const { Cache, AsyncMutex, RateLimiter, WriteQueue, DEFAULTS: CONFIG } = require('./utils/concurrency');
+const { getClientIP, isValidIP } = require('./utils/ip');
 
 
 // Load site configuration
