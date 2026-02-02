@@ -3979,7 +3979,7 @@
                     card.classList.add('expanded');
                 });
 
-                // Hide elements that shouldn't be in the export (but NOT the overlay - it blocks interaction)
+                // Hide elements that shouldn't be in the export
                 const elementsToHide = [
                     document.querySelector('.sidebar'),
                     document.querySelector('.mobile-menu-toggle'),
@@ -3987,8 +3987,12 @@
                     document.querySelector('.submit-button')
                 ];
 
-                // Wait for animations to complete while overlay is still blocking
-                await new Promise(resolve => setTimeout(resolve, 800));
+                elementsToHide.forEach(el => {
+                    if (el) el.style.display = 'none';
+                });
+
+                // Wait for animations to complete
+                await new Promise(resolve => setTimeout(resolve, 500));
 
                 // Clear any text selection and blur focus
                 window.getSelection()?.removeAllRanges();
@@ -3997,247 +4001,51 @@
                 // Add class to disable selection styling during export
                 document.body.classList.add('exporting');
 
-                // Force a reflow to ensure styles are applied
-                void document.body.offsetHeight;
-
-                // Wait a bit more for selection styles to clear
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                // Now hide elements just before capture
-                elementsToHide.forEach(el => {
-                    if (el) el.style.visibility = 'hidden';
-                });
-
                 // Get the main content element
                 const mainContent = document.querySelector('.main-content');
 
-                // Save scroll position and reset to ensure consistent capture
-                const savedScrollX = window.scrollX;
-                const savedScrollY = window.scrollY;
-                window.scrollTo(0, 0);
-
-                // Temporarily remove margin-left to fix Windows rendering issues
-                // html2canvas on Windows calculates positions differently with margin-left
-                const originalMarginLeft = mainContent.style.marginLeft;
-                mainContent.style.marginLeft = '0';
-
-                // Force a reflow to apply style changes
-                void mainContent.offsetHeight;
-
-                // Wait for style changes to take effect
-                await new Promise(resolve => setTimeout(resolve, 50));
-
-                // Get computed CSS variable values from the original document
-                const computedStyle = getComputedStyle(document.documentElement);
-                const cssVars = {
-                    '--bg-primary': computedStyle.getPropertyValue('--bg-primary').trim() || '#0a0a0a',
-                    '--bg-secondary': computedStyle.getPropertyValue('--bg-secondary').trim() || '#151515',
-                    '--bg-card': computedStyle.getPropertyValue('--bg-card').trim() || '#1a1a1a',
-                    '--text-primary': computedStyle.getPropertyValue('--text-primary').trim() || '#ededed',
-                    '--text-secondary': computedStyle.getPropertyValue('--text-secondary').trim() || '#9ca3af',
-                    '--accent-cyan': computedStyle.getPropertyValue('--accent-cyan').trim() || '#00f3ff',
-                    '--accent-pink': computedStyle.getPropertyValue('--accent-pink').trim() || '#ff00ff',
-                    '--accent-green': computedStyle.getPropertyValue('--accent-green').trim() || '#00ff88',
-                    '--accent-orange': computedStyle.getPropertyValue('--accent-orange').trim() || '#ff6b35',
-                    '--accent-purple': computedStyle.getPropertyValue('--accent-purple').trim() || '#a855f7',
+                // Save original styles
+                const originalStyles = {
+                    body: document.body.style.cssText,
+                    mainContent: mainContent.style.cssText
                 };
 
-                // Capture the page with onclone callback to fix Windows rendering issues
+                // Apply export-specific styles directly to DOM (simpler than onclone)
+                document.body.style.background = '#0a0a0a';
+                mainContent.style.marginLeft = '0';
+                mainContent.style.width = '100%';
+                mainContent.style.maxWidth = '100%';
+                mainContent.style.position = 'relative';
+                mainContent.style.left = '0';
+
+                // Scroll to top
+                window.scrollTo(0, 0);
+
+                // Force reflow
+                void mainContent.offsetHeight;
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // Use simple html2canvas configuration
                 const canvas = await html2canvas(mainContent, {
                     backgroundColor: '#0a0a0a',
                     scale: 2,
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
-                    width: mainContent.scrollWidth,
-                    height: mainContent.scrollHeight,
-                    x: 0,
-                    y: 0,
-                    scrollX: 0,
-                    scrollY: 0,
-                    windowWidth: mainContent.scrollWidth,
-                    windowHeight: mainContent.scrollHeight,
-                    onclone: (clonedDoc) => {
-                        // Fix CSS variables in the cloned document
-                        const clonedRoot = clonedDoc.documentElement;
-                        for (const [varName, value] of Object.entries(cssVars)) {
-                            clonedRoot.style.setProperty(varName, value);
-                        }
-
-                        // Get the cloned main content
-                        const clonedMain = clonedDoc.querySelector('.main-content');
-                        if (clonedMain) {
-                            // Reset margin and set explicit layout properties
-                            clonedMain.style.marginLeft = '0';
-                            clonedMain.style.marginRight = '0';
-                            clonedMain.style.width = '100%';
-                            clonedMain.style.maxWidth = 'none';
-                            clonedMain.style.background = '#0a0a0a';
-                            clonedMain.style.minHeight = 'auto';
-                            clonedMain.style.display = 'block';
-                            clonedMain.style.position = 'relative';
-                        }
-
-                        // Fix header background and layout
-                        const clonedHeader = clonedDoc.querySelector('header');
-                        if (clonedHeader) {
-                            clonedHeader.style.background = '#0a0a0a';
-                            clonedHeader.style.textAlign = 'center';
-                            clonedHeader.style.width = '100%';
-                            clonedHeader.style.display = 'block';
-                        }
-
-                        // Fix section backgrounds
-                        clonedDoc.querySelectorAll('.section').forEach(section => {
-                            section.style.background = '#0a0a0a';
-                        });
-
-                        // Fix container backgrounds
-                        clonedDoc.querySelectorAll('.container').forEach(container => {
-                            container.style.background = 'transparent';
-                        });
-
-                        // Fix section titles - ensure horizontal layout
-                        clonedDoc.querySelectorAll('.section-title').forEach(title => {
-                            title.style.display = 'inline-flex';
-                            title.style.flexDirection = 'row';
-                            title.style.alignItems = 'center';
-                            title.style.gap = '1rem';
-                            title.style.flexWrap = 'nowrap';
-                        });
-
-                        // Fix glow-text elements (html2canvas doesn't support background-clip: text)
-                        clonedDoc.querySelectorAll('.glow-text').forEach(el => {
-                            el.style.background = 'none';
-                            el.style.webkitBackgroundClip = 'unset';
-                            el.style.backgroundClip = 'unset';
-                            el.style.webkitTextFillColor = '#00f3ff';
-                            el.style.color = '#00f3ff';
-                            el.style.display = 'inline';
-                        });
-
-                        // Fix cn-text elements
-                        clonedDoc.querySelectorAll('.cn-text').forEach(el => {
-                            el.style.display = 'inline';
-                        });
-
-                        // Fix contribution cards - remove unsupported -webkit-mask
-                        clonedDoc.querySelectorAll('.contribution-card').forEach(card => {
-                            card.style.background = '#1a1a1a';
-                            card.style.border = '1px solid rgba(0, 243, 255, 0.3)';
-                            // The ::before pseudo-element won't render, so we add a visible border
-                        });
-
-                        // Fix trending items
-                        clonedDoc.querySelectorAll('.trending-item').forEach(item => {
-                            item.style.background = '#1a1a1a';
-                            item.style.border = '1px solid rgba(0, 243, 255, 0.2)';
-                        });
-
-                        // Fix code blocks
-                        clonedDoc.querySelectorAll('.code-block, pre, code').forEach(el => {
-                            el.style.background = '#151515';
-                        });
-
-                        // Fix contributions grid - ensure proper layout
-                        const clonedGrid = clonedDoc.querySelector('.contributions-grid');
-                        if (clonedGrid) {
-                            clonedGrid.style.display = 'grid';
-                            clonedGrid.style.gridTemplateColumns = '1fr';
-                            clonedGrid.style.gap = '1.5rem';
-                        }
-
-                        // Fix trending list
-                        const clonedTrendingList = clonedDoc.querySelector('.trending-list');
-                        if (clonedTrendingList) {
-                            clonedTrendingList.style.display = 'flex';
-                            clonedTrendingList.style.flexDirection = 'column';
-                            clonedTrendingList.style.gap = '1rem';
-                        }
-
-                        // Fix logo - replace text content directly since ::before may or may not render
-                        const clonedLogo = clonedDoc.querySelector('.logo');
-                        if (clonedLogo) {
-                            // Clear and recreate content to avoid duplication
-                            const logoText = clonedLogo.textContent || 'Tech Radar Weekly';
-                            clonedLogo.innerHTML = '<span style="color: #ff00ff;">Pre</span>' + logoText;
-                            clonedLogo.style.display = 'block';
-                            clonedLogo.style.textAlign = 'center';
-                        }
-
-                        // Fix header crew rows - ensure horizontal layout
-                        clonedDoc.querySelectorAll('.crew-row').forEach(row => {
-                            row.style.display = 'flex';
-                            row.style.flexDirection = 'row';
-                            row.style.alignItems = 'center';
-                            row.style.justifyContent = 'center';
-                            row.style.gap = '1rem';
-                            row.style.flexWrap = 'wrap';
-                        });
-
-                        // Fix header authors layout
-                        clonedDoc.querySelectorAll('.header-authors, .header-contributors').forEach(el => {
-                            el.style.display = 'flex';
-                            el.style.flexDirection = 'row';
-                            el.style.justifyContent = 'center';
-                            el.style.gap = '1rem';
-                            el.style.flexWrap = 'wrap';
-                        });
-
-                        // Fix header meta
-                        const headerMeta = clonedDoc.querySelector('.header-meta');
-                        if (headerMeta) {
-                            headerMeta.style.textAlign = 'center';
-                            headerMeta.style.display = 'block';
-                        }
-
-                        // Fix slogan
-                        const slogan = clonedDoc.querySelector('.slogan');
-                        if (slogan) {
-                            slogan.style.textAlign = 'center';
-                            slogan.style.display = 'block';
-                            slogan.style.margin = '0 auto';
-                        }
-
-                        // Ensure all containers are centered
-                        clonedDoc.querySelectorAll('.container').forEach(container => {
-                            container.style.maxWidth = '1200px';
-                            container.style.margin = '0 auto';
-                            container.style.padding = '0 1.5rem';
-                            container.style.width = '100%';
-                            container.style.boxSizing = 'border-box';
-                        });
-
-                        // Fix any remaining elements with CSS variable backgrounds
-                        clonedDoc.querySelectorAll('[style*="var("]').forEach(el => {
-                            const style = el.getAttribute('style');
-                            if (style) {
-                                let newStyle = style;
-                                for (const [varName, value] of Object.entries(cssVars)) {
-                                    newStyle = newStyle.replace(new RegExp(`var\\(${varName}\\)`, 'g'), value);
-                                }
-                                el.setAttribute('style', newStyle);
-                            }
-                        });
-
-                        // Ensure body has correct background
-                        clonedDoc.body.style.background = '#0a0a0a';
-                        clonedDoc.body.style.margin = '0';
-                        clonedDoc.body.style.padding = '0';
-                    }
+                    removeContainer: true
                 });
 
-                // Restore margin-left
-                mainContent.style.marginLeft = originalMarginLeft;
+                // Restore original styles
+                document.body.style.cssText = originalStyles.body;
+                mainContent.style.cssText = originalStyles.mainContent;
 
-                // Restore scroll position
-                window.scrollTo(savedScrollX, savedScrollY);
-
-                // Restore hidden elements and remove exporting class
-                document.body.classList.remove('exporting');
+                // Restore hidden elements
                 elementsToHide.forEach(el => {
-                    if (el) el.style.visibility = '';
+                    if (el) el.style.display = '';
                 });
+
+                // Remove exporting class
+                document.body.classList.remove('exporting');
 
                 // Restore original states
                 trendingItems.forEach((item, i) => {
@@ -4266,7 +4074,18 @@
 
             } catch (error) {
                 console.error('Export failed:', error);
-                // Hide overlay on error
+                // Restore everything on error
+                document.body.classList.remove('exporting');
+                const elementsToShow = [
+                    document.querySelector('.sidebar'),
+                    document.querySelector('.mobile-menu-toggle'),
+                    document.querySelector('.export-button'),
+                    document.querySelector('.submit-button')
+                ];
+                elementsToShow.forEach(el => {
+                    if (el) el.style.display = '';
+                });
+
                 exportOverlay.classList.remove('active');
                 document.body.style.overflow = '';
                 exportBtn.innerHTML = '<span class="btn-icon">❌</span><span>Failed</span>';
