@@ -2764,6 +2764,16 @@
             }
         });
 
+        // Custom renderer to open all links in new tab
+        marked.use({
+            renderer: {
+                link(href, title, text) {
+                    const titleAttr = title ? ` title="${title}"` : '';
+                    return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+                }
+            }
+        });
+
         // ==================== CONCURRENCY UTILITIES ====================
 
         // Retry with exponential backoff
