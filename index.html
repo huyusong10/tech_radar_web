@@ -460,6 +460,25 @@
             font-size: 0.8rem;
         }
 
+        .search-result-snippet {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin: 0.3rem 0;
+            line-height: 1.4;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .search-highlight {
+            background: rgba(0, 243, 255, 0.3);
+            color: var(--accent-cyan);
+            padding: 0 2px;
+            border-radius: 2px;
+            font-weight: 500;
+        }
+
         .sidebar.collapsed .search-container {
             display: none;
         }
@@ -4003,6 +4022,16 @@
             }
         }
 
+        // Highlight query in text
+        function highlightQuery(text, query) {
+            if (!text || !query) return escapeHtml(text || '');
+            const escaped = escapeHtml(text);
+            const escapedQuery = escapeHtml(query);
+            // Case-insensitive replace with highlight span
+            const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            return escaped.replace(regex, '<mark class="search-highlight">$1</mark>');
+        }
+
         // Render search results
         function renderSearchResults(results, query, dropdown) {
             if (results.length === 0) {
@@ -4011,14 +4040,19 @@
             }
 
             dropdown.innerHTML = results.map((result, index) => {
+                const snippetHtml = result.snippet
+                    ? `<div class="search-result-snippet">${highlightQuery(result.snippet, query)}</div>`
+                    : '';
+
                 if (result.type === 'trending') {
                     return `
                         <div class="search-result-item" data-index="${index}">
                             <div class="search-result-type trending">Trending</div>
                             <div class="search-result-title">
                                 <span class="search-result-badge">${escapeHtml(result.badge)}</span>
-                                ${escapeHtml(result.title)}
+                                ${highlightQuery(result.title, query)}
                             </div>
+                            ${snippetHtml}
                             <div class="search-result-meta">Vol.${result.vol} ${result.date ? '· ' + result.date : ''}</div>
                         </div>
                     `;
@@ -4026,7 +4060,8 @@
                     return `
                         <div class="search-result-item" data-index="${index}">
                             <div class="search-result-type contribution">Article</div>
-                            <div class="search-result-title">${escapeHtml(result.title)}</div>
+                            <div class="search-result-title">${highlightQuery(result.title, query)}</div>
+                            ${snippetHtml}
                             <div class="search-result-meta">Vol.${result.vol} ${result.authorIds ? '· ' + result.authorIds.join(', ') : ''}</div>
                         </div>
                     `;

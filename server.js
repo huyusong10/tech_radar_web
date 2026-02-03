@@ -532,6 +532,44 @@ app.get('/api/contributions/:vol', rateLimitMiddleware('read'), async (req, res)
     res.json(contributions);
 });
 
+// Extract a snippet containing the search query with surrounding context
+function extractSnippet(text, query, maxLength = 120) {
+    if (!text || !query) return null;
+
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const index = lowerText.indexOf(lowerQuery);
+
+    if (index === -1) return null;
+
+    // Calculate snippet boundaries
+    const halfLength = Math.floor((maxLength - query.length) / 2);
+    let start = Math.max(0, index - halfLength);
+    let end = Math.min(text.length, index + query.length + halfLength);
+
+    // Adjust to word boundaries
+    if (start > 0) {
+        const spaceIndex = text.indexOf(' ', start);
+        if (spaceIndex !== -1 && spaceIndex < index) {
+            start = spaceIndex + 1;
+        }
+    }
+    if (end < text.length) {
+        const spaceIndex = text.lastIndexOf(' ', end);
+        if (spaceIndex > index + query.length) {
+            end = spaceIndex;
+        }
+    }
+
+    let snippet = text.substring(start, end).trim();
+
+    // Add ellipsis if truncated
+    if (start > 0) snippet = '...' + snippet;
+    if (end < text.length) snippet = snippet + '...';
+
+    return snippet;
+}
+
 // GET /api/search - Search across all published volumes
 // Query params: q (search query), limit (max results, default 20)
 app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
@@ -600,13 +638,19 @@ app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
                 for (const item of trendingItems) {
                     const searchText = `${item.title} ${item.badge} ${item.content}`.toLowerCase();
                     if (searchText.includes(query)) {
+                        // Extract snippet from title first, then content
+                        let snippet = extractSnippet(item.title, query);
+                        if (!snippet) {
+                            snippet = extractSnippet(item.content, query);
+                        }
                         results.push({
                             type: 'trending',
                             vol,
                             title: item.title,
                             badge: item.badge,
                             date: radarFrontmatter.date || '',
-                            articleId: null
+                            articleId: null,
+                            snippet: snippet
                         });
                     }
                 }
@@ -631,10 +675,22 @@ app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
                         const description = frontmatter.description || '';
                         const authorIds = frontmatter.author_ids || (frontmatter.author_id ? [frontmatter.author_id] : []);
 
-                        // Search in title, description, and author IDs
-                        const searchText = `${title} ${description} ${authorIds.join(' ')}`.toLowerCase();
+                        // Extract body content (remove frontmatter)
+                        const bodyMatch = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+                        const bodyContent = bodyMatch ? bodyMatch[1].trim() : '';
+
+                        // Search in title, description, author IDs, and body
+                        const searchText = `${title} ${description} ${authorIds.join(' ')} ${bodyContent}`.toLowerCase();
 
                         if (searchText.includes(query)) {
+                            // Extract snippet from title, description, or body
+                            let snippet = extractSnippet(title, query);
+                            if (!snippet) {
+                                snippet = extractSnippet(description, query);
+                            }
+                            if (!snippet) {
+                                snippet = extractSnippet(bodyContent, query);
+                            }
                             results.push({
                                 type: 'contribution',
                                 vol,
@@ -642,7 +698,8 @@ app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
                                 description: description.length > 100 ? description.substring(0, 100) + '...' : description,
                                 authorIds,
                                 articleId: `${vol}-${dir.name}`,
-                                folderName: dir.name
+                                folderName: dir.name,
+                                snippet: snippet
                             });
                         }
                     } catch {
