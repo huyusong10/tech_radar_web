@@ -776,8 +776,20 @@ async function validateArticleExists(articleId) {
 
 // POST /api/likes/:articleId - Toggle like for an article (IP-based, one like per IP)
 // Each IP can like/unlike an article, but only counts as one like at a time
+// Draft mode: ?draft=true will not record any data
 app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res) => {
     const { articleId } = req.params;
+    const isDraft = req.query.draft === 'true';
+
+    // Draft mode: return fake response without recording
+    if (isDraft) {
+        return res.json({
+            articleId,
+            likes: 0,
+            userLiked: false,
+            draft: true
+        });
+    }
 
     // Get client IP
     const ip = getClientIP(req);
@@ -856,8 +868,15 @@ app.get('/api/views/:vol', rateLimitMiddleware('read'), (req, res) => {
 });
 
 // POST /api/views/:vol - Increment views for a volume (with concurrency control)
+// Draft mode: ?draft=true will not record any data
 app.post('/api/views/:vol', rateLimitMiddleware('write'), async (req, res) => {
     const { vol } = req.params;
+    const isDraft = req.query.draft === 'true';
+
+    // Draft mode: return fake response without recording
+    if (isDraft) {
+        return res.json({ vol, views: 0, draft: true });
+    }
 
     // Validate input
     if (!vol || vol.length > 10 || !/^\d+$/.test(vol)) {

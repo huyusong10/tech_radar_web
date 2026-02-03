@@ -3263,9 +3263,11 @@
 
         // Views API functions
         // Increment views and return new count
+        // Draft mode: returns 0 without recording
         async function incrementViews(vol) {
             try {
-                const response = await fetchWithRetry(`/api/views/${vol}`, { method: 'POST' });
+                const draftParam = isDraftMode() ? '?draft=true' : '';
+                const response = await fetchWithRetry(`/api/views/${vol}${draftParam}`, { method: 'POST' });
                 if (!response.ok) {
                     console.warn('Views increment returned non-OK status:', response.status);
                     return 0;
@@ -3279,7 +3281,12 @@
         }
 
         // Likes API functions
+        // Draft mode: returns empty data without fetching
         async function fetchLikes() {
+            // Draft mode: return empty likes
+            if (isDraftMode()) {
+                return {};
+            }
             try {
                 const response = await fetchDedupe('/api/likes');
                 return await response.json();
@@ -3290,7 +3297,12 @@
         }
 
         // Fetch user's liked articles from server (IP-based)
+        // Draft mode: returns empty set without fetching
         async function fetchUserLikes() {
+            // Draft mode: return empty user likes
+            if (isDraftMode()) {
+                return new Set();
+            }
             try {
                 const response = await fetchWithRetry('/api/user-likes');
                 if (response.ok) {
@@ -3305,7 +3317,12 @@
         }
 
         // Send like request to server (IP-based, no unlike supported)
+        // Draft mode: returns fake response without recording
         async function sendLike(articleId) {
+            // Draft mode: return fake response without recording
+            if (isDraftMode()) {
+                return { articleId, likes: 0, userLiked: false, draft: true };
+            }
             try {
                 const response = await fetchWithRetry(`/api/likes/${articleId}`, {
                     method: 'POST',
@@ -4184,9 +4201,10 @@
                 console.error('Failed to load contributions:', error);
             }
 
-            // Update views
+            // Update views (draft mode: show 0 without recording)
             try {
-                const viewsResult = await fetchWithRetry(`/api/views/${vol}`, { method: 'POST' });
+                const draftParam = isDraftMode ? '?draft=true' : '';
+                const viewsResult = await fetchWithRetry(`/api/views/${vol}${draftParam}`, { method: 'POST' });
                 if (viewsResult.ok) {
                     const viewsData = await viewsResult.json();
                     document.getElementById('page-views').textContent = viewsData.views;
