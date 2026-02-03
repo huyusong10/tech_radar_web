@@ -735,11 +735,11 @@
 
         .crew-row {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
             gap: var(--spacing-sm);
             margin-bottom: var(--spacing-xs);
-            flex-wrap: wrap;
+            /* No flex-wrap here - let inner containers handle wrapping */
         }
 
         .crew-label {
@@ -752,18 +752,23 @@
             text-transform: uppercase;
             letter-spacing: 1px;
             flex-shrink: 0;
+            /* Align with first line of authors when they wrap */
+            line-height: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
         }
 
         .header-authors {
             display: flex;
-            justify-content: center;
+            justify-content: flex-start;
             gap: var(--spacing-sm);
             flex-wrap: wrap;
         }
 
         .header-contributors {
             display: flex;
-            justify-content: center;
+            justify-content: flex-start;
             gap: var(--spacing-xs);
             flex-wrap: wrap;
         }
@@ -2492,6 +2497,22 @@
 
             .slogan {
                 font-size: 1rem;
+            }
+
+            .crew-row {
+                flex-direction: column;
+                align-items: center;
+                gap: var(--spacing-xs);
+            }
+
+            .crew-label {
+                line-height: normal;
+                height: auto;
+            }
+
+            .header-authors,
+            .header-contributors {
+                justify-content: center;
             }
 
             .section-title {
