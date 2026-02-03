@@ -284,7 +284,7 @@ app.use(express.json({ limit: '10kb' }));
 // Rate limiting middleware
 function rateLimitMiddleware(type = 'read') {
     return (req, res, next) => {
-        const ip = getClientIP(req) || 'unknown';
+        const ip = getClientIP(req, siteConfig.server?.trustProxy) || 'unknown';
         if (!rateLimiter.isAllowed(ip, type)) {
             return res.status(429).json({
                 error: 'Too many requests',
@@ -737,7 +737,7 @@ app.get('/api/likes', rateLimitMiddleware('read'), (req, res) => {
 
 // GET /api/user-likes - Get current user's liked articles (IP-based)
 app.get('/api/user-likes', rateLimitMiddleware('read'), (req, res) => {
-    const ip = getClientIP(req);
+    const ip = getClientIP(req, siteConfig.server?.trustProxy);
 
     if (!ip) {
         // Can't identify user, return empty list
@@ -792,7 +792,7 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
     }
 
     // Get client IP
-    const ip = getClientIP(req);
+    const ip = getClientIP(req, siteConfig.server?.trustProxy);
 
     // Validate IP - must have a valid IP to like
     if (!ip) {
@@ -1174,7 +1174,7 @@ function stopSSEHeartbeat() {
 
 // SSE endpoint for hot reload notifications
 app.get('/api/hot-reload', (req, res) => {
-    const clientIP = getClientIP(req) || 'unknown';
+    const clientIP = getClientIP(req, siteConfig.server?.trustProxy) || 'unknown';
 
     // Check global limit
     if (sseClients.size >= SSE_CONFIG.MAX_CLIENTS_TOTAL) {
