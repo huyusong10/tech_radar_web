@@ -460,6 +460,25 @@
             font-size: 0.8rem;
         }
 
+        .search-result-snippet {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin: 0.3rem 0;
+            line-height: 1.4;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .search-highlight {
+            background: rgba(0, 243, 255, 0.3);
+            color: var(--accent-cyan);
+            padding: 0 2px;
+            border-radius: 2px;
+            font-weight: 500;
+        }
+
         .sidebar.collapsed .search-container {
             display: none;
         }
@@ -3244,9 +3263,11 @@
 
         // Views API functions
         // Increment views and return new count
+        // Draft mode: returns 0 without recording
         async function incrementViews(vol) {
             try {
-                const response = await fetchWithRetry(`/api/views/${vol}`, { method: 'POST' });
+                const draftParam = isDraftMode() ? '?draft=true' : '';
+                const response = await fetchWithRetry(`/api/views/${vol}${draftParam}`, { method: 'POST' });
                 if (!response.ok) {
                     console.warn('Views increment returned non-OK status:', response.status);
                     return 0;
@@ -3260,7 +3281,12 @@
         }
 
         // Likes API functions
+        // Draft mode: returns empty data without fetching
         async function fetchLikes() {
+            // Draft mode: return empty likes
+            if (isDraftMode()) {
+                return {};
+            }
             try {
                 const response = await fetchDedupe('/api/likes');
                 return await response.json();
@@ -3271,7 +3297,12 @@
         }
 
         // Fetch user's liked articles from server (IP-based)
+        // Draft mode: returns empty set without fetching
         async function fetchUserLikes() {
+            // Draft mode: return empty user likes
+            if (isDraftMode()) {
+                return new Set();
+            }
             try {
                 const response = await fetchWithRetry('/api/user-likes');
                 if (response.ok) {
@@ -3286,7 +3317,12 @@
         }
 
         // Send like request to server (IP-based, no unlike supported)
+        // Draft mode: returns fake response without recording
         async function sendLike(articleId) {
+            // Draft mode: return fake response without recording
+            if (isDraftMode()) {
+                return { articleId, likes: 0, userLiked: false, draft: true };
+            }
             try {
                 const response = await fetchWithRetry(`/api/likes/${articleId}`, {
                     method: 'POST',
@@ -4003,6 +4039,16 @@
             }
         }
 
+        // Highlight query in text
+        function highlightQuery(text, query) {
+            if (!text || !query) return escapeHtml(text || '');
+            const escaped = escapeHtml(text);
+            const escapedQuery = escapeHtml(query);
+            // Case-insensitive replace with highlight span
+            const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            return escaped.replace(regex, '<mark class="search-highlight">$1</mark>');
+        }
+
         // Render search results
         function renderSearchResults(results, query, dropdown) {
             if (results.length === 0) {
@@ -4011,14 +4057,19 @@
             }
 
             dropdown.innerHTML = results.map((result, index) => {
+                const snippetHtml = result.snippet
+                    ? `<div class="search-result-snippet">${highlightQuery(result.snippet, query)}</div>`
+                    : '';
+
                 if (result.type === 'trending') {
                     return `
                         <div class="search-result-item" data-index="${index}">
                             <div class="search-result-type trending">Trending</div>
                             <div class="search-result-title">
                                 <span class="search-result-badge">${escapeHtml(result.badge)}</span>
-                                ${escapeHtml(result.title)}
+                                ${highlightQuery(result.title, query)}
                             </div>
+                            ${snippetHtml}
                             <div class="search-result-meta">Vol.${result.vol} ${result.date ? '· ' + result.date : ''}</div>
                         </div>
                     `;
@@ -4026,7 +4077,8 @@
                     return `
                         <div class="search-result-item" data-index="${index}">
                             <div class="search-result-type contribution">Article</div>
-                            <div class="search-result-title">${escapeHtml(result.title)}</div>
+                            <div class="search-result-title">${highlightQuery(result.title, query)}</div>
+                            ${snippetHtml}
                             <div class="search-result-meta">Vol.${result.vol} ${result.authorIds ? '· ' + result.authorIds.join(', ') : ''}</div>
                         </div>
                     `;
@@ -4149,9 +4201,10 @@
                 console.error('Failed to load contributions:', error);
             }
 
-            // Update views
+            // Update views (draft mode: show 0 without recording)
             try {
-                const viewsResult = await fetchWithRetry(`/api/views/${vol}`, { method: 'POST' });
+                const draftParam = isDraftMode ? '?draft=true' : '';
+                const viewsResult = await fetchWithRetry(`/api/views/${vol}${draftParam}`, { method: 'POST' });
                 if (viewsResult.ok) {
                     const viewsData = await viewsResult.json();
                     document.getElementById('page-views').textContent = viewsData.views;
@@ -4599,7 +4652,7 @@
                 exportBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Exporting...</span>';
                 exportBtn.disabled = true;
 
-                // Expand all trending items and contribution cards
+                // Collapse all trending items and contribution cards for cleaner export
                 const trendingItems = document.querySelectorAll('.trending-item.expandable');
                 const contributionCards = document.querySelectorAll('.contribution-card');
 
@@ -4609,12 +4662,12 @@
 
                 trendingItems.forEach(item => {
                     trendingStates.push(item.classList.contains('expanded'));
-                    item.classList.add('expanded');
+                    item.classList.remove('expanded');  // Collapse for export
                 });
 
                 contributionCards.forEach(card => {
                     cardStates.push(card.classList.contains('expanded'));
-                    card.classList.add('expanded');
+                    card.classList.remove('expanded');  // Collapse for export
                 });
 
                 // Hide elements that shouldn't be in the export
@@ -4630,7 +4683,7 @@
                 });
 
                 // Wait for animations to complete
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 300));
 
                 // Clear any text selection and blur focus
                 window.getSelection()?.removeAllRanges();
@@ -4689,21 +4742,34 @@
                 // Remove exporting class
                 document.body.classList.remove('exporting');
 
-                // Restore original states
+                // Restore original states (keep collapsed as user prefers)
                 trendingItems.forEach((item, i) => {
-                    if (!trendingStates[i]) item.classList.remove('expanded');
+                    if (trendingStates[i]) item.classList.add('expanded');
                 });
 
                 contributionCards.forEach((card, i) => {
-                    if (!cardStates[i]) card.classList.remove('expanded');
+                    if (cardStates[i]) card.classList.add('expanded');
                 });
 
-                // Create download link
-                const link = document.createElement('a');
+                // Convert canvas to blob and download (more reliable than data URL for large images)
                 const vol = new URLSearchParams(window.location.search).get('vol') || '001';
-                link.download = `tech-radar-vol-${vol}.png`;
-                link.href = canvas.toDataURL('image/png');
-                link.click();
+                const filename = `tech-radar-vol-${vol}.png`;
+
+                canvas.toBlob((blob) => {
+                    if (!blob) {
+                        throw new Error('Failed to create image blob');
+                    }
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.download = filename;
+                    link.href = url;
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    // Clean up the blob URL after a short delay
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                }, 'image/png');
 
                 // Hide overlay and show success
                 exportOverlay.classList.remove('active');

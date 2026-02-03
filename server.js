@@ -29,9 +29,15 @@ const ASSETS_DIR = path.join(CONTENTS_DIR, 'assets');
 
 // Data directory inside contents (persists with content across code upgrades)
 const DATA_DIR = path.join(CONTENTS_DIR, 'data');
-const LIKES_FILE = path.join(DATA_DIR, 'likes.json');
 const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
-const LIKE_IPS_FILE = path.join(DATA_DIR, 'like-ips.json');
+
+// Sharded storage directories for likes (scalability optimization)
+const LIKES_DIR = path.join(DATA_DIR, 'likes');
+const LIKE_IPS_DIR = path.join(DATA_DIR, 'like-ips');
+
+// Legacy files (for migration)
+const LEGACY_LIKES_FILE = path.join(DATA_DIR, 'likes.json');
+const LEGACY_LIKE_IPS_FILE = path.join(DATA_DIR, 'like-ips.json');
 
 // ==================== LOAD TEST MODE ====================
 // Set LOAD_TEST_MODE=true to relax rate limits and connection limits for benchmarking
@@ -64,22 +70,35 @@ let fileWatcher = null;
 
 async function ensureDataDir() {
     try {
-        await fsPromises.access(DATA_DIR);
-    } catch {
         await fsPromises.mkdir(DATA_DIR, { recursive: true });
+        await fsPromises.mkdir(LIKES_DIR, { recursive: true });
+        await fsPromises.mkdir(LIKE_IPS_DIR, { recursive: true });
+    } catch (error) {
+        if (error.code !== 'EEXIST') {
+            console.error('Failed to create data directories:', error);
+        }
     }
+}
+
+// Extract volume number from articleId (e.g., "001-article-name" -> "001")
+function getVolFromArticleId(articleId) {
+    const match = articleId.match(/^(\d{3})-/);
+    return match ? match[1] : null;
+}
+
+// Get shard file path for a volume
+function getLikesShardPath(vol) {
+    return path.join(LIKES_DIR, `vol-${vol}.json`);
+}
+
+function getLikeIpsShardPath(vol) {
+    return path.join(LIKE_IPS_DIR, `vol-${vol}.json`);
 }
 
 async function loadDataFiles() {
     await ensureDataDir();
 
-    try {
-        const likesContent = await fsPromises.readFile(LIKES_FILE, 'utf8');
-        likesData = JSON.parse(likesContent);
-    } catch {
-        likesData = {};
-    }
-
+    // Load views (single file, relatively small)
     try {
         const viewsContent = await fsPromises.readFile(VIEWS_FILE, 'utf8');
         viewsData = JSON.parse(viewsContent);
@@ -87,17 +106,108 @@ async function loadDataFiles() {
         viewsData = {};
     }
 
+    // Check for legacy data and migrate if needed
+    let needsMigration = false;
+    let legacyLikes = {};
+    let legacyLikeIps = {};
+
     try {
-        const likeIpsContent = await fsPromises.readFile(LIKE_IPS_FILE, 'utf8');
-        likeIpsData = JSON.parse(likeIpsContent);
-        // Validate and sanitize loaded data
-        for (const articleId of Object.keys(likeIpsData)) {
-            if (!Array.isArray(likeIpsData[articleId])) {
-                likeIpsData[articleId] = [];
+        const legacyLikesContent = await fsPromises.readFile(LEGACY_LIKES_FILE, 'utf8');
+        legacyLikes = JSON.parse(legacyLikesContent);
+        needsMigration = Object.keys(legacyLikes).length > 0;
+    } catch {
+        // No legacy file
+    }
+
+    try {
+        const legacyLikeIpsContent = await fsPromises.readFile(LEGACY_LIKE_IPS_FILE, 'utf8');
+        legacyLikeIps = JSON.parse(legacyLikeIpsContent);
+        needsMigration = needsMigration || Object.keys(legacyLikeIps).length > 0;
+    } catch {
+        // No legacy file
+    }
+
+    // Load sharded data
+    likesData = {};
+    likeIpsData = {};
+
+    try {
+        const likesFiles = await fsPromises.readdir(LIKES_DIR);
+        for (const file of likesFiles) {
+            if (file.endsWith('.json')) {
+                try {
+                    const content = await fsPromises.readFile(path.join(LIKES_DIR, file), 'utf8');
+                    const shardData = JSON.parse(content);
+                    Object.assign(likesData, shardData);
+                } catch {
+                    // Skip corrupted shard
+                }
             }
         }
     } catch {
-        likeIpsData = {};
+        // Directory may not exist yet
+    }
+
+    try {
+        const likeIpsFiles = await fsPromises.readdir(LIKE_IPS_DIR);
+        for (const file of likeIpsFiles) {
+            if (file.endsWith('.json')) {
+                try {
+                    const content = await fsPromises.readFile(path.join(LIKE_IPS_DIR, file), 'utf8');
+                    const shardData = JSON.parse(content);
+                    // Validate arrays
+                    for (const articleId of Object.keys(shardData)) {
+                        if (Array.isArray(shardData[articleId])) {
+                            likeIpsData[articleId] = shardData[articleId];
+                        }
+                    }
+                } catch {
+                    // Skip corrupted shard
+                }
+            }
+        }
+    } catch {
+        // Directory may not exist yet
+    }
+
+    // Migrate legacy data if exists
+    if (needsMigration) {
+        console.log('Migrating legacy likes data to sharded storage...');
+
+        // Merge legacy data (sharded data takes precedence for conflicts)
+        for (const [articleId, count] of Object.entries(legacyLikes)) {
+            if (!(articleId in likesData)) {
+                likesData[articleId] = count;
+            }
+        }
+        for (const [articleId, ips] of Object.entries(legacyLikeIps)) {
+            if (!(articleId in likeIpsData) && Array.isArray(ips)) {
+                likeIpsData[articleId] = ips;
+            }
+        }
+
+        // Mark all shards as dirty to persist migrated data
+        const volumes = new Set();
+        for (const articleId of Object.keys(likesData)) {
+            const vol = getVolFromArticleId(articleId);
+            if (vol) volumes.add(vol);
+        }
+        for (const articleId of Object.keys(likeIpsData)) {
+            const vol = getVolFromArticleId(articleId);
+            if (vol) volumes.add(vol);
+        }
+        for (const vol of volumes) {
+            dirtyShards.add(vol);
+        }
+
+        // Rename legacy files after successful migration
+        try {
+            await fsPromises.rename(LEGACY_LIKES_FILE, LEGACY_LIKES_FILE + '.migrated');
+            await fsPromises.rename(LEGACY_LIKE_IPS_FILE, LEGACY_LIKE_IPS_FILE + '.migrated');
+            console.log('Legacy data migration complete');
+        } catch {
+            // Files may not exist or already migrated
+        }
     }
 
     // Validate consistency: ensure likesData count matches likeIpsData array length
@@ -109,7 +219,7 @@ async function loadDataFiles() {
 
 // Ensure likes counts are consistent with IP records
 function validateAndSyncLikesCounts() {
-    let corrected = false;
+    const correctedShards = new Set();
 
     // Sync from IP records to likes count
     for (const articleId of Object.keys(likeIpsData)) {
@@ -117,7 +227,8 @@ function validateAndSyncLikesCounts() {
         if (likesData[articleId] !== ipCount) {
             console.log(`Correcting likes count for ${articleId}: ${likesData[articleId] || 0} -> ${ipCount}`);
             likesData[articleId] = ipCount;
-            corrected = true;
+            const vol = getVolFromArticleId(articleId);
+            if (vol) correctedShards.add(vol);
         }
     }
 
@@ -127,32 +238,31 @@ function validateAndSyncLikesCounts() {
             if (likesData[articleId] > 0) {
                 console.log(`Removing orphan likes count for ${articleId}: ${likesData[articleId]}`);
                 delete likesData[articleId];
-                corrected = true;
+                const vol = getVolFromArticleId(articleId);
+                if (vol) correctedShards.add(vol);
             }
         }
     }
 
-    if (corrected) {
-        likesDirty = true;
-        likeIpsDirty = true;
+    // Mark corrected shards as dirty
+    for (const vol of correctedShards) {
+        dirtyShards.add(vol);
     }
 }
 
 // Periodic persistence (every 5 seconds if dirty)
-let likesDirty = false;
 let viewsDirty = false;
-let likeIpsDirty = false;
+let dirtyShards = new Set(); // Set of volume IDs with dirty data
+
+// Mark a shard as dirty when likes data changes
+function markShardDirty(articleId) {
+    const vol = getVolFromArticleId(articleId);
+    if (vol) {
+        dirtyShards.add(vol);
+    }
+}
 
 async function persistData() {
-    if (likesDirty) {
-        try {
-            await writeQueue.scheduleWrite(LIKES_FILE, likesData);
-            likesDirty = false;
-        } catch (error) {
-            console.error('Failed to persist likes:', error);
-        }
-    }
-
     if (viewsDirty) {
         try {
             await writeQueue.scheduleWrite(VIEWS_FILE, viewsData);
@@ -162,12 +272,37 @@ async function persistData() {
         }
     }
 
-    if (likeIpsDirty) {
-        try {
-            await writeQueue.scheduleWrite(LIKE_IPS_FILE, likeIpsData);
-            likeIpsDirty = false;
-        } catch (error) {
-            console.error('Failed to persist like IPs:', error);
+    // Persist dirty shards
+    if (dirtyShards.size > 0) {
+        const shardsToPersist = [...dirtyShards];
+        dirtyShards.clear();
+
+        for (const vol of shardsToPersist) {
+            try {
+                // Collect data for this shard
+                const shardLikes = {};
+                const shardLikeIps = {};
+
+                for (const [articleId, count] of Object.entries(likesData)) {
+                    if (getVolFromArticleId(articleId) === vol) {
+                        shardLikes[articleId] = count;
+                    }
+                }
+
+                for (const [articleId, ips] of Object.entries(likeIpsData)) {
+                    if (getVolFromArticleId(articleId) === vol) {
+                        shardLikeIps[articleId] = ips;
+                    }
+                }
+
+                // Write shard files
+                await writeQueue.scheduleWrite(getLikesShardPath(vol), shardLikes);
+                await writeQueue.scheduleWrite(getLikeIpsShardPath(vol), shardLikeIps);
+            } catch (error) {
+                console.error(`Failed to persist shard vol-${vol}:`, error);
+                // Re-add to dirty set to retry later
+                dirtyShards.add(vol);
+            }
         }
     }
 }
@@ -246,7 +381,7 @@ function recordIPLike(articleId, ip) {
     }
     if (!likeIpsData[articleId].includes(ip)) {
         likeIpsData[articleId].push(ip);
-        likeIpsDirty = true;
+        markShardDirty(articleId);
         return true;
     }
     return false;
@@ -258,7 +393,7 @@ function removeIPLike(articleId, ip) {
         const index = likeIpsData[articleId].indexOf(ip);
         if (index > -1) {
             likeIpsData[articleId].splice(index, 1);
-            likeIpsDirty = true;
+            markShardDirty(articleId);
             return true;
         }
     }
@@ -284,7 +419,7 @@ app.use(express.json({ limit: '10kb' }));
 // Rate limiting middleware
 function rateLimitMiddleware(type = 'read') {
     return (req, res, next) => {
-        const ip = getClientIP(req) || 'unknown';
+        const ip = getClientIP(req, siteConfig.server?.trustProxy) || 'unknown';
         if (!rateLimiter.isAllowed(ip, type)) {
             return res.status(429).json({
                 error: 'Too many requests',
@@ -532,6 +667,44 @@ app.get('/api/contributions/:vol', rateLimitMiddleware('read'), async (req, res)
     res.json(contributions);
 });
 
+// Extract a snippet containing the search query with surrounding context
+function extractSnippet(text, query, maxLength = 120) {
+    if (!text || !query) return null;
+
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const index = lowerText.indexOf(lowerQuery);
+
+    if (index === -1) return null;
+
+    // Calculate snippet boundaries
+    const halfLength = Math.floor((maxLength - query.length) / 2);
+    let start = Math.max(0, index - halfLength);
+    let end = Math.min(text.length, index + query.length + halfLength);
+
+    // Adjust to word boundaries
+    if (start > 0) {
+        const spaceIndex = text.indexOf(' ', start);
+        if (spaceIndex !== -1 && spaceIndex < index) {
+            start = spaceIndex + 1;
+        }
+    }
+    if (end < text.length) {
+        const spaceIndex = text.lastIndexOf(' ', end);
+        if (spaceIndex > index + query.length) {
+            end = spaceIndex;
+        }
+    }
+
+    let snippet = text.substring(start, end).trim();
+
+    // Add ellipsis if truncated
+    if (start > 0) snippet = '...' + snippet;
+    if (end < text.length) snippet = snippet + '...';
+
+    return snippet;
+}
+
 // GET /api/search - Search across all published volumes
 // Query params: q (search query), limit (max results, default 20)
 app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
@@ -600,13 +773,19 @@ app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
                 for (const item of trendingItems) {
                     const searchText = `${item.title} ${item.badge} ${item.content}`.toLowerCase();
                     if (searchText.includes(query)) {
+                        // Extract snippet from title first, then content
+                        let snippet = extractSnippet(item.title, query);
+                        if (!snippet) {
+                            snippet = extractSnippet(item.content, query);
+                        }
                         results.push({
                             type: 'trending',
                             vol,
                             title: item.title,
                             badge: item.badge,
                             date: radarFrontmatter.date || '',
-                            articleId: null
+                            articleId: null,
+                            snippet: snippet
                         });
                     }
                 }
@@ -631,10 +810,22 @@ app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
                         const description = frontmatter.description || '';
                         const authorIds = frontmatter.author_ids || (frontmatter.author_id ? [frontmatter.author_id] : []);
 
-                        // Search in title, description, and author IDs
-                        const searchText = `${title} ${description} ${authorIds.join(' ')}`.toLowerCase();
+                        // Extract body content (remove frontmatter)
+                        const bodyMatch = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+                        const bodyContent = bodyMatch ? bodyMatch[1].trim() : '';
+
+                        // Search in title, description, author IDs, and body
+                        const searchText = `${title} ${description} ${authorIds.join(' ')} ${bodyContent}`.toLowerCase();
 
                         if (searchText.includes(query)) {
+                            // Extract snippet from title, description, or body
+                            let snippet = extractSnippet(title, query);
+                            if (!snippet) {
+                                snippet = extractSnippet(description, query);
+                            }
+                            if (!snippet) {
+                                snippet = extractSnippet(bodyContent, query);
+                            }
                             results.push({
                                 type: 'contribution',
                                 vol,
@@ -642,7 +833,8 @@ app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
                                 description: description.length > 100 ? description.substring(0, 100) + '...' : description,
                                 authorIds,
                                 articleId: `${vol}-${dir.name}`,
-                                folderName: dir.name
+                                folderName: dir.name,
+                                snippet: snippet
                             });
                         }
                     } catch {
@@ -680,7 +872,7 @@ app.get('/api/likes', rateLimitMiddleware('read'), (req, res) => {
 
 // GET /api/user-likes - Get current user's liked articles (IP-based)
 app.get('/api/user-likes', rateLimitMiddleware('read'), (req, res) => {
-    const ip = getClientIP(req);
+    const ip = getClientIP(req, siteConfig.server?.trustProxy);
 
     if (!ip) {
         // Can't identify user, return empty list
@@ -719,11 +911,23 @@ async function validateArticleExists(articleId) {
 
 // POST /api/likes/:articleId - Toggle like for an article (IP-based, one like per IP)
 // Each IP can like/unlike an article, but only counts as one like at a time
+// Draft mode: ?draft=true will not record any data
 app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res) => {
     const { articleId } = req.params;
+    const isDraft = req.query.draft === 'true';
+
+    // Draft mode: return fake response without recording
+    if (isDraft) {
+        return res.json({
+            articleId,
+            likes: 0,
+            userLiked: false,
+            draft: true
+        });
+    }
 
     // Get client IP
-    const ip = getClientIP(req);
+    const ip = getClientIP(req, siteConfig.server?.trustProxy);
 
     // Validate IP - must have a valid IP to like
     if (!ip) {
@@ -773,7 +977,7 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
         } else {
             delete likesData[articleId];
         }
-        likesDirty = true;
+        markShardDirty(articleId);
 
         res.json({
             articleId,
@@ -799,8 +1003,15 @@ app.get('/api/views/:vol', rateLimitMiddleware('read'), (req, res) => {
 });
 
 // POST /api/views/:vol - Increment views for a volume (with concurrency control)
+// Draft mode: ?draft=true will not record any data
 app.post('/api/views/:vol', rateLimitMiddleware('write'), async (req, res) => {
     const { vol } = req.params;
+    const isDraft = req.query.draft === 'true';
+
+    // Draft mode: return fake response without recording
+    if (isDraft) {
+        return res.json({ vol, views: 0, draft: true });
+    }
 
     // Validate input
     if (!vol || vol.length > 10 || !/^\d+$/.test(vol)) {
@@ -1098,7 +1309,7 @@ function stopSSEHeartbeat() {
 
 // SSE endpoint for hot reload notifications
 app.get('/api/hot-reload', (req, res) => {
-    const clientIP = getClientIP(req) || 'unknown';
+    const clientIP = getClientIP(req, siteConfig.server?.trustProxy) || 'unknown';
 
     // Check global limit
     if (sseClients.size >= SSE_CONFIG.MAX_CLIENTS_TOTAL) {

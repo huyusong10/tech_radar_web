@@ -23,7 +23,10 @@ const config = {
 
     // Server configuration
     server: {
-        port: 5090
+        port: 5090,
+        // Set to true when behind a reverse proxy (nginx, cloudflare, etc.)
+        // This enables reading client IP from X-Forwarded-For and X-Real-IP headers
+        trustProxy: true
     }
 };
 
