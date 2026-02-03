@@ -4751,12 +4751,16 @@
                     if (!cardStates[i]) card.classList.remove('expanded');
                 });
 
-                // Create download link
+                // Create download link and trigger download
                 const link = document.createElement('a');
                 const vol = new URLSearchParams(window.location.search).get('vol') || '001';
                 link.download = `tech-radar-vol-${vol}.png`;
                 link.href = canvas.toDataURL('image/png');
+                // Must append to DOM for some browsers to trigger download
+                link.style.display = 'none';
+                document.body.appendChild(link);
                 link.click();
+                document.body.removeChild(link);
 
                 // Hide overlay and show success
                 exportOverlay.classList.remove('active');
