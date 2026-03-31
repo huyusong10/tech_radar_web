@@ -2670,6 +2670,20 @@
         </div>
     </section>
 
+    <!-- ==================== BEST PRACTICES SECTION ==================== -->
+    <section class="section" id="best-practices-section">
+        <div class="container">
+            <h2 class="section-title">
+                <span class="glow-text">⭐ Best Practices</span>
+                <span class="cn-text">优秀实践</span>
+            </h2>
+
+            <div class="contributions-grid dynamic-content" id="best-practices-grid">
+                <div class="loading-skeleton" style="width: 100%; height: 200px; border-radius: 12px;"></div>
+            </div>
+        </div>
+    </section>
+
     <!-- ==================== CONTRIBUTIONS SECTION ==================== -->
     <section class="section" id="contributions-section">
         <div class="container">
@@ -3772,6 +3786,237 @@
             }
         }
 
+        // ==================== BEST PRACTICES ====================
+
+        // Render best practice card (same layout as contribution card, without like button)
+        function renderBestPractice(metadata, content, articleId, folderPath = '') {
+            // Support multi-author mode: author_ids (array) or author_id (single)
+            let authors = [];
+
+            if (metadata.author_ids && Array.isArray(metadata.author_ids)) {
+                authors = metadata.author_ids.slice(0, 2)
+                    .map(id => authorsData[id])
+                    .filter(a => a);
+            } else if (metadata.author_id) {
+                const author = authorsData[metadata.author_id];
+                if (author) authors = [author];
+            }
+
+            if (authors.length === 0 && metadata.author) {
+                authors = [metadata.author];
+            }
+
+            if (authors.length === 0) {
+                authors = [{
+                    name: 'Unknown Author',
+                    team: 'Unknown Team',
+                    avatar: '/assets/images/avatars/default.jpg',
+                    role: 'Contributor'
+                }];
+            }
+
+            const avatarHtml = authors.length === 1
+                ? `<img src="${getAuthorAvatar(authors[0], authors[0].id)}" alt="Author Avatar" class="author-avatar">`
+                : `<div class="author-avatars">
+                    ${authors.map(a => `<img src="${getAuthorAvatar(a, a.id)}" alt="Author Avatar" class="author-avatar">`).join('')}
+                   </div>`;
+
+            let authorInfoHtml;
+            if (authors.length === 1) {
+                const a = authors[0];
+                authorInfoHtml = `${a.name} · ${a.team}<span class="author-role-tag">${a.role || 'Contributor'}</span>`;
+            } else {
+                authorInfoHtml = authors.map(a =>
+                    `${a.name} · ${a.team}<span class="author-role-tag">${a.role || 'Contributor'}</span>`
+                ).join(' <span class="author-separator">&</span> ');
+            }
+
+            // Convert relative image paths to absolute paths
+            let processedContent = content;
+            if (folderPath) {
+                const normalizedPath = folderPath.startsWith('/') ? folderPath : `/${folderPath}`;
+                processedContent = content.replace(
+                    /!\[([^\]]*)\]\(\.\/([^)]+)\)/g,
+                    `![$1](${normalizedPath}/$2)`
+                ).replace(
+                    /!\[([^\]]*)\]\((?!\/|https?:\/\/)([^)]+)\)/g,
+                    `![$1](${normalizedPath}/$2)`
+                );
+            }
+
+            let contentHtml = marked.parse(processedContent);
+
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = contentHtml;
+
+            const codeBlocks = tempDiv.querySelectorAll('pre code');
+            codeBlocks.forEach(block => {
+                const lang = block.className.match(/language-(\w+)/)?.[1] || '';
+                const code = block.textContent || '';
+
+                const highlighted = lang && hljs.getLanguage(lang)
+                    ? hljs.highlight(code, { language: lang }).value
+                    : hljs.highlightAuto(code).value;
+
+                const lines = highlighted.split('\n');
+                if (lines.length > 0 && lines[lines.length - 1] === '') {
+                    lines.pop();
+                }
+                const codeLines = lines.map((line, i) =>
+                    `<div class="code-line"><span class="line-number">${i + 1}</span><span class="line-content">${line || '&nbsp;'}</span></div>`
+                ).join('');
+
+                const filename = lang ? `example.${lang}` : 'code';
+                const wrapper = document.createElement('div');
+                wrapper.className = 'code-block';
+                wrapper.innerHTML = `
+                    <div class="code-header">
+                        <div class="code-dots">
+                            <span class="code-dot red"></span>
+                            <span class="code-dot yellow"></span>
+                            <span class="code-dot green"></span>
+                        </div>
+                        <span class="code-filename">${filename}</span>
+                    </div>
+                    <div class="code-content">${codeLines}</div>
+                `;
+
+                block.parentElement.replaceWith(wrapper);
+            });
+
+            contentHtml = tempDiv.innerHTML;
+
+            return `
+                <div class="contribution-card" data-article-id="${articleId}">
+                    <div class="card-header" onclick="toggleContributionCard(this)">
+                        ${avatarHtml}
+                        <div class="card-title-area">
+                            <h3 class="contribution-title">${metadata.title}</h3>
+                            <div class="author-name">${authorInfoHtml}</div>
+                        </div>
+                        <span class="expand-icon">▼</span>
+                    </div>
+                    <div class="card-body">
+                        <div>
+                            <div class="card-body-inner">
+                                <p class="contribution-desc">${metadata.description}</p>
+                                ${contentHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Get list of best practice folders from API
+        async function getBestPracticeFolders(vol) {
+            try {
+                const draftParam = isDraftMode() ? '?draft=true' : '';
+                const response = await fetchWithRetry(`/api/best-practices/${vol}${draftParam}`);
+                if (response.ok) {
+                    return await response.json();
+                }
+                return [];
+            } catch (e) {
+                console.error('Best practices API not available:', e);
+                return [];
+            }
+        }
+
+        // Store best practice folders for lazy loading
+        let bestPracticeFolders = [];
+        let loadedBestPractices = 0;
+        let currentBestPracticesVolume = '';
+
+        // Load and render best practices with lazy loading
+        async function loadBestPractices(vol) {
+            const grid = document.querySelector('#best-practices-grid');
+            const sectionEl = document.getElementById('best-practices-section');
+            grid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading best practices...</p>';
+
+            currentBestPracticesVolume = vol;
+            bestPracticeFolders = await getBestPracticeFolders(vol);
+            loadedBestPractices = 0;
+
+            if (bestPracticeFolders.length === 0) {
+                sectionEl.style.display = 'none';
+                return;
+            }
+            sectionEl.style.display = '';
+
+            grid.innerHTML = '';
+            await loadMoreBestPractices();
+            setupBestPracticesObserver();
+        }
+
+        // Load more best practices (batch loading)
+        async function loadMoreBestPractices() {
+            if (loadedBestPractices >= bestPracticeFolders.length) return;
+
+            const grid = document.querySelector('#best-practices-grid');
+            const basePath = `${CONTENT_DIR}/vol-${currentBestPracticesVolume}/best-practices`;
+
+            const sentinel = document.getElementById('best-practices-sentinel');
+            if (sentinel) sentinel.remove();
+
+            const endIndex = Math.min(loadedBestPractices + CONTRIBUTIONS_PER_BATCH, bestPracticeFolders.length);
+            const foldersToLoad = bestPracticeFolders.slice(loadedBestPractices, endIndex);
+
+            const loadPromises = foldersToLoad.map(async (folder) => {
+                const content = await loadMarkdown(`${basePath}/${folder}/index.md`);
+                if (content) {
+                    const { metadata, content: markdownContent } = parseFrontmatter(content);
+                    const articleId = `bp-${currentBestPracticesVolume}-${folder}`;
+                    const folderPath = `${basePath}/${folder}`;
+                    return { html: renderBestPractice(metadata, markdownContent, articleId, folderPath), folder };
+                }
+                return null;
+            });
+
+            const results = await Promise.all(loadPromises);
+
+            results.forEach(result => {
+                if (result) {
+                    const div = document.createElement('div');
+                    div.innerHTML = result.html;
+                    grid.appendChild(div.firstElementChild);
+                }
+            });
+
+            loadedBestPractices = endIndex;
+
+            if (loadedBestPractices < bestPracticeFolders.length) {
+                const sentinelDiv = document.createElement('div');
+                sentinelDiv.id = 'best-practices-sentinel';
+                sentinelDiv.style.cssText = 'height: 20px; width: 100%;';
+                grid.appendChild(sentinelDiv);
+                if (bestPracticesObserver) {
+                    bestPracticesObserver.observe(sentinelDiv);
+                }
+            }
+        }
+
+        // Set up intersection observer for lazy loading best practices
+        let bestPracticesObserver = null;
+        function setupBestPracticesObserver() {
+            if (bestPracticesObserver) {
+                bestPracticesObserver.disconnect();
+            }
+
+            bestPracticesObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting && loadedBestPractices < bestPracticeFolders.length) {
+                        loadMoreBestPractices();
+                    }
+                });
+            }, { rootMargin: '100px' });
+
+            const sentinel = document.getElementById('best-practices-sentinel');
+            if (sentinel) {
+                bestPracticesObserver.observe(sentinel);
+            }
+        }
+
         // Main initialization with error handling
         async function init() {
             // Restore sidebar state first (sync operation)
@@ -3860,6 +4105,19 @@
                 document.getElementById('trending-section').style.display = 'none';
                 document.getElementById('main-header').classList.add('loaded');
                 document.getElementById('trending-list').classList.add('loaded');
+            }
+
+            // Load best practices with lazy loading
+            try {
+                await loadBestPractices(vol);
+                document.getElementById('best-practices-grid').classList.add('loaded');
+            } catch (error) {
+                console.error('Failed to load best practices:', error);
+                const bpGrid = document.getElementById('best-practices-grid');
+                if (bpGrid) {
+                    bpGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Failed to load best practices</p>';
+                    bpGrid.classList.add('loaded');
+                }
             }
 
             // Load contributions with lazy loading
@@ -4223,6 +4481,13 @@
             } catch (error) {
                 console.error('Failed to load radar:', error);
                 document.getElementById('trending-section').style.display = 'none';
+            }
+
+            // Load best practices
+            try {
+                await loadBestPractices(vol);
+            } catch (error) {
+                console.error('Failed to load best practices:', error);
             }
 
             // Load contributions

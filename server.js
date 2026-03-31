@@ -667,6 +667,33 @@ app.get('/api/contributions/:vol', rateLimitMiddleware('read'), async (req, res)
     res.json(contributions);
 });
 
+// GET /api/best-practices/:vol - Get list of best practices for a volume
+app.get('/api/best-practices/:vol', rateLimitMiddleware('read'), async (req, res) => {
+    const { vol } = req.params;
+    const isDraft = req.query.draft === 'true';
+    const cacheKey = `best-practices:${vol}:${isDraft}`;
+
+    let bestPractices = cache.get(cacheKey);
+
+    if (!bestPractices) {
+        const bestPracticesDir = path.join(getVolumesDir(isDraft), `vol-${vol}`, 'best-practices');
+
+        try {
+            const dirs = await fsPromises.readdir(bestPracticesDir, { withFileTypes: true });
+            bestPractices = dirs
+                .filter(dir => dir.isDirectory())
+                .map(dir => dir.name)
+                .sort();
+            cache.set(cacheKey, bestPractices, CONFIG.CACHE_TTL.contributions);
+        } catch {
+            bestPractices = [];
+        }
+    }
+
+    res.set('Cache-Control', 'public, max-age=30');
+    res.json(bestPractices);
+});
+
 // Extract a snippet containing the search query with surrounding context
 function extractSnippet(text, query, maxLength = 120) {
     if (!text || !query) return null;
