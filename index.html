@@ -3676,7 +3676,7 @@
 
         // Load and render contributions with lazy loading
         async function loadContributions(vol) {
-            const contributionsGrid = document.querySelector('.contributions-grid');
+            const contributionsGrid = document.getElementById('contributions-grid');
             const contributionsSectionEl = document.getElementById('contributions-section');
             contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading contributions...</p>';
 
@@ -3709,7 +3709,7 @@
         async function loadMoreContributions() {
             if (loadedContributions >= contributionFolders.length) return;
 
-            const contributionsGrid = document.querySelector('.contributions-grid');
+            const contributionsGrid = document.getElementById('contributions-grid');
             const basePath = `${CONTENT_DIR}/vol-${currentVolume}/contributions`;
 
             // Remove loading sentinel if exists
