@@ -7,19 +7,22 @@ const chokidar = require('chokidar');
 
 // Import utilities
 const { Cache, AsyncMutex, RateLimiter, WriteQueue, DEFAULTS: CONFIG } = require('./server/utils/concurrency');
-const { getClientIP, isValidIP } = require('./server/utils/ip');
+const { getClientIP } = require('./server/utils/ip');
 
 
 // Load site configuration
 const siteConfig = require('./site.config.js');
 
 const app = express();
-const PORT = siteConfig.server?.port || 5090;
+const runtimePort = Number.parseInt(process.env.PORT || process.env.SITE_PORT || '', 10);
+const PORT = Number.isFinite(runtimePort) ? runtimePort : (siteConfig.server?.port || 5090);
+const configuredContentsDir = process.env.SITE_CONTENTS_DIR || siteConfig.contentsDir;
+const FILE_WATCHER_ENABLED = process.env.DISABLE_FILE_WATCHER !== 'true';
 
 // Resolve contents directory from config (support both relative and absolute paths)
-const CONTENTS_DIR = path.isAbsolute(siteConfig.contentsDir)
-    ? siteConfig.contentsDir
-    : path.join(__dirname, siteConfig.contentsDir);
+const CONTENTS_DIR = path.isAbsolute(configuredContentsDir)
+    ? configuredContentsDir
+    : path.join(__dirname, configuredContentsDir);
 
 // Standardized subdirectories within contents
 const PUBLISHED_DIR = path.join(CONTENTS_DIR, 'published');
@@ -1274,6 +1277,8 @@ async function startServer() {
     server.keepAliveTimeout = 65000;
     server.headersTimeout = 66000;
     server.maxConnections = 2000;
+
+    return server;
 }
 
 // ==================== HOT RELOAD WITH FILE WATCHING ====================
@@ -1500,10 +1505,25 @@ function setupFileWatcher() {
     return watcher;
 }
 
-startServer().then(() => {
-    // Set up file watcher after server starts
-    fileWatcher = setupFileWatcher();
-}).catch(err => {
-    console.error('Failed to start server:', err);
-    process.exit(1);
-});
+async function bootstrap() {
+    await startServer();
+
+    if (FILE_WATCHER_ENABLED) {
+        fileWatcher = setupFileWatcher();
+    } else {
+        console.log('File watcher disabled by configuration');
+    }
+}
+
+if (require.main === module) {
+    bootstrap().catch(err => {
+        console.error('Failed to start server:', err);
+        process.exit(1);
+    });
+}
+
+module.exports = {
+    app,
+    bootstrap,
+    startServer
+};

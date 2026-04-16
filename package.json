@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "start:test": "LOAD_TEST_MODE=true node server.js",
+    "test": "node --test tests/*.test.js",
+    "test:contracts": "node --test tests/*.test.js",
     "test:load": "node tests/load-test.js",
     "test:load:api": "node tests/load-test.js --test api --concurrency 500",
     "test:load:sse": "node tests/load-test.js --test sse --concurrency 100",

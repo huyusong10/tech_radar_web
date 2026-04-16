@@ -1,0 +1,425 @@
+{
+  "report_metadata": {
+    "generated_at": "2026-03-03",
+    "project_name": "Tech Radar Weekly",
+    "project_path": "/Users/hys/dev/tech_radar_web",
+    "analysis_scope": [
+      "Markdown content files",
+      "Configuration files",
+      "Data files",
+      "Documentation files",
+      "Source code"
+    ]
+  },
+
+  "tech_stack_analysis": {
+    "backend": {
+      "framework": "Express.js v4.18.2",
+      "language": "Node.js (ES6+)",
+      "file_watching": "chokidar v3.5.3",
+      "yaml_parsing": "js-yaml v4.1.0",
+      "concurrency_features": [
+        "In-memory Cache with TTL",
+        "AsyncMutex for resource locking",
+        "RateLimiter (240 read/min, 20 write/min)",
+        "WriteQueue with debouncing"
+      ],
+      "server_features": [
+        "Hot reload via SSE (Server-Sent Events)",
+        "IP-based like tracking",
+        "Graceful shutdown handling",
+        "Static file serving with cache headers",
+        "Search API with multi-volume support"
+      ]
+    },
+    "frontend": {
+      "approach": "Vanilla JavaScript (no framework)",
+      "markdown_parser": "Marked.js v11.1.1",
+      "yaml_parser": "js-yaml v4.1.0",
+      "syntax_highlighting": "Highlight.js v11.9.0 (Tokyo Night Dark theme)",
+      "fonts": [
+        "Inter (main text)",
+        "JetBrains Mono (monospace/code)"
+      ],
+      "image_export": "html2canvas v1.4.1",
+      "ui_features": [
+        "Cyberpunk dark theme with neon accents",
+        "Responsive design (mobile/desktop)",
+        "Collapsible sidebar navigation",
+        "Modal system for stats and submissions",
+        "Real-time search with dropdown",
+        "Card-based contribution display"
+      ]
+    },
+    "dev_tools": {
+      "bundler": "esbuild v0.27.2",
+      "font_source": "@fontsource packages",
+      "testing": "Custom load testing suite"
+    },
+    "architecture_pattern": "Content-Presentation Separation",
+    "data_storage": "JSON files (likes.json, views.json, like-ips.json, like-records.json)"
+  },
+
+  "content_topics_analysis": {
+    "primary_technology_domains": [
+      {
+        "domain": "Frontend Development",
+        "topics": [
+          "React 18 concurrent rendering",
+          "Virtual scrolling for performance",
+          "TypeScript type derivation patterns"
+        ],
+        "frequency": "high"
+      },
+      {
+        "domain": "Backend Development",
+        "topics": [
+          "Go error handling patterns",
+          "Microservices architecture",
+          "Event-driven architecture",
+          "API versioning and deprecation"
+        ],
+        "frequency": "high"
+      },
+      {
+        "domain": "DevOps & Infrastructure",
+        "topics": [
+          "Kubernetes cost optimization",
+          "Container security scanning",
+          "CI/CD pipeline integration",
+          "Cloud infrastructure management"
+        ],
+        "frequency": "medium"
+      },
+      {
+        "domain": "Database & Performance",
+        "topics": [
+          "SQL query optimization",
+          "Index strategies",
+          "Performance monitoring"
+        ],
+        "frequency": "medium"
+      },
+      {
+        "domain": "Security",
+        "topics": [
+          "Zero trust architecture",
+          "OAuth/OIDC migration",
+          "Container vulnerability scanning",
+          "Dependency security updates"
+        ],
+        "frequency": "medium"
+      },
+      {
+        "domain": "Developer Tools",
+        "topics": [
+          "VSCode debugging configuration",
+          "Git workflow best practices",
+          "CLI tool development"
+        ],
+        "frequency": "low"
+      }
+    ],
+    "content_categories": {
+      "trending_badges": [
+        {"badge": "架构决策", "color": "#00f3ff", "meaning": "Architecture Decision"},
+        {"badge": "债务预警", "color": "#ff6b35", "meaning": "Technical Debt Warning"},
+        {"badge": "工具推荐", "color": "#00ff88", "meaning": "Tool Recommendation"},
+        {"badge": "安全更新", "color": "#ff00ff", "meaning": "Security Update"},
+        {"badge": "性能优化", "color": "#a855f7", "meaning": "Performance Optimization"},
+        {"badge": "新功能", "color": "#00ff88", "meaning": "New Feature"},
+        {"badge": "重要通知", "color": "#ffbd2e", "meaning": "Important Notice"}
+      ]
+    },
+    "volumes_analyzed": [
+      {
+        "volume": "001",
+        "date": "2026.01.04",
+        "title": "微服务架构专刊",
+        "editors": ["huyusong", "dev_ops"],
+        "themes": ["Event-Driven Architecture", "API Deprecation", "DevOps Tools", "Security Updates"]
+      },
+      {
+        "volume": "002",
+        "date": "2026.01.20",
+        "editors": ["huyusong", "chen_hao"],
+        "themes": ["Microservices Migration", "Legacy API Deprecation", "Open Source Tools", "Security Patches"]
+      },
+      {
+        "volume": "draft-001",
+        "date": "2026.02.08",
+        "title": "云原生安全专刊（草稿）",
+        "editors": ["huyusong", "alex_wang"],
+        "themes": ["Kubernetes Security", "Zero Trust", "Container Scanning", "Authentication Upgrade"]
+      }
+    ]
+  },
+
+  "author_profiles": {
+    "total_authors": 9,
+    "authors": [
+      {
+        "id": "huyusong",
+        "name": "胡宇松",
+        "team": "Engineering Team",
+        "role": "ES MDGEL/IL MDE",
+        "is_editor": true,
+        "contributions_count": 0,
+        "avatar": "/contents/assets/images/avatars/huyusong.jpg"
+      },
+      {
+        "id": "zhang_wei",
+        "name": "@zhang_wei",
+        "team": "Core Platform Team",
+        "role": "Senior Developer",
+        "is_editor": false,
+        "contributions_count": 2,
+        "topics": ["TypeScript", "Git Workflow"],
+        "avatar": "/contents/assets/images/avatars/zhang_wei.jpg"
+      },
+      {
+        "id": "dev_ops",
+        "name": "@dev_ops",
+        "team": "DevOps Team",
+        "role": "DevOps Engineer",
+        "is_editor": true,
+        "contributions_count": 0,
+        "avatar": "/contents/assets/images/avatars/dev_ops.jpg"
+      },
+      {
+        "id": "alex_wang",
+        "name": "@alex_wang",
+        "team": "DevOps & Infrastructure",
+        "role": "Infrastructure Specialist",
+        "is_editor": true,
+        "contributions_count": 1,
+        "topics": ["Kubernetes", "Cost Optimization"],
+        "avatar": "/contents/assets/images/avatars/alex_wang.jpg"
+      },
+      {
+        "id": "chen_hao",
+        "name": "@chen_hao",
+        "team": "Backend Services Team",
+        "role": "Backend Developer",
+        "is_editor": true,
+        "contributions_count": 1,
+        "topics": ["VSCode Debugging"],
+        "avatar": "/contents/assets/images/avatars/chen_hao.jpg"
+      },
+      {
+        "id": "li_ming",
+        "name": "@li_ming",
+        "team": "Frontend Architecture Team",
+        "role": "Frontend Architect",
+        "is_editor": false,
+        "contributions_count": 0,
+        "avatar": "/contents/assets/images/avatars/li_ming.jpg"
+      },
+      {
+        "id": "lisa_chen",
+        "name": "@lisa_chen",
+        "team": "Frontend Engineering",
+        "role": "Frontend Engineer",
+        "is_editor": false,
+        "contributions_count": 2,
+        "topics": ["React Virtual List", "React 18 Concurrent Rendering"],
+        "avatar": "/contents/assets/images/avatars/lisa_chen.jpg"
+      },
+      {
+        "id": "sarah_liu",
+        "name": "@sarah_liu",
+        "team": "Backend Services",
+        "role": "Backend Developer",
+        "is_editor": false,
+        "contributions_count": 1,
+        "topics": ["Go Error Handling"],
+        "avatar": "/contents/assets/images/avatars/sarah_liu.jpg"
+      },
+      {
+        "id": "wang_fang",
+        "name": "@wang_fang",
+        "team": "Cloud Infrastructure Team",
+        "role": "Kubernetes Expert",
+        "is_editor": false,
+        "contributions_count": 1,
+        "topics": ["Microservices Evolution"],
+        "avatar": "/contents/assets/images/avatars/wang_fang.jpg"
+      }
+    ],
+    "collaboration_patterns": {
+      "multi_author_articles": 1,
+      "collaboration_pairs": [
+        ["wang_fang", "lisa_chen"]
+      ]
+    }
+  },
+
+  "project_architecture": {
+    "design_philosophy": "Content-Presentation Separation",
+    "directory_structure": {
+      "root": [
+        {"file": "index.html", "purpose": "Single-page frontend application"},
+        {"file": "server.js", "purpose": "Express.js server with API and hot reload"},
+        {"file": "site.config.js", "purpose": "Site configuration (port, content directory)"},
+        {"file": "package.json", "purpose": "Dependencies and scripts"}
+      ],
+      "server_modules": [
+        {"file": "server/utils/concurrency.js", "purpose": "Cache, Mutex, RateLimiter, WriteQueue"},
+        {"file": "server/utils/ip.js", "purpose": "IP validation and normalization utilities"}
+      ],
+      "content_organization": {
+        "published": "Published volumes (vol-001, vol-002, ...)",
+        "draft": "Draft volumes for preview via /draft URL",
+        "shared": "Shared configuration (authors.md, config.md, submit-guide.md)",
+        "assets": "Static assets (images, avatars)",
+        "data": "Runtime data (likes.json, views.json, like-ips.json)"
+      }
+    },
+    "content_types": {
+      "radar_md": {
+        "purpose": "Trending section with badge-tagged news items",
+        "optional": true,
+        "frontmatter": ["vol", "date", "title", "editors"]
+      },
+      "contributions": {
+        "purpose": "Developer-submitted articles in self-contained folders",
+        "optional": true,
+        "structure": "contributions/XX-article-name/index.md + assets",
+        "frontmatter_single": ["author_id", "title", "description"],
+        "frontmatter_multi": ["author_ids", "title", "description"]
+      }
+    },
+    "api_endpoints": [
+      {"path": "/api/site-config", "method": "GET", "description": "Get path configuration"},
+      {"path": "/api/config", "method": "GET", "description": "Get site title, slogan, badges"},
+      {"path": "/api/authors", "method": "GET", "description": "Get all authors"},
+      {"path": "/api/authors/:id", "method": "GET", "description": "Get specific author"},
+      {"path": "/api/volumes", "method": "GET", "description": "Get volume list (supports ?draft=true)"},
+      {"path": "/api/contributions/:vol", "method": "GET", "description": "Get contributions for a volume"},
+      {"path": "/api/stats", "method": "GET", "description": "Get author statistics with rankings"},
+      {"path": "/api/search", "method": "GET", "description": "Search across all published content"},
+      {"path": "/api/likes", "method": "GET", "description": "Get all likes data"},
+      {"path": "/api/likes/:articleId", "method": "POST", "description": "Toggle like for article (IP-based)"},
+      {"path": "/api/user-likes", "method": "GET", "description": "Get current user's liked articles"},
+      {"path": "/api/views/:vol", "method": "GET", "description": "Get view count for volume"},
+      {"path": "/api/views/:vol", "method": "POST", "description": "Increment view count"},
+      {"path": "/api/hot-reload", "method": "GET", "description": "SSE endpoint for hot reload notifications"},
+      {"path": "/api/health", "method": "GET", "description": "Health check endpoint"}
+    ],
+    "configuration": {
+      "site_title": "ESS Tech Radar Weekly",
+      "slogan": "Navigating the bleeding edge of technology, one week at a time.",
+      "footer": "© 2026 Tech Radar Weekly | Powered by huyusong's poor Claude Code Pro, please donate!",
+      "port": 5090,
+      "cache_ttl": {
+        "config": "60 seconds",
+        "authors": "60 seconds",
+        "volumes": "30 seconds",
+        "contributions": "30 seconds"
+      },
+      "rate_limits": {
+        "read": "240 requests per minute",
+        "write": "20 requests per minute"
+      }
+    }
+  },
+
+  "user_behavior_data": {
+    "views": {
+      "volume_001": 849,
+      "volume_002": 891,
+      "total_views": 1760
+    },
+    "likes": {
+      "by_article": {
+        "001-01-typescript-types": 0
+      },
+      "like_records": {},
+      "ip_based_tracking": {
+        "note": "One hash found with 3 liked articles",
+        "sample_hash": "008c0a7de5272c616855677d398ec29a",
+        "liked_articles": [
+          "002-02-react-virtual-list",
+          "002-01-typescript-types",
+          "002-04-go-error-handling"
+        ]
+      }
+    },
+    "engagement_patterns": {
+      "total_articles_with_likes": 1,
+      "most_popular_volume": "002 (891 views)",
+      "average_views_per_volume": 870,
+      "user_participation": "Low - minimal like activity recorded"
+    }
+  },
+
+  "writing_style_analysis": {
+    "overall_tone": "Professional yet approachable technical communication",
+    "language_mix": "Primarily Chinese with English technical terms and code snippets",
+    "style_characteristics": {
+      "technical_depth": "Intermediate to advanced",
+      "code_examples": "Concise, practical, production-ready",
+      "explanation_approach": "Problem-solution format with context",
+      "visual_aids": "SVG diagrams, performance charts, architecture diagrams"
+    },
+    "content_patterns": {
+      "trending_items": {
+        "length": "Short-form (2-4 sentences)",
+        "focus": "Announcements, metrics, action items",
+        "tone": "Informative with urgency when needed"
+      },
+      "contribution_articles": {
+        "length": "Medium-form (300-800 words)",
+        "structure": [
+          "Title with description",
+          "Code example or diagram",
+          "Brief explanation",
+          "Optional: DO/DON'T lists"
+        ],
+        "tone": "Educational, sharing best practices"
+      }
+    },
+    "common_phrases": [
+      "分享一个...技巧",
+      "通过...实现了...",
+      "以下是关键配置策略",
+      "详细内容已更新至...",
+      "建议立即更新",
+      "大幅提升..."
+    ],
+    "technical_vocabulary": [
+      "吞吐量 (throughput)",
+      "延迟 (latency)",
+      "微服务 (microservices)",
+      "事件驱动 (event-driven)",
+      "并发渲染 (concurrent rendering)",
+      "虚拟滚动 (virtual scrolling)",
+      "类型推导 (type derivation)",
+      "错误包装 (error wrapping)"
+    ],
+    "formatting_conventions": {
+      "headings": "H2 for sections, H3 for subsections",
+      "code_blocks": "Language-specific with syntax highlighting",
+      "lists": "Bullet points for features, numbered for steps",
+      "tables": "Used for comparison and metrics",
+      "emphasis": "Bold for key terms, italic for emphasis"
+    },
+    "professional_level": "Senior engineer to architect level content",
+    "target_audience": "Software engineers, DevOps practitioners, technical leads"
+  },
+
+  "summary": {
+    "project_type": "Tech Radar Weekly - Cyberpunk-styled technical newsletter SPA",
+    "maturity": "Production-ready with comprehensive features",
+    "key_strengths": [
+      "Clean content-presentation separation",
+      "Rich interactive features (likes, views, search)",
+      "Hot reload for content editing",
+      "Comprehensive author statistics",
+      "Mobile-responsive cyberpunk design",
+      "Multi-author collaboration support"
+    ],
+    "content_focus": "Enterprise software engineering, cloud-native technologies, frontend frameworks",
+    "community_engagement": "Moderate - structured submission process with clear guidelines"
+  }
+}
