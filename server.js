@@ -14,6 +14,7 @@ const { getClientIP } = require('./server/utils/ip');
 const siteConfig = require('./site.config.js');
 
 const app = express();
+app.set('trust proxy', siteConfig.server?.trustProxy === true);
 const runtimePort = Number.parseInt(process.env.PORT || process.env.SITE_PORT || '', 10);
 const PORT = Number.isFinite(runtimePort) ? runtimePort : (siteConfig.server?.port || 5090);
 const configuredContentsDir = process.env.SITE_CONTENTS_DIR || siteConfig.contentsDir;
@@ -29,6 +30,7 @@ const PUBLISHED_DIR = path.join(CONTENTS_DIR, 'published');
 const DRAFT_DIR = path.join(CONTENTS_DIR, 'draft');
 const SHARED_DIR = path.join(CONTENTS_DIR, 'shared');
 const ASSETS_DIR = path.join(CONTENTS_DIR, 'assets');
+const PUBLIC_ASSETS_DIR = path.join(__dirname, 'assets');
 
 // Data directory inside contents (persists with content across code upgrades)
 const DATA_DIR = path.join(CONTENTS_DIR, 'data');
@@ -446,6 +448,9 @@ app.use((req, res, next) => {
 
 // IMPORTANT: Serve contents directories BEFORE generic static middleware
 // This ensures external contents directories work correctly
+app.use('/contents/data', (req, res) => {
+    res.status(403).json({ error: 'Forbidden' });
+});
 app.use('/contents/published', express.static(PUBLISHED_DIR, {
     maxAge: '5m',
     etag: true,
@@ -464,31 +469,31 @@ app.use('/contents/assets', express.static(ASSETS_DIR, {
     etag: true,
     immutable: true
 }));
+app.use('/assets', express.static(PUBLIC_ASSETS_DIR, {
+    maxAge: '1h',
+    etag: true,
+    immutable: true
+}));
 
 // ==================== DRAFT MODE ROUTE ====================
 // Serve index.html for /draft path (draft mode via URL path instead of ?draft=true)
 // Must be defined BEFORE generic static middleware
-app.get('/draft', (req, res) => {
+function sendIndexHtml(res) {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     res.sendFile(path.join(__dirname, 'index.html'));
+}
+
+app.get('/', (req, res) => {
+    sendIndexHtml(res);
 });
 
-// Generic static files (HTML, JS, CSS from project directory)
-app.use(express.static(__dirname, {
-    index: 'index.html',
-    etag: true,
-    lastModified: true,
-    setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
-            // JS/CSS: cache for 1 hour but revalidate
-            res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
-        }
-        if (filePath.endsWith('.html')) {
-            // HTML: always revalidate with server (no-cache doesn't mean "don't cache")
-            // Browser will cache but must check ETag/Last-Modified before using
-            res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-        }
-    }
-}));
+app.get('/index.html', (req, res) => {
+    sendIndexHtml(res);
+});
+
+app.get('/draft', (req, res) => {
+    sendIndexHtml(res);
+});
 
 // ==================== API ROUTES ====================
 
@@ -735,6 +740,61 @@ function extractSnippet(text, query, maxLength = 120) {
     return snippet;
 }
 
+async function searchArticleCollection(volumesDir, vol, collectionDirName, resultType, query) {
+    const collectionDir = path.join(volumesDir, `vol-${vol}`, collectionDirName);
+    const results = [];
+
+    try {
+        const entryDirs = await fsPromises.readdir(collectionDir, { withFileTypes: true });
+
+        for (const dir of entryDirs) {
+            if (!dir.isDirectory()) continue;
+
+            const indexPath = path.join(collectionDir, dir.name, 'index.md');
+            try {
+                const content = await fsPromises.readFile(indexPath, 'utf8');
+                const frontmatter = parseYamlFrontmatter(content);
+
+                const title = frontmatter.title || dir.name;
+                const description = frontmatter.description || '';
+                const authorIds = frontmatter.author_ids || (frontmatter.author_id ? [frontmatter.author_id] : []);
+                const bodyMatch = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+                const bodyContent = bodyMatch ? bodyMatch[1].trim() : '';
+                const searchText = `${title} ${description} ${authorIds.join(' ')} ${bodyContent}`.toLowerCase();
+
+                if (!searchText.includes(query)) {
+                    continue;
+                }
+
+                let snippet = extractSnippet(title, query);
+                if (!snippet) {
+                    snippet = extractSnippet(description, query);
+                }
+                if (!snippet) {
+                    snippet = extractSnippet(bodyContent, query);
+                }
+
+                results.push({
+                    type: resultType,
+                    vol,
+                    title,
+                    description: description.length > 100 ? description.substring(0, 100) + '...' : description,
+                    authorIds,
+                    articleId: resultType === 'best-practice' ? `bp-${vol}-${dir.name}` : `${vol}-${dir.name}`,
+                    folderName: dir.name,
+                    snippet
+                });
+            } catch {
+                // Skip entries without a readable index.md
+            }
+        }
+    } catch {
+        // Collection directory may not exist.
+    }
+
+    return results;
+}
+
 // GET /api/search - Search across all published volumes
 // Query params: q (search query), limit (max results, default 20)
 app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
@@ -823,57 +883,8 @@ app.get('/api/search', rateLimitMiddleware('read'), async (req, res) => {
                 // radar.md doesn't exist or can't be read
             }
 
-            // Search contributions
-            const contributionsDir = path.join(volumesDir, `vol-${vol}`, 'contributions');
-            try {
-                const contribDirs = await fsPromises.readdir(contributionsDir, { withFileTypes: true });
-
-                for (const dir of contribDirs) {
-                    if (!dir.isDirectory()) continue;
-
-                    const indexPath = path.join(contributionsDir, dir.name, 'index.md');
-                    try {
-                        const content = await fsPromises.readFile(indexPath, 'utf8');
-                        const frontmatter = parseYamlFrontmatter(content);
-
-                        const title = frontmatter.title || dir.name;
-                        const description = frontmatter.description || '';
-                        const authorIds = frontmatter.author_ids || (frontmatter.author_id ? [frontmatter.author_id] : []);
-
-                        // Extract body content (remove frontmatter)
-                        const bodyMatch = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
-                        const bodyContent = bodyMatch ? bodyMatch[1].trim() : '';
-
-                        // Search in title, description, author IDs, and body
-                        const searchText = `${title} ${description} ${authorIds.join(' ')} ${bodyContent}`.toLowerCase();
-
-                        if (searchText.includes(query)) {
-                            // Extract snippet from title, description, or body
-                            let snippet = extractSnippet(title, query);
-                            if (!snippet) {
-                                snippet = extractSnippet(description, query);
-                            }
-                            if (!snippet) {
-                                snippet = extractSnippet(bodyContent, query);
-                            }
-                            results.push({
-                                type: 'contribution',
-                                vol,
-                                title,
-                                description: description.length > 100 ? description.substring(0, 100) + '...' : description,
-                                authorIds,
-                                articleId: `${vol}-${dir.name}`,
-                                folderName: dir.name,
-                                snippet: snippet
-                            });
-                        }
-                    } catch {
-                        // index.md doesn't exist
-                    }
-                }
-            } catch {
-                // contributions directory doesn't exist
-            }
+            results.push(...await searchArticleCollection(volumesDir, vol, 'contributions', 'contribution', query));
+            results.push(...await searchArticleCollection(volumesDir, vol, 'best-practices', 'best-practice', query));
 
             // Early exit if we have enough results
             if (results.length >= limit) break;
@@ -1008,6 +1019,7 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
             delete likesData[articleId];
         }
         markShardDirty(articleId);
+        cache.invalidate('stats');
 
         res.json({
             articleId,
@@ -1063,6 +1075,7 @@ app.post('/api/views/:vol', rateLimitMiddleware('write'), async (req, res) => {
 
         // Invalidate volumes cache since views changed
         cache.invalidatePattern('volumes');
+        cache.invalidate('stats');
 
         res.json({ vol, views: viewsData[vol] });
     } catch (error) {
@@ -1452,10 +1465,13 @@ function setupFileWatcher() {
         invalidationTimeout = setTimeout(() => {
             // Determine what cache to invalidate based on file path
             if (filePath.includes('/vol-')) {
-                // Volume-related change - invalidate volumes and contributions cache
+                // Volume-related change - invalidate cached collections, search and stats
                 cache.invalidatePattern('volumes');
                 cache.invalidatePattern('contributions');
-                console.log('Cache invalidated: volumes and contributions');
+                cache.invalidatePattern('best-practices');
+                cache.invalidatePattern('search:');
+                cache.invalidate('stats');
+                console.log('Cache invalidated: volumes, content collections, search, stats');
             }
             if (filePath.includes('/shared/')) {
                 // Shared content change - invalidate config and authors

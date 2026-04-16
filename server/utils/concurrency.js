@@ -150,31 +150,54 @@ class WriteQueue {
     }
 
     async scheduleWrite(filePath, data) {
-        // Cancel any pending write for this file
-        if (this.pendingWrites.has(filePath)) {
-            clearTimeout(this.pendingWrites.get(filePath).timeout);
-        }
-
         return new Promise((resolve, reject) => {
-            const timeout = setTimeout(async () => {
-                this.pendingWrites.delete(filePath);
-                try {
-                    // Wait if too many concurrent writes
-                    while (this.writeCount >= this.maxConcurrent) {
-                        await new Promise(r => setTimeout(r, 10));
-                    }
-                    this.writeCount++;
-                    await fsPromises.writeFile(filePath, JSON.stringify(data, null, 2));
-                    this.writeCount--;
-                    resolve();
-                } catch (error) {
-                    this.writeCount--;
-                    reject(error);
-                }
+            const existing = this.pendingWrites.get(filePath);
+            const entry = existing || {
+                filePath,
+                data,
+                timeout: null,
+                resolvers: [],
+                rejecters: []
+            };
+
+            if (entry.timeout) {
+                clearTimeout(entry.timeout);
+            }
+
+            entry.data = data;
+            entry.resolvers.push(resolve);
+            entry.rejecters.push(reject);
+            entry.timeout = setTimeout(() => {
+                this.flushWrite(filePath).catch(() => {
+                    // flushWrite settles all callers; swallow here to avoid unhandled rejection.
+                });
             }, this.debounceTime);
 
-            this.pendingWrites.set(filePath, { timeout, resolve, reject });
+            this.pendingWrites.set(filePath, entry);
         });
+    }
+
+    async flushWrite(filePath) {
+        const entry = this.pendingWrites.get(filePath);
+        if (!entry) {
+            return;
+        }
+
+        this.pendingWrites.delete(filePath);
+
+        try {
+            while (this.writeCount >= this.maxConcurrent) {
+                await new Promise(r => setTimeout(r, 10));
+            }
+
+            this.writeCount++;
+            await fsPromises.writeFile(filePath, JSON.stringify(entry.data, null, 2));
+            this.writeCount--;
+            entry.resolvers.forEach(resolve => resolve());
+        } catch (error) {
+            this.writeCount--;
+            entry.rejecters.forEach(reject => reject(error));
+        }
     }
 }
 

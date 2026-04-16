@@ -24,9 +24,9 @@ const config = {
     // Server configuration
     server: {
         port: 5090,
-        // Set to true when behind a reverse proxy (nginx, cloudflare, etc.)
+        // Set to true only when requests reach this app exclusively through a trusted reverse proxy.
         // This enables reading client IP from X-Forwarded-For and X-Real-IP headers
-        trustProxy: true
+        trustProxy: false
     }
 };
 

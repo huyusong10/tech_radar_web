@@ -2782,8 +2782,13 @@
         marked.use({
             renderer: {
                 link(href, title, text) {
-                    const titleAttr = title ? ` title="${title}"` : '';
-                    return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+                    const safeHref = sanitizeLinkHref(href);
+                    if (!safeHref) {
+                        return text;
+                    }
+
+                    const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+                    return `<a href="${escapeHtml(safeHref)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
                 }
             }
         });
@@ -2974,9 +2979,9 @@
 
                 archiveList.innerHTML = visibleVolumes.map(item => `
                     <li class="archive-item">
-                        <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
-                            <span class="archive-vol">VOL.${item.vol}</span>
-                            <span class="archive-date">${item.date}</span>
+                        <a href="?vol=${encodeURIComponent(item.vol)}" data-vol="${escapeHtml(item.vol)}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
+                            <span class="archive-vol">VOL.${escapeHtml(item.vol)}</span>
+                            <span class="archive-date">${escapeHtml(item.date || '')}</span>
                             <span class="archive-views">👁 ${(item.views || 0).toLocaleString()}</span>
                         </a>
                     </li>
@@ -3019,9 +3024,9 @@
                 const li = document.createElement('li');
                 li.className = 'archive-item';
                 li.innerHTML = `
-                    <a href="?vol=${item.vol}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
-                        <span class="archive-vol">VOL.${item.vol}</span>
-                        <span class="archive-date">${item.date}</span>
+                    <a href="?vol=${encodeURIComponent(item.vol)}" data-vol="${escapeHtml(item.vol)}" class="archive-link ${item.vol === currentVol ? 'active' : ''}">
+                        <span class="archive-vol">VOL.${escapeHtml(item.vol)}</span>
+                        <span class="archive-date">${escapeHtml(item.date || '')}</span>
                         <span class="archive-views">👁 ${(item.views || 0).toLocaleString()}</span>
                     </a>
                 `;
@@ -3112,7 +3117,10 @@
         // Get avatar for an author (use configured or random default)
         function getAuthorAvatar(author, authorId) {
             if (author && author.avatar) {
-                return author.avatar;
+                const configuredAvatar = sanitizeImageSrc(author.avatar);
+                if (configuredAvatar) {
+                    return configuredAvatar;
+                }
             }
             // Use authorId for consistent random selection
             const cacheKey = authorId || (author && author.id) || 'unknown';
@@ -3175,7 +3183,12 @@
         function getBadgeStyle(badgeName) {
             if (siteConfig.badges && siteConfig.badges[badgeName]) {
                 const config = siteConfig.badges[badgeName];
-                return `background: ${config.bg}; color: ${config.color};`;
+                const background = sanitizeColorValue(config.bg);
+                const color = sanitizeColorValue(config.color);
+
+                if (background && color) {
+                    return `background: ${background}; color: ${color};`;
+                }
             }
             return '';
         }
@@ -3183,7 +3196,9 @@
         // Render radar items
         function renderRadar(metadata, content, volPath = '') {
             // Update header with issue-specific VOL and date
-            document.getElementById('header-meta').innerHTML = `VOL.${metadata.vol}<span>|</span>${metadata.date}`;
+            const safeVol = escapeHtml(metadata.vol || '');
+            const safeDate = escapeHtml(metadata.date || '');
+            document.getElementById('header-meta').innerHTML = `VOL.${safeVol}<span>|</span>${safeDate}`;
 
             // Display volume title if present
             const volumeTitleSection = document.getElementById('volume-title-section');
@@ -3211,8 +3226,8 @@
 
             // Render editors from radar.md metadata (per-issue editors)
             // Editors reference authors from content/authors.md by author_id
+            const authorsContainer = document.getElementById('header-authors');
             if (metadata.editors && metadata.editors.length > 0) {
-                const authorsContainer = document.getElementById('header-authors');
                 authorsContainer.innerHTML = metadata.editors.map((editor, index) => {
                     // Get author data from authorsData using author_id
                     const author = authorsData[editor.author_id];
@@ -3223,32 +3238,34 @@
                     const avatarUrl = getAuthorAvatar(author, editor.author_id);
                     return `
                         <div class="author-badge" style="animation-delay: ${index * 0.5}s">
-                            <img src="${avatarUrl}" alt="${author.name}">
-                            <span class="author-name">${author.name}</span>
-                            <span class="author-role">${editor.role}</span>
+                            <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(author.name)}">
+                            <span class="author-name">${escapeHtml(author.name)}</span>
+                            <span class="author-role">${escapeHtml(editor.role)}</span>
                             <div class="author-tooltip">
                                 <div class="tooltip-header">
-                                    <img src="${avatarUrl}" alt="${author.name}">
-                                    <span class="tooltip-name">${author.name}</span>
+                                    <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(author.name)}">
+                                    <span class="tooltip-name">${escapeHtml(author.name)}</span>
                                 </div>
                                 <div class="tooltip-info">
                                     <div class="tooltip-row">
                                         <span class="tooltip-label">Team</span>
-                                        <span class="tooltip-value">${author.team || 'N/A'}</span>
+                                        <span class="tooltip-value">${escapeHtml(author.team || 'N/A')}</span>
                                     </div>
                                     <div class="tooltip-row">
                                         <span class="tooltip-label">Role</span>
-                                        <span class="tooltip-value">${author.role || 'N/A'}</span>
+                                        <span class="tooltip-value">${escapeHtml(author.role || 'N/A')}</span>
                                     </div>
                                     <div class="tooltip-row">
                                         <span class="tooltip-label">本期</span>
-                                        <span class="tooltip-value highlight">${editor.role}</span>
+                                        <span class="tooltip-value highlight">${escapeHtml(editor.role)}</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     `;
                 }).filter(html => html).join('');
+            } else if (authorsContainer) {
+                authorsContainer.innerHTML = '';
             }
 
             // Parse trending items from markdown
@@ -3291,11 +3308,11 @@
                 return `
                 <div class="trending-item ${hasDetails ? 'expandable' : ''}" onclick="${hasDetails ? 'toggleTrendingItem(this)' : ''}">
                     <div class="trending-header">
-                        <span class="badge ${badgeClass}" ${badgeStyle ? `style="${badgeStyle}"` : ''}>${item.badge}</span>
-                        <div class="trending-title">${item.title}</div>
+                        <span class="badge ${badgeClass}" ${badgeStyle ? `style="${badgeStyle}"` : ''}>${escapeHtml(item.badge)}</span>
+                        <div class="trending-title">${escapeHtml(item.title)}</div>
                         ${hasDetails ? '<span class="expand-icon">▼</span>' : ''}
                     </div>
-                    ${hasDetails ? `<div class="trending-details"><div><div class="trending-details-inner">${marked.parse(item.details)}</div></div></div>` : ''}
+                    ${hasDetails ? `<div class="trending-details"><div><div class="trending-details-inner">${renderMarkdownSafely(item.details)}</div></div></div>` : ''}
                 </div>
                 `;
             }).join('');
@@ -3450,16 +3467,16 @@
                 authors = [{
                     name: 'Unknown Author',
                     team: 'Unknown Team',
-                    avatar: '/assets/images/avatars/default.jpg',
+                    avatar: DEFAULT_AVATARS[0],
                     role: 'Contributor'
                 }];
             }
 
             // Generate avatar HTML based on number of authors (with default avatar support)
             const avatarHtml = authors.length === 1
-                ? `<img src="${getAuthorAvatar(authors[0], authors[0].id)}" alt="Author Avatar" class="author-avatar">`
+                ? `<img src="${escapeHtml(getAuthorAvatar(authors[0], authors[0].id))}" alt="${escapeHtml(authors[0].name || 'Author Avatar')}" class="author-avatar">`
                 : `<div class="author-avatars">
-                    ${authors.map(a => `<img src="${getAuthorAvatar(a, a.id)}" alt="Author Avatar" class="author-avatar">`).join('')}
+                    ${authors.map(a => `<img src="${escapeHtml(getAuthorAvatar(a, a.id))}" alt="${escapeHtml(a.name || 'Author Avatar')}" class="author-avatar">`).join('')}
                    </div>`;
 
             // Generate author info text - show complete info for each author
@@ -3467,11 +3484,11 @@
             if (authors.length === 1) {
                 // Single author: "Name · Team · Role"
                 const a = authors[0];
-                authorInfoHtml = `${a.name} · ${a.team}<span class="author-role-tag">${a.role || 'Contributor'}</span>`;
+                authorInfoHtml = `${escapeHtml(a.name)} · ${escapeHtml(a.team || 'N/A')}<span class="author-role-tag">${escapeHtml(a.role || 'Contributor')}</span>`;
             } else {
                 // Multi-author: "Name · Team · Role & Name · Team · Role"
                 authorInfoHtml = authors.map(a =>
-                    `${a.name} · ${a.team}<span class="author-role-tag">${a.role || 'Contributor'}</span>`
+                    `${escapeHtml(a.name)} · ${escapeHtml(a.team || 'N/A')}<span class="author-role-tag">${escapeHtml(a.role || 'Contributor')}</span>`
                 ).join(' <span class="author-separator">&</span> ');
             }
 
@@ -3491,7 +3508,7 @@
             }
 
             // Parse markdown content
-            let contentHtml = marked.parse(processedContent);
+            let contentHtml = renderMarkdownSafely(processedContent);
 
             // Apply syntax highlighting to code blocks
             const tempDiv = document.createElement('div');
@@ -3547,7 +3564,7 @@
                     <div class="card-header" onclick="toggleContributionCard(this)">
                         ${avatarHtml}
                         <div class="card-title-area">
-                            <h3 class="contribution-title">${metadata.title}</h3>
+                            <h3 class="contribution-title">${escapeHtml(metadata.title || '')}</h3>
                             <div class="author-name">${authorInfoHtml}</div>
                         </div>
                         <div class="card-stats">
@@ -3561,7 +3578,7 @@
                     <div class="card-body">
                         <div>
                             <div class="card-body-inner">
-                                <p class="contribution-desc">${metadata.description}</p>
+                                <p class="contribution-desc">${escapeHtml(metadata.description || '')}</p>
                                 ${contentHtml}
                                 <div class="card-footer">
                                     <button class="like-button ${likedClass}" onclick="event.stopPropagation(); toggleLike(this)">
@@ -3620,21 +3637,21 @@
                 const avatarUrl = getAuthorAvatar(author, author.id);
                 return `
                 <div class="contributor-badge">
-                    <img src="${avatarUrl}" alt="${author.name}">
-                    <span class="contributor-name">${author.name}</span>
+                    <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(author.name)}">
+                    <span class="contributor-name">${escapeHtml(author.name)}</span>
                     <div class="author-tooltip">
                         <div class="tooltip-header">
-                            <img src="${avatarUrl}" alt="${author.name}">
-                            <span class="tooltip-name">${author.name}</span>
+                            <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(author.name)}">
+                            <span class="tooltip-name">${escapeHtml(author.name)}</span>
                         </div>
                         <div class="tooltip-info">
                             <div class="tooltip-row">
                                 <span class="tooltip-label">Team</span>
-                                <span class="tooltip-value">${author.team || 'N/A'}</span>
+                                <span class="tooltip-value">${escapeHtml(author.team || 'N/A')}</span>
                             </div>
                             <div class="tooltip-row">
                                 <span class="tooltip-label">Role</span>
-                                <span class="tooltip-value">${author.role || 'N/A'}</span>
+                                <span class="tooltip-value">${escapeHtml(author.role || 'N/A')}</span>
                             </div>
                             <div class="tooltip-row">
                                 <span class="tooltip-label">本期</span>
@@ -3810,24 +3827,24 @@
                 authors = [{
                     name: 'Unknown Author',
                     team: 'Unknown Team',
-                    avatar: '/assets/images/avatars/default.jpg',
+                    avatar: DEFAULT_AVATARS[0],
                     role: 'Contributor'
                 }];
             }
 
             const avatarHtml = authors.length === 1
-                ? `<img src="${getAuthorAvatar(authors[0], authors[0].id)}" alt="Author Avatar" class="author-avatar">`
+                ? `<img src="${escapeHtml(getAuthorAvatar(authors[0], authors[0].id))}" alt="${escapeHtml(authors[0].name || 'Author Avatar')}" class="author-avatar">`
                 : `<div class="author-avatars">
-                    ${authors.map(a => `<img src="${getAuthorAvatar(a, a.id)}" alt="Author Avatar" class="author-avatar">`).join('')}
+                    ${authors.map(a => `<img src="${escapeHtml(getAuthorAvatar(a, a.id))}" alt="${escapeHtml(a.name || 'Author Avatar')}" class="author-avatar">`).join('')}
                    </div>`;
 
             let authorInfoHtml;
             if (authors.length === 1) {
                 const a = authors[0];
-                authorInfoHtml = `${a.name} · ${a.team}<span class="author-role-tag">${a.role || 'Contributor'}</span>`;
+                authorInfoHtml = `${escapeHtml(a.name)} · ${escapeHtml(a.team || 'N/A')}<span class="author-role-tag">${escapeHtml(a.role || 'Contributor')}</span>`;
             } else {
                 authorInfoHtml = authors.map(a =>
-                    `${a.name} · ${a.team}<span class="author-role-tag">${a.role || 'Contributor'}</span>`
+                    `${escapeHtml(a.name)} · ${escapeHtml(a.team || 'N/A')}<span class="author-role-tag">${escapeHtml(a.role || 'Contributor')}</span>`
                 ).join(' <span class="author-separator">&</span> ');
             }
 
@@ -3844,7 +3861,7 @@
                 );
             }
 
-            let contentHtml = marked.parse(processedContent);
+            let contentHtml = renderMarkdownSafely(processedContent);
 
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = contentHtml;
@@ -3891,7 +3908,7 @@
                     <div class="card-header" onclick="toggleContributionCard(this)">
                         ${avatarHtml}
                         <div class="card-title-area">
-                            <h3 class="contribution-title">${metadata.title}</h3>
+                            <h3 class="contribution-title">${escapeHtml(metadata.title || '')}</h3>
                             <div class="author-name">${authorInfoHtml}</div>
                         </div>
                         <span class="expand-icon">▼</span>
@@ -3899,7 +3916,7 @@
                     <div class="card-body">
                         <div>
                             <div class="card-body-inner">
-                                <p class="contribution-desc">${metadata.description}</p>
+                                <p class="contribution-desc">${escapeHtml(metadata.description || '')}</p>
                                 ${contentHtml}
                             </div>
                         </div>
@@ -4359,16 +4376,20 @@
                                 ${highlightQuery(result.title, query)}
                             </div>
                             ${snippetHtml}
-                            <div class="search-result-meta">Vol.${result.vol} ${result.date ? '· ' + result.date : ''}</div>
+                            <div class="search-result-meta">Vol.${escapeHtml(result.vol)} ${result.date ? '· ' + escapeHtml(result.date) : ''}</div>
                         </div>
                     `;
                 } else {
+                    const resultLabel = result.type === 'best-practice' ? 'Best Practice' : 'Article';
+                    const authorsMeta = Array.isArray(result.authorIds)
+                        ? result.authorIds.map(authorId => escapeHtml(authorId)).join(', ')
+                        : '';
                     return `
                         <div class="search-result-item" data-index="${index}">
-                            <div class="search-result-type contribution">Article</div>
+                            <div class="search-result-type contribution">${resultLabel}</div>
                             <div class="search-result-title">${highlightQuery(result.title, query)}</div>
                             ${snippetHtml}
-                            <div class="search-result-meta">Vol.${result.vol} ${result.authorIds ? '· ' + result.authorIds.join(', ') : ''}</div>
+                            <div class="search-result-meta">Vol.${escapeHtml(result.vol)} ${authorsMeta ? '· ' + authorsMeta : ''}</div>
                         </div>
                     `;
                 }
@@ -4570,11 +4591,153 @@
             }
         }
 
-        // Helper function to escape HTML
+        // Helper functions for safe content rendering
+        const DISALLOWED_HTML_TAGS = new Set([
+            'SCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'FORM', 'INPUT', 'BUTTON',
+            'TEXTAREA', 'SELECT', 'OPTION', 'LINK', 'META', 'STYLE', 'SVG',
+            'MATH', 'VIDEO', 'AUDIO', 'SOURCE'
+        ]);
+
         function escapeHtml(text) {
             const div = document.createElement('div');
-            div.textContent = text;
+            div.textContent = text == null ? '' : String(text);
             return div.innerHTML;
+        }
+
+        function sanitizeLinkHref(url) {
+            if (!url || typeof url !== 'string') return null;
+            const raw = url.trim();
+            if (!raw || raw.startsWith('//')) return null;
+            if (/["'<>]/.test(raw)) return null;
+
+            const normalized = raw.replace(/[\u0000-\u001F\u007F\s]+/g, '').toLowerCase();
+            if (
+                normalized.startsWith('javascript:') ||
+                normalized.startsWith('data:') ||
+                normalized.startsWith('vbscript:')
+            ) {
+                return null;
+            }
+
+            if (raw.startsWith('#') || raw.startsWith('/') || raw.startsWith('./') || raw.startsWith('../')) {
+                return raw;
+            }
+
+            try {
+                const parsed = new URL(raw, window.location.origin);
+                if (['http:', 'https:', 'mailto:', 'tel:'].includes(parsed.protocol)) {
+                    return raw;
+                }
+            } catch {
+                return null;
+            }
+
+            return null;
+        }
+
+        function sanitizeImageSrc(url) {
+            if (!url || typeof url !== 'string') return null;
+            const raw = url.trim();
+            if (!raw || raw.startsWith('//')) return null;
+            if (/["'<>]/.test(raw)) return null;
+
+            const normalized = raw.replace(/[\u0000-\u001F\u007F\s]+/g, '').toLowerCase();
+            if (
+                normalized.startsWith('javascript:') ||
+                normalized.startsWith('data:') ||
+                normalized.startsWith('vbscript:')
+            ) {
+                return null;
+            }
+
+            if (raw.startsWith('/') || raw.startsWith('./') || raw.startsWith('../')) {
+                return raw;
+            }
+
+            try {
+                const parsed = new URL(raw, window.location.origin);
+                if (['http:', 'https:'].includes(parsed.protocol)) {
+                    return raw;
+                }
+            } catch {
+                return null;
+            }
+
+            return null;
+        }
+
+        function sanitizeColorValue(value) {
+            if (!value || typeof value !== 'string') return '';
+            const trimmed = value.trim();
+            if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(trimmed)) return trimmed;
+            if (/^(rgb|rgba|hsl|hsla)\([\d\s.,%+-]+\)$/i.test(trimmed)) return trimmed;
+            if (/^var\(--[\w-]+\)$/i.test(trimmed)) return trimmed;
+            if (/^[a-z]+$/i.test(trimmed)) return trimmed;
+            return '';
+        }
+
+        function sanitizeRenderedHtml(html) {
+            const template = document.createElement('template');
+            template.innerHTML = html;
+
+            const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
+            const elements = [];
+            while (walker.nextNode()) {
+                elements.push(walker.currentNode);
+            }
+
+            elements.forEach(element => {
+                if (DISALLOWED_HTML_TAGS.has(element.tagName)) {
+                    element.remove();
+                    return;
+                }
+
+                [...element.attributes].forEach(attribute => {
+                    const name = attribute.name.toLowerCase();
+                    const value = attribute.value;
+
+                    if (name.startsWith('on') || name === 'style' || name === 'srcdoc') {
+                        element.removeAttribute(attribute.name);
+                        return;
+                    }
+
+                    if (name === 'href') {
+                        const safeHref = sanitizeLinkHref(value);
+                        if (!safeHref) {
+                            element.replaceWith(...element.childNodes);
+                            return;
+                        }
+                        element.setAttribute('href', safeHref);
+                        element.setAttribute('target', '_blank');
+                        element.setAttribute('rel', 'noopener noreferrer');
+                        return;
+                    }
+
+                    if (name === 'src') {
+                        const safeSrc = sanitizeImageSrc(value);
+                        if (!safeSrc) {
+                            if (element.tagName === 'IMG') {
+                                element.remove();
+                            } else {
+                                element.removeAttribute(attribute.name);
+                            }
+                            return;
+                        }
+                        element.setAttribute('src', safeSrc);
+                        return;
+                    }
+
+                    if (name === 'xlink:href' || name === 'formaction') {
+                        element.removeAttribute(attribute.name);
+                    }
+                });
+            });
+
+            return template.innerHTML;
+        }
+
+        function renderMarkdownSafely(markdown) {
+            return sanitizeRenderedHtml(marked.parse(markdown));
         }
 
         // Submit modal functions
@@ -4593,7 +4756,7 @@
                     const content = await loadMarkdown(`${SHARED_DIR}/submit-guide.md`);
                     if (content) {
                         const { content: markdownContent } = parseFrontmatter(content);
-                        modalBody.innerHTML = marked.parse(markdownContent);
+                        modalBody.innerHTML = renderMarkdownSafely(markdownContent);
                         submitGuideLoaded = true;
                     }
                 } catch (error) {
@@ -4609,7 +4772,6 @@
         }
 
         // Stats modal functions
-        let statsLoaded = false;
         let cachedAuthors = null;
 
         async function openStatsModal() {
@@ -4619,35 +4781,35 @@
             modal.classList.add('active');
             document.body.style.overflow = 'hidden';
 
-            // Load content
-            if (!statsLoaded) {
-                try {
-                    // Fetch stats and authors in parallel
-                    const [statsResponse, authorsResponse] = await Promise.all([
-                        fetch('/api/stats'),
-                        cachedAuthors ? Promise.resolve({ ok: true, json: () => Promise.resolve(cachedAuthors) }) : fetch('/api/authors')
-                    ]);
+            modalBody.innerHTML = '<div class="stats-loading">Loading statistics...</div>';
 
-                    if (!statsResponse.ok) throw new Error('Failed to fetch stats');
+            try {
+                // Fetch stats and authors in parallel
+                const [statsResponse, authorsResponse] = await Promise.all([
+                    fetchWithRetry('/api/stats'),
+                    cachedAuthors
+                        ? Promise.resolve({ ok: true, json: () => Promise.resolve(cachedAuthors) })
+                        : fetchWithRetry('/api/authors')
+                ]);
 
-                    const stats = await statsResponse.json();
-                    if (!cachedAuthors && authorsResponse.ok) {
-                        cachedAuthors = await authorsResponse.json();
-                    }
+                if (!statsResponse.ok) throw new Error('Failed to fetch stats');
 
-                    // The /api/authors returns { authorId: authorObject } directly
-                    const authorsMap = cachedAuthors || {};
-
-                    // Render stats
-                    modalBody.innerHTML = renderStats(stats, authorsMap);
-
-                    // Setup tooltip positioning for stats authors
-                    setupStatsTooltips();
-                    statsLoaded = true;
-                } catch (error) {
-                    console.error('Error loading stats:', error);
-                    modalBody.innerHTML = '<p class="stats-empty">Failed to load statistics. Please try again.</p>';
+                const stats = await statsResponse.json();
+                if (!cachedAuthors && authorsResponse.ok) {
+                    cachedAuthors = await authorsResponse.json();
                 }
+
+                // The /api/authors returns { authorId: authorObject } directly
+                const authorsMap = cachedAuthors || {};
+
+                // Render stats
+                modalBody.innerHTML = renderStats(stats, authorsMap);
+
+                // Setup tooltip positioning for stats authors
+                setupStatsTooltips();
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                modalBody.innerHTML = '<p class="stats-empty">Failed to load statistics. Please try again.</p>';
             }
         }
 
@@ -4664,12 +4826,12 @@
                 const tooltipHtml = `
                     <div class="author-tooltip">
                         <div class="tooltip-header">
-                            <img src="${avatarSrc}" alt="${author.name || item.authorId}">
-                            <span class="tooltip-name">${author.name || item.authorId}</span>
+                            <img src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(author.name || item.authorId)}">
+                            <span class="tooltip-name">${escapeHtml(author.name || item.authorId)}</span>
                         </div>
                         <div class="tooltip-info">
-                            ${author.team ? `<div class="tooltip-row"><span class="tooltip-label">Team</span><span class="tooltip-value">${author.team}</span></div>` : ''}
-                            ${author.role ? `<div class="tooltip-row"><span class="tooltip-label">Role</span><span class="tooltip-value">${author.role}</span></div>` : ''}
+                            ${author.team ? `<div class="tooltip-row"><span class="tooltip-label">Team</span><span class="tooltip-value">${escapeHtml(author.team)}</span></div>` : ''}
+                            ${author.role ? `<div class="tooltip-row"><span class="tooltip-label">Role</span><span class="tooltip-value">${escapeHtml(author.role)}</span></div>` : ''}
                         </div>
                     </div>
                 `;
@@ -4678,8 +4840,8 @@
                     <li class="stats-item">
                         <span class="stats-rank ${rankClass}">#${rank}</span>
                         <div class="stats-author">
-                            <img src="${avatarSrc}" alt="${author.name || item.authorId}" class="stats-author-avatar">
-                            <span class="stats-author-name">${author.name || item.authorId}</span>
+                            <img src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(author.name || item.authorId)}" class="stats-author-avatar">
+                            <span class="stats-author-name">${escapeHtml(author.name || item.authorId)}</span>
                             ${tooltipHtml}
                         </div>
                         <span class="stats-count ${type}">${item.count}</span>

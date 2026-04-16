@@ -107,6 +107,14 @@ describe('API contract', () => {
         });
     });
 
+    test('lists best-practice folders without failing when a volume has none', async () => {
+        const response = await harness.request('/api/best-practices/001');
+        assert.equal(response.status, 200);
+
+        const folders = await readJson(response);
+        assert.ok(Array.isArray(folders));
+    });
+
     test('search returns bounded structured results', async () => {
         const response = await harness.request('/api/search?q=架构&limit=3');
         assert.equal(response.status, 200);
@@ -124,6 +132,17 @@ describe('API contract', () => {
         });
     });
 
+    test('search includes best-practice content in all-articles results', async () => {
+        const response = await harness.request('/api/search?q=Code%20Review&limit=10');
+        assert.equal(response.status, 200);
+
+        const body = await readJson(response);
+        assert.ok(
+            body.results.some(result => result.type === 'best-practice'),
+            'expected search results to include best-practice entries'
+        );
+    });
+
     test('increments views and reflects the new value via both endpoints', async () => {
         const beforeResponse = await harness.request(`/api/views/${sampleVolume}`);
         const beforeBody = await readJson(beforeResponse);
@@ -138,6 +157,33 @@ describe('API contract', () => {
         const updatedVolume = volumes.find(volume => volume.vol === sampleVolume);
         assert.ok(updatedVolume);
         assert.equal(updatedVolume.views, updatedBody.views);
+    });
+
+    test('refreshes stats after likes and views change', async () => {
+        const isolatedHarness = await createServerHarness();
+
+        try {
+            const volumes = await readJson(await isolatedHarness.request('/api/volumes'));
+            const vol = volumes[0].vol;
+            const contributions = await readJson(await isolatedHarness.request(`/api/contributions/${vol}`));
+            const articleId = `${vol}-${contributions[0]}`;
+
+            const beforeStats = await readJson(await isolatedHarness.request('/api/stats'));
+
+            const viewResponse = await isolatedHarness.request(`/api/views/${vol}`, { method: 'POST' });
+            assert.equal(viewResponse.status, 200);
+
+            const likeResponse = await isolatedHarness.request(`/api/likes/${articleId}`, { method: 'POST' });
+            assert.equal(likeResponse.status, 200);
+            const likeBody = await readJson(likeResponse);
+            assert.equal(likeBody.userLiked, true);
+
+            const afterStats = await readJson(await isolatedHarness.request('/api/stats'));
+            assert.equal(afterStats.totalViews, beforeStats.totalViews + 1);
+            assert.equal(afterStats.totalLikes, beforeStats.totalLikes + 1);
+        } finally {
+            await isolatedHarness.cleanup();
+        }
     });
 
     test('toggles article likes and keeps user state in sync', async () => {
@@ -161,6 +207,33 @@ describe('API contract', () => {
         const unlikedBody = await readJson(unlikeResponse);
         assert.equal(unlikedBody.likes, initialLikes);
         assert.equal(unlikedBody.userLiked, false);
+    });
+
+    test('ignores spoofed forwarding headers when trust proxy is disabled', async () => {
+        const isolatedHarness = await createServerHarness();
+
+        try {
+            const volumes = await readJson(await isolatedHarness.request('/api/volumes'));
+            const vol = volumes[0].vol;
+            const contributions = await readJson(await isolatedHarness.request(`/api/contributions/${vol}`));
+            const articleId = `${vol}-${contributions[0]}`;
+
+            const firstLike = await readJson(await isolatedHarness.request(`/api/likes/${articleId}`, {
+                method: 'POST',
+                headers: { 'x-forwarded-for': '1.1.1.1' }
+            }));
+            assert.equal(firstLike.userLiked, true);
+            assert.equal(firstLike.likes, 1);
+
+            const secondLike = await readJson(await isolatedHarness.request(`/api/likes/${articleId}`, {
+                method: 'POST',
+                headers: { 'x-forwarded-for': '2.2.2.2' }
+            }));
+            assert.equal(secondLike.userLiked, false);
+            assert.equal(secondLike.likes, 0);
+        } finally {
+            await isolatedHarness.cleanup();
+        }
     });
 
     test('rejects malformed article ids', async () => {
@@ -189,6 +262,17 @@ describe('API contract', () => {
             assert.equal(typeof item.count, 'number');
             assert.equal(typeof item.rank, 'number');
         });
+    });
+
+    test('does not expose source files or runtime data over public routes', async () => {
+        const sourceResponse = await harness.request('/server.js');
+        assert.equal(sourceResponse.status, 404);
+
+        const dataResponse = await harness.request('/contents/data/like-ips/vol-001.json');
+        assert.equal(dataResponse.status, 403);
+
+        const body = await readJson(dataResponse);
+        assert.equal(body.error, 'Forbidden');
     });
 
     test('reports ready health state after startup', async () => {

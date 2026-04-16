@@ -10,9 +10,9 @@
 | `contents/shared/authors.md` | 作者主数据 | 以作者 ID 为稳定键，供专题编辑和投稿文章引用 |
 | `contents/shared/submit-guide.md` | 投稿指南正文 | 以 Markdown 正文形式展示 |
 | `contents/assets/` | 共享静态资源 | 以静态路径暴露，供作者头像和共享图片使用 |
-| `contents/data/likes.json` | 点赞数快照 | 键为 `articleId`，值为非负整数 |
+| `contents/data/likes/vol-<vol>.json` | 分片点赞快照 | 仅供服务端读写；键为 `articleId`，值为非负整数 |
 | `contents/data/views.json` | 阅读量快照 | 键为 `vol`，值为非负整数 |
-| `contents/data/like-ips.json` | 点赞身份映射 | 键为 `articleId`，值为身份数组 |
+| `contents/data/like-ips/vol-<vol>.json` | 分片点赞身份映射 | 仅供服务端读写；键为 `articleId`，值为身份数组 |
 
 ## 卷期目录契约
 
@@ -59,6 +59,23 @@
 - 正文中的相对资源路径必须相对于当前投稿文件夹解析。
 - 文章稳定标识 `articleId = <vol>-<folder>`，用于点赞与统计。
 
+### `best-practices/<folder>/index.md`
+
+`frontmatter -> 最佳实践卡片元数据`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `author_id` | string | 二选一 | 单作者模式作者 ID |
+| `author_ids` | string[] | 二选一 | 多作者模式作者 ID 列表，最多 2 位 |
+| `title` | string | 是 | 卡片标题 |
+| `description` | string | 是 | 卡片摘要 |
+
+稳定语义：
+
+- 结构与投稿文章一致，但当前不参与点赞接口。
+- 正文中的相对资源路径必须相对于当前最佳实践文件夹解析。
+- 页面稳定标识 `articleId = bp-<vol>-<folder>`，用于前端检索定位。
+
 ## 共享配置契约
 
 ### `contents/shared/config.md`
@@ -85,8 +102,8 @@
 
 | 数据 | 一致性规则 |
 |------|------------|
-| `likes.json` | `likes[articleId]` 必须等于 `like-ips.json[articleId].length` |
-| `like-ips.json` | 非数组值必须在加载时归一化为空数组 |
+| `likes/vol-<vol>.json` | `likes[articleId]` 必须等于同分片 `like-ips` 中的数组长度 |
+| `like-ips/vol-<vol>.json` | 非数组值必须在加载时归一化为空数组 |
 | `views.json` | 仅记录卷期阅读量，不记录页面局部状态 |
 
 ## 衍生文件契约

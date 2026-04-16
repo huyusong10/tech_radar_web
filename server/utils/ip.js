@@ -40,13 +40,41 @@ function normalizeIP(ip) {
     return ip;
 }
 
+function isTrustedProxyAddress(ip) {
+    const normalizedIp = normalizeIP(ip);
+    if (!normalizedIp) return false;
+
+    if (normalizedIp === '127.0.0.1' || normalizedIp === '::1') {
+        return true;
+    }
+
+    if (/^10\./.test(normalizedIp) || /^192\.168\./.test(normalizedIp)) {
+        return true;
+    }
+
+    const match172 = normalizedIp.match(/^172\.(\d{1,3})\./);
+    if (match172) {
+        const secondOctet = Number(match172[1]);
+        if (secondOctet >= 16 && secondOctet <= 31) {
+            return true;
+        }
+    }
+
+    return /^(fc|fd|fe80):/i.test(normalizedIp);
+}
+
 // Get client IP with improved security considerations
 // Supports 'trust proxy' configuration indirectly via inspecting X-Forwarded-For carefully
 function getClientIP(req, trustProxy = false) {
+    const directConnectionIp = normalizeIP(
+        req.connection?.remoteAddress ||
+        req.socket?.remoteAddress ||
+        req.ip
+    );
     let ip = null;
 
-    // If trusting proxy, look at X-Forwarded-For
-    if (trustProxy) {
+    // If trusting a local/private proxy, look at forwarding headers
+    if (trustProxy && isTrustedProxyAddress(directConnectionIp)) {
         const xForwardedFor = req.headers['x-forwarded-for'];
         if (xForwardedFor) {
             // Take the first IP (client), but only if we trust the proxy chain
@@ -62,9 +90,7 @@ function getClientIP(req, trustProxy = false) {
 
     // Fallback to direct connection
     if (!ip) {
-        ip = req.connection?.remoteAddress ||
-            req.socket?.remoteAddress ||
-            req.ip;
+        ip = directConnectionIp;
     }
 
     // Normalize and validate
@@ -80,5 +106,6 @@ function getClientIP(req, trustProxy = false) {
 module.exports = {
     isValidIP,
     normalizeIP,
+    isTrustedProxyAddress,
     getClientIP
 };
