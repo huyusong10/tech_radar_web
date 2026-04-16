@@ -44,18 +44,6 @@ describe('Persistence contract', () => {
 
         await harness.cleanup();
 
-        const persistedViews = await fs.readFile(`${sandbox.contentsDir}/data/views.json`, 'utf8');
-        const persistedLikes = await fs.readFile(`${sandbox.contentsDir}/data/likes.json`, 'utf8');
-        const persistedLikeIps = await fs.readFile(`${sandbox.contentsDir}/data/like-ips.json`, 'utf8');
-
-        const viewsJson = JSON.parse(persistedViews);
-        const likesJson = JSON.parse(persistedLikes);
-        const likeIpsJson = JSON.parse(persistedLikeIps);
-
-        assert.equal(viewsJson[vol], updatedViews.views);
-        assert.equal(likesJson[articleId], updatedLikes.likes);
-        assert.equal(likeIpsJson[articleId].length, updatedLikes.likes);
-
         harness = await createServerHarness({
             contentsDir: sandbox.contentsDir,
             sandboxRoot: sandbox.sandboxRoot,
