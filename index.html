@@ -12,6 +12,7 @@
     <script src="/assets/js/marked.min.js"></script>
     <script src="/assets/js/js-yaml.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="/assets/js/export-utils.js"></script>
     <link rel="stylesheet" href="/assets/css/tokyo-night-dark.min.css">
     <script src="/assets/js/highlight.min.js"></script>
 
@@ -2848,7 +2849,7 @@
 
             // Return existing promise if request is in flight
             if (pendingRequests.has(key)) {
-                return pendingRequests.get(key);
+                return pendingRequests.get(key).then(response => response.clone());
             }
 
             const promise = fetchWithRetry(url, options).finally(() => {
@@ -2856,12 +2857,13 @@
             });
 
             pendingRequests.set(key, promise);
-            return promise;
+            return promise.then(response => response.clone());
         }
 
         // Site paths configuration (standardized structure)
         // These are URL paths, not filesystem paths
         let PUBLISHED_DIR = '/contents/published';
+        let DRAFT_DIR = '/contents/draft';
         let SHARED_DIR = '/contents/shared';
         let ASSETS_DIR = '/contents/assets';
         let CONTENT_DIR = '/contents/published'; // Active content directory (published or draft)
@@ -2878,6 +2880,7 @@
                 if (response.ok) {
                     const config = await response.json();
                     PUBLISHED_DIR = config.publishedDir || '/contents/published';
+                    DRAFT_DIR = config.draftDir || '/contents/draft';
                     SHARED_DIR = config.sharedDir || '/contents/shared';
                     ASSETS_DIR = config.assetsDir || '/contents/assets';
                 }
@@ -2886,7 +2889,7 @@
                 console.log('Using default content paths');
             }
             // Set active content directory based on draft mode
-            CONTENT_DIR = isDraftMode() ? '/contents/draft' : PUBLISHED_DIR;
+            CONTENT_DIR = isDraftMode() ? DRAFT_DIR : PUBLISHED_DIR;
         }
 
         // Parse frontmatter from markdown
@@ -2943,7 +2946,7 @@
                     // Fallback to static archive.json (when using npx serve or static hosting)
                     console.log('API not available, trying static archive.json');
                     try {
-                        const response = await fetch(`${PUBLISHED_DIR}/archive.json`);
+                        const response = await fetch(`${CONTENT_DIR}/archive.json`);
                         if (!response.ok) throw new Error('archive.json not found');
                         volumesCache = await response.json();
                         return volumesCache;
@@ -2962,6 +2965,24 @@
         }
 
         // Load and render archive list with lazy loading support
+        function appendLoadMoreArchiveButton(archiveList, startIndex, currentVol, remainingCount) {
+            const loadMoreItem = document.createElement('li');
+            loadMoreItem.className = 'archive-item';
+
+            const button = document.createElement('button');
+            button.className = 'archive-link';
+            button.style.cssText = 'width: 100%; text-align: center; cursor: pointer; border: 1px dashed rgba(0, 243, 255, 0.3);';
+            button.addEventListener('click', () => loadMoreVolumes(startIndex, currentVol));
+
+            const text = document.createElement('span');
+            text.style.color = 'var(--accent-cyan)';
+            text.textContent = `Load more (${remainingCount} remaining)`;
+
+            button.appendChild(text);
+            loadMoreItem.appendChild(button);
+            archiveList.appendChild(loadMoreItem);
+        }
+
         async function loadArchive(currentVol) {
             try {
                 const volumes = await fetchVolumes();
@@ -2989,15 +3010,7 @@
 
                 // Add "load more" button if there are more items
                 if (hasMore) {
-                    const loadMoreItem = document.createElement('li');
-                    loadMoreItem.className = 'archive-item';
-                    loadMoreItem.innerHTML = `
-                        <button class="archive-link" style="width: 100%; text-align: center; cursor: pointer; border: 1px dashed rgba(0, 243, 255, 0.3);"
-                                onclick="loadMoreVolumes(${MAX_INITIAL_ITEMS}, '${currentVol}')">
-                            <span style="color: var(--accent-cyan);">Load more (${volumes.length - MAX_INITIAL_ITEMS} remaining)</span>
-                        </button>
-                    `;
-                    archiveList.appendChild(loadMoreItem);
+                    appendLoadMoreArchiveButton(archiveList, MAX_INITIAL_ITEMS, currentVol, volumes.length - MAX_INITIAL_ITEMS);
                 }
             } catch (error) {
                 console.error('Failed to load archive:', error);
@@ -3035,15 +3048,12 @@
 
             // Add another "load more" button if needed
             if (hasMore) {
-                const loadMoreItem = document.createElement('li');
-                loadMoreItem.className = 'archive-item';
-                loadMoreItem.innerHTML = `
-                    <button class="archive-link" style="width: 100%; text-align: center; cursor: pointer; border: 1px dashed rgba(0, 243, 255, 0.3);"
-                            onclick="loadMoreVolumes(${startIndex + BATCH_SIZE}, '${currentVol}')">
-                        <span style="color: var(--accent-cyan);">Load more (${volumes.length - startIndex - BATCH_SIZE} remaining)</span>
-                    </button>
-                `;
-                archiveList.appendChild(loadMoreItem);
+                appendLoadMoreArchiveButton(
+                    archiveList,
+                    startIndex + BATCH_SIZE,
+                    currentVol,
+                    volumes.length - startIndex - BATCH_SIZE
+                );
             }
         }
 
@@ -3738,8 +3748,12 @@
 
             // Load contributions in parallel for better performance
             const loadPromises = foldersToLoad.map(async (folder) => {
-                const content = await loadMarkdown(`${basePath}/${folder}/index.md`);
-                if (content) {
+                try {
+                    const content = await loadMarkdown(`${basePath}/${folder}/index.md`);
+                    if (!content) {
+                        return null;
+                    }
+
                     const { metadata, content: markdownContent } = parseFrontmatter(content);
                     const articleId = `${currentVolume}-${folder}`;
                     const folderPath = `${basePath}/${folder}`;
@@ -3750,8 +3764,10 @@
                         contributorIds.add(metadata.author_id);
                     }
                     return { html: renderContribution(metadata, markdownContent, articleId, folderPath), folder };
+                } catch (error) {
+                    console.error(`Failed to render contribution ${folder}:`, error);
+                    return null;
                 }
-                return null;
             });
 
             const results = await Promise.all(loadPromises);
@@ -3980,14 +3996,20 @@
             const foldersToLoad = bestPracticeFolders.slice(loadedBestPractices, endIndex);
 
             const loadPromises = foldersToLoad.map(async (folder) => {
-                const content = await loadMarkdown(`${basePath}/${folder}/index.md`);
-                if (content) {
+                try {
+                    const content = await loadMarkdown(`${basePath}/${folder}/index.md`);
+                    if (!content) {
+                        return null;
+                    }
+
                     const { metadata, content: markdownContent } = parseFrontmatter(content);
                     const articleId = `bp-${currentBestPracticesVolume}-${folder}`;
                     const folderPath = `${basePath}/${folder}`;
                     return { html: renderBestPractice(metadata, markdownContent, articleId, folderPath), folder };
+                } catch (error) {
+                    console.error(`Failed to render best practice ${folder}:`, error);
+                    return null;
                 }
-                return null;
             });
 
             const results = await Promise.all(loadPromises);
@@ -5099,9 +5121,44 @@
         async function exportAsImage() {
             const exportBtn = document.querySelector('.export-button');
             const exportOverlay = document.getElementById('export-overlay');
+            const mainContent = document.querySelector('.main-content');
+            const exportUtils = window.TechRadarExport;
+
+            if (!exportBtn || !exportOverlay || !mainContent || !exportUtils) {
+                console.error('Export failed: required export elements are missing');
+                return;
+            }
+
             const originalText = exportBtn.innerHTML;
+            const originalStyles = {
+                body: document.body.style.cssText,
+                mainContent: mainContent.style.cssText
+            };
+            const elementsToHide = [
+                document.querySelector('.sidebar'),
+                document.querySelector('.mobile-menu-toggle'),
+                document.querySelector('.export-button'),
+                document.querySelector('.submit-button')
+            ].filter(Boolean).map(el => ({ el, display: el.style.display }));
+            const trendingItems = Array.from(document.querySelectorAll('.trending-item.expandable'));
+            const contributionCards = Array.from(document.querySelectorAll('.contribution-card'));
+            const trendingStates = trendingItems.map(item => item.classList.contains('expanded'));
+            const cardStates = contributionCards.map(card => card.classList.contains('expanded'));
+            const filename = exportUtils.getExportFilename(window.location.search);
+            let exportStarted = false;
+            let saveCancelled = false;
+            let exportSucceeded = false;
 
             try {
+                // Chrome may block async anchor downloads after rendering, so reserve the save target while the user gesture is still active.
+                const saveTarget = await exportUtils.prepareExportSave(filename, window);
+                if (saveTarget.cancelled) {
+                    saveCancelled = true;
+                    return;
+                }
+
+                exportStarted = true;
+
                 // Show overlay to prevent interaction
                 exportOverlay.classList.add('active');
                 document.body.style.overflow = 'hidden';
@@ -5110,34 +5167,17 @@
                 exportBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Exporting...</span>';
                 exportBtn.disabled = true;
 
-                // Collapse all trending items and contribution cards for cleaner export
-                const trendingItems = document.querySelectorAll('.trending-item.expandable');
-                const contributionCards = document.querySelectorAll('.contribution-card');
-
-                // Store original states
-                const trendingStates = [];
-                const cardStates = [];
-
                 trendingItems.forEach(item => {
-                    trendingStates.push(item.classList.contains('expanded'));
                     item.classList.remove('expanded');  // Collapse for export
                 });
 
                 contributionCards.forEach(card => {
-                    cardStates.push(card.classList.contains('expanded'));
                     card.classList.remove('expanded');  // Collapse for export
                 });
 
                 // Hide elements that shouldn't be in the export
-                const elementsToHide = [
-                    document.querySelector('.sidebar'),
-                    document.querySelector('.mobile-menu-toggle'),
-                    document.querySelector('.export-button'),
-                    document.querySelector('.submit-button')
-                ];
-
-                elementsToHide.forEach(el => {
-                    if (el) el.style.display = 'none';
+                elementsToHide.forEach(({ el }) => {
+                    el.style.display = 'none';
                 });
 
                 // Wait for animations to complete
@@ -5149,15 +5189,6 @@
 
                 // Add class to disable selection styling during export
                 document.body.classList.add('exporting');
-
-                // Get the main content element
-                const mainContent = document.querySelector('.main-content');
-
-                // Save original styles
-                const originalStyles = {
-                    body: document.body.style.cssText,
-                    mainContent: mainContent.style.cssText
-                };
 
                 // Apply export-specific styles directly to DOM (simpler than onclone)
                 document.body.style.background = '#0a0a0a';
@@ -5176,85 +5207,51 @@
                 const container = mainContent.querySelector('.container');
                 const contentWidth = container ? Math.min(container.offsetWidth + 48, mainContent.scrollWidth) : mainContent.scrollWidth;
 
+                if (typeof html2canvas !== 'function') {
+                    throw new Error('Image export library failed to load');
+                }
+
                 // Use html2canvas with specific width to avoid black borders
                 const canvas = await html2canvas(mainContent, {
                     backgroundColor: '#0a0a0a',
                     scale: 2,
                     useCORS: true,
-                    allowTaint: true,
+                    allowTaint: false,
                     logging: false,
                     removeContainer: true,
                     width: contentWidth,
                     windowWidth: contentWidth
                 });
 
-                // Restore original styles
-                document.body.style.cssText = originalStyles.body;
-                mainContent.style.cssText = originalStyles.mainContent;
-
-                // Restore hidden elements
-                elementsToHide.forEach(el => {
-                    if (el) el.style.display = '';
-                });
-
-                // Remove exporting class
-                document.body.classList.remove('exporting');
-
-                // Restore original states (keep collapsed as user prefers)
-                trendingItems.forEach((item, i) => {
-                    if (trendingStates[i]) item.classList.add('expanded');
-                });
-
-                contributionCards.forEach((card, i) => {
-                    if (cardStates[i]) card.classList.add('expanded');
-                });
-
-                // Convert canvas to blob and download (more reliable than data URL for large images)
-                const vol = new URLSearchParams(window.location.search).get('vol') || '001';
-                const filename = `tech-radar-vol-${vol}.png`;
-
-                canvas.toBlob((blob) => {
-                    if (!blob) {
-                        throw new Error('Failed to create image blob');
-                    }
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.download = filename;
-                    link.href = url;
-                    link.style.display = 'none';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    // Clean up the blob URL after a short delay
-                    setTimeout(() => URL.revokeObjectURL(url), 1000);
-                }, 'image/png');
-
-                // Hide overlay and show success
-                exportOverlay.classList.remove('active');
-                document.body.style.overflow = '';
-                exportBtn.innerHTML = '<span class="btn-icon">✅</span><span>Done!</span>';
-                setTimeout(() => {
-                    exportBtn.innerHTML = originalText;
-                    exportBtn.disabled = false;
-                }, 2000);
+                const blob = await exportUtils.canvasToPngBlob(canvas);
+                await exportUtils.savePngBlob(blob, filename, saveTarget);
+                exportSucceeded = true;
 
             } catch (error) {
                 console.error('Export failed:', error);
-                // Restore everything on error
+            } finally {
+                document.body.style.cssText = originalStyles.body;
+                mainContent.style.cssText = originalStyles.mainContent;
                 document.body.classList.remove('exporting');
-                const elementsToShow = [
-                    document.querySelector('.sidebar'),
-                    document.querySelector('.mobile-menu-toggle'),
-                    document.querySelector('.export-button'),
-                    document.querySelector('.submit-button')
-                ];
-                elementsToShow.forEach(el => {
-                    if (el) el.style.display = '';
+                elementsToHide.forEach(({ el, display }) => {
+                    el.style.display = display;
                 });
-
+                trendingItems.forEach((item, i) => {
+                    if (trendingStates[i]) item.classList.add('expanded');
+                });
+                contributionCards.forEach((card, i) => {
+                    if (cardStates[i]) card.classList.add('expanded');
+                });
                 exportOverlay.classList.remove('active');
-                document.body.style.overflow = '';
-                exportBtn.innerHTML = '<span class="btn-icon">❌</span><span>Failed</span>';
+                if (!exportStarted && saveCancelled) {
+                    exportBtn.innerHTML = originalText;
+                    exportBtn.disabled = false;
+                    return;
+                }
+
+                exportBtn.innerHTML = exportSucceeded
+                    ? '<span class="btn-icon">✅</span><span>Done!</span>'
+                    : '<span class="btn-icon">❌</span><span>Failed</span>';
                 setTimeout(() => {
                     exportBtn.innerHTML = originalText;
                     exportBtn.disabled = false;

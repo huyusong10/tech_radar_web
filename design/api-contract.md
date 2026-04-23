@@ -21,7 +21,7 @@
 |------|------|------|----------|
 | `GET /api/likes` | 无 | `{ [articleId]: likes }` | 无特殊失败语义 |
 | `GET /api/user-likes` | 客户端身份 | `{ likedArticles: string[] }` | 无法识别客户端时返回空数组 |
-| `POST /api/likes/:articleId` | `articleId` | `{ articleId, likes, userLiked }` | 身份不可识别返回 `400`；标识非法返回 `400`；文章不存在返回 `404`；资源忙返回 `503`；限流返回 `429` |
+| `POST /api/likes/:articleId` | `articleId` | `{ articleId, likes, userLiked }` | 身份不可识别返回 `400`；标识非法返回 `400`；已发布文章不存在返回 `404`；资源忙返回 `503`；限流返回 `429` |
 | `GET /api/views/:vol` | `vol` | `{ vol, views }` | 无特殊失败语义 |
 | `POST /api/views/:vol` | `vol` | `{ vol, views }` | 卷期非法返回 `400`；资源忙返回 `503`；限流返回 `429` |
 
@@ -60,8 +60,8 @@
 |------|------|
 | `contributionRanking[]` | `{ authorId, count, rank }` |
 | `likeRanking[]` | `{ authorId, count, rank }` |
-| `totalContributions` | 投稿总数 |
-| `totalLikes` | 点赞总数 |
+| `totalContributions` | 已发布投稿文章总数；多作者文章只计为 1 篇 |
+| `totalLikes` | 已发布投稿文章真实点赞总数；多作者文章点赞只计为文章自身点赞数 |
 | `totalViews` | 阅读总数 |
 | `totalAuthors` | 出现在已发布投稿中的作者数 |
 | `totalVolumes` | 已发布卷期数 |
@@ -73,6 +73,7 @@
 
 - 用户点赞状态以客户端身份为边界，同一身份对同一 `articleId` 进行切换操作时必须返回最新状态。
 - `/api/user-likes` 是前端恢复点赞按钮状态的唯一可信来源。
+- 点赞写入仅面向已发布投稿文章；草稿模式请求不记录持久化点赞。
 - 前端不应基于文案或 DOM 结构推导接口状态，只能基于接口字段。
 - 仅当显式启用受信任代理配置时，服务端才会采纳转发头中的客户端身份信息。
 

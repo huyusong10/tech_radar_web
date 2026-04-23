@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
 const { after, before, describe, test } = require('node:test');
+const fs = require('node:fs/promises');
+const path = require('node:path');
 
-const { createServerHarness, readJson } = require('./helpers/server-harness');
+const { createContentsSandbox, createServerHarness, readJson } = require('./helpers/server-harness');
 
 describe('API contract', () => {
     let harness;
@@ -209,6 +211,49 @@ describe('API contract', () => {
         assert.equal(unlikedBody.userLiked, false);
     });
 
+    test('does not record likes for draft-only articles through the published endpoint', async () => {
+        const sandbox = await createContentsSandbox();
+        let isolatedHarness;
+
+        try {
+            const draftArticleDir = path.join(
+                sandbox.contentsDir,
+                'draft',
+                'vol-999',
+                'contributions',
+                'draft-only'
+            );
+            await fs.mkdir(draftArticleDir, { recursive: true });
+            await fs.writeFile(
+                path.join(sandbox.contentsDir, 'draft', 'vol-999', 'radar.md'),
+                '---\nvol: "999"\ndate: "2099.01.01"\n---\n',
+                'utf8'
+            );
+            await fs.writeFile(
+                path.join(draftArticleDir, 'index.md'),
+                '---\nauthor_id: "huyusong"\ntitle: "Draft Only"\ndescription: "Draft only article"\n---\nbody\n',
+                'utf8'
+            );
+
+            isolatedHarness = await createServerHarness({
+                contentsDir: sandbox.contentsDir,
+                sandboxRoot: sandbox.sandboxRoot
+            });
+
+            const likeResponse = await isolatedHarness.request('/api/likes/999-draft-only', { method: 'POST' });
+            assert.equal(likeResponse.status, 404);
+
+            const likes = await readJson(await isolatedHarness.request('/api/likes'));
+            assert.equal(likes['999-draft-only'], undefined);
+        } finally {
+            if (isolatedHarness) {
+                await isolatedHarness.cleanup();
+            } else {
+                await fs.rm(sandbox.sandboxRoot, { recursive: true, force: true });
+            }
+        }
+    });
+
     test('ignores spoofed forwarding headers when trust proxy is disabled', async () => {
         const isolatedHarness = await createServerHarness();
 
@@ -256,6 +301,19 @@ describe('API contract', () => {
         assert.equal(typeof body.totalViews, 'number');
         assert.equal(typeof body.totalAuthors, 'number');
         assert.equal(typeof body.totalVolumes, 'number');
+
+        const volumes = await readJson(await harness.request('/api/volumes'));
+        let contributionCount = 0;
+        for (const volume of volumes) {
+            const folders = await readJson(await harness.request(`/api/contributions/${volume.vol}`));
+            contributionCount += folders.length;
+        }
+
+        const likes = await readJson(await harness.request('/api/likes'));
+        const totalLikes = Object.values(likes).reduce((sum, value) => sum + value, 0);
+
+        assert.equal(body.totalContributions, contributionCount);
+        assert.equal(body.totalLikes, totalLikes);
 
         body.contributionRanking.forEach(item => {
             assert.equal(typeof item.authorId, 'string');

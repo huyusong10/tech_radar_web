@@ -269,9 +269,10 @@ function markShardDirty(articleId) {
 
 async function persistData() {
     if (viewsDirty) {
+        const viewsSnapshot = { ...viewsData };
         try {
-            await writeQueue.scheduleWrite(VIEWS_FILE, viewsData);
-            viewsDirty = false;
+            await writeQueue.scheduleWrite(VIEWS_FILE, viewsSnapshot);
+            viewsDirty = JSON.stringify(viewsData) !== JSON.stringify(viewsSnapshot);
         } catch (error) {
             console.error('Failed to persist views:', error);
         }
@@ -927,26 +928,20 @@ app.get('/api/user-likes', rateLimitMiddleware('read'), (req, res) => {
 });
 
 // Helper to validate article existence
-async function validateArticleExists(articleId) {
+async function validateArticleExists(articleId, options = {}) {
     // articleId format: "vol-folderName" e.g., "001-05-architecture-diagram"
     const match = articleId.match(/^(\d+)-(.+)$/);
     if (!match) return false;
 
     const [, vol, folderName] = match;
-    const articlePath = path.join(PUBLISHED_DIR, `vol-${vol}`, 'contributions', folderName, 'index.md');
+    const baseDir = options.isDraft ? DRAFT_DIR : PUBLISHED_DIR;
+    const articlePath = path.join(baseDir, `vol-${vol}`, 'contributions', folderName, 'index.md');
 
     try {
         await fsPromises.access(articlePath);
         return true;
     } catch {
-        // Also check draft directory
-        const draftPath = path.join(DRAFT_DIR, `vol-${vol}`, 'contributions', folderName, 'index.md');
-        try {
-            await fsPromises.access(draftPath);
-            return true;
-        } catch {
-            return false;
-        }
+        return false;
     }
 }
 
@@ -989,7 +984,7 @@ app.post('/api/likes/:articleId', rateLimitMiddleware('write'), async (req, res)
     }
 
     // Validate that the article actually exists
-    const articleExists = await validateArticleExists(articleId);
+    const articleExists = await validateArticleExists(articleId, { isDraft });
     if (!articleExists) {
         return res.status(404).json({ error: 'Article not found' });
     }
@@ -1105,6 +1100,8 @@ app.get('/api/stats', rateLimitMiddleware('read'), async (req, res) => {
 
             // Aggregate stats per author
             const authorStats = {}; // { authorId: { contributions: 0, likes: 0 } }
+            let totalContributions = 0;
+            let totalLikes = 0;
 
             for (const vol of volumes) {
                 const contributionsDir = path.join(volumesDir, `vol-${vol}`, 'contributions');
@@ -1124,6 +1121,8 @@ app.get('/api/stats', rateLimitMiddleware('read'), async (req, res) => {
                                 // Get likes for this article
                                 const articleId = `${vol}-${dir.name}`;
                                 const articleLikes = likesData[articleId] || 0;
+                                totalContributions += 1;
+                                totalLikes += articleLikes;
 
                                 // Add stats for each author
                                 for (const authorId of authorIds) {
@@ -1169,8 +1168,6 @@ app.get('/api/stats', rateLimitMiddleware('read'), async (req, res) => {
 
             // Calculate totals
             const totalViews = Object.values(viewsData).reduce((sum, v) => sum + v, 0);
-            const totalContributions = contributionRanking.reduce((sum, r) => sum + r.count, 0);
-            const totalLikes = likeRanking.reduce((sum, r) => sum + r.count, 0);
             const totalAuthors = Object.keys(authorStats).length;
             const totalVolumes = volumes.length;
 
