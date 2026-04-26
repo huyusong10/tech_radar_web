@@ -9,6 +9,7 @@ build/
 
 # Runtime data (likes and views are stored in contents/data/)
 contents/data/
+contents/admin/
 
 # Auto-generated archive files
 contents/published/archive.json

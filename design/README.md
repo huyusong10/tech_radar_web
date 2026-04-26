@@ -9,6 +9,7 @@
 | `system-overview.md` | 定义系统模块职责、关键数据流与依赖边界 | 模块职责、主流程、边界变化时 |
 | `content-contract.md` | 定义 `contents/` 目录与 Markdown/JSON 数据契约 | 内容目录、数据模型、文章标识规则变化时 |
 | `api-contract.md` | 定义页面可依赖的 HTTP/SSE/静态资源契约 | 对外接口、返回结构、错误语义变化时 |
+| `admin-contract.md` | 定义后台管理、角色权限、草稿审核与发布转正契约 | 后台流程、权限、草稿状态或发布语义变化时 |
 
 ## 维护规则
 

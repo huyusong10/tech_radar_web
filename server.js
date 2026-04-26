@@ -2,6 +2,8 @@ const express = require('express');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
 const path = require('path');
+const crypto = require('crypto');
+const { execFile } = require('child_process');
 const yaml = require('js-yaml');
 const chokidar = require('chokidar');
 
@@ -39,6 +41,14 @@ const SHARED_DIR = path.join(CONTENTS_DIR, 'shared');
 const ASSETS_DIR = path.join(CONTENTS_DIR, 'assets');
 const PUBLIC_ASSETS_DIR = path.join(__dirname, 'assets');
 
+// Admin private data directory inside contents
+const ADMIN_DIR = path.join(CONTENTS_DIR, 'admin');
+const ADMIN_USERS_FILE = path.join(ADMIN_DIR, 'users.json');
+const ADMIN_DRAFTS_DIR = path.join(ADMIN_DIR, 'drafts');
+const ADMIN_REVIEWS_DIR = path.join(ADMIN_DIR, 'reviews');
+const ADMIN_UNPUBLISHED_DIR = path.join(ADMIN_DIR, 'unpublished');
+const ADMIN_AUDIT_LOG_FILE = path.join(ADMIN_DIR, 'audit-log.json');
+
 // Data directory inside contents (persists with content across code upgrades)
 const DATA_DIR = path.join(CONTENTS_DIR, 'data');
 const VIEWS_FILE = path.join(DATA_DIR, 'views.json');
@@ -67,6 +77,12 @@ const cache = new Cache();
 const mutex = new AsyncMutex();
 const rateLimiter = new RateLimiter(createRateLimitConfig({ loadTestMode: LOAD_TEST_MODE }));
 const writeQueue = new WriteQueue();
+
+const ADMIN_ROLES = ['tech_reviewer', 'editor', 'chief_editor'];
+const ADMIN_SESSIONS = new Map();
+const ADMIN_COOKIE_NAME = 'tech_radar_admin_session';
+const ADMIN_DRAFT_STATUSES = ['editing', 'review_requested', 'changes_requested', 'approved', 'published', 'rejected'];
+const SUBMISSION_STATUSES = ['submitted', 'in_editing', 'in_technical_review', 'changes_requested', 'approved', 'published', 'rejected'];
 
 
 // ==================== ASYNC FILE OPERATIONS ====================
@@ -424,10 +440,1068 @@ function getIPLikedArticles(ip) {
     return likedArticles;
 }
 
+// ==================== ADMIN UTILITIES ====================
+
+async function readJsonFile(filePath, fallback) {
+    try {
+        return JSON.parse(await fsPromises.readFile(filePath, 'utf8'));
+    } catch {
+        return fallback;
+    }
+}
+
+async function writeJsonFile(filePath, data) {
+    await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
+    await fsPromises.writeFile(filePath, JSON.stringify(data, null, 2));
+}
+
+function hashAdminPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+    const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
+    return `scrypt:${salt}:${hash}`;
+}
+
+function verifyAdminPassword(password, passwordHash) {
+    const [scheme, salt, expectedHash] = String(passwordHash || '').split(':');
+    if (scheme !== 'scrypt' || !salt || !expectedHash) return false;
+
+    const actualHash = crypto.scryptSync(String(password), salt, 64);
+    const expected = Buffer.from(expectedHash, 'hex');
+    return expected.length === actualHash.length && crypto.timingSafeEqual(expected, actualHash);
+}
+
+function createAccessToken() {
+    return crypto.randomBytes(24).toString('base64url');
+}
+
+function hashAccessToken(token) {
+    return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function verifyAccessToken(token, tokenHash) {
+    const actual = Buffer.from(hashAccessToken(token), 'hex');
+    const expected = Buffer.from(String(tokenHash || ''), 'hex');
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+async function ensureAdminDir() {
+    await fsPromises.mkdir(ADMIN_DRAFTS_DIR, { recursive: true });
+    await fsPromises.mkdir(ADMIN_REVIEWS_DIR, { recursive: true });
+    await fsPromises.mkdir(ADMIN_UNPUBLISHED_DIR, { recursive: true });
+
+    if (!fs.existsSync(ADMIN_USERS_FILE)) {
+        const username = process.env.ADMIN_BOOTSTRAP_USERNAME || 'admin';
+        const password = process.env.ADMIN_BOOTSTRAP_PASSWORD || 'admin';
+        const role = ADMIN_ROLES.includes(process.env.ADMIN_BOOTSTRAP_ROLE)
+            ? process.env.ADMIN_BOOTSTRAP_ROLE
+            : 'chief_editor';
+        const user = {
+            username,
+            displayName: process.env.ADMIN_BOOTSTRAP_DISPLAY_NAME || 'Chief Editor',
+            role,
+            passwordHash: hashAdminPassword(password),
+            createdAt: new Date().toISOString()
+        };
+        await writeJsonFile(ADMIN_USERS_FILE, { users: [user] });
+        console.log(`Admin user initialized: ${username}`);
+    }
+
+    if (!fs.existsSync(ADMIN_AUDIT_LOG_FILE)) {
+        await writeJsonFile(ADMIN_AUDIT_LOG_FILE, []);
+    }
+}
+
+function publicAdminUser(user) {
+    if (!user) return null;
+    return {
+        username: user.username,
+        displayName: user.displayName || user.username,
+        role: user.role,
+        disabled: user.disabled === true
+    };
+}
+
+async function readAdminUsers() {
+    const data = await readJsonFile(ADMIN_USERS_FILE, { users: [] });
+    return Array.isArray(data.users) ? data.users : [];
+}
+
+async function writeAdminUsers(users) {
+    await writeJsonFile(ADMIN_USERS_FILE, { users });
+}
+
+function normalizeAdminUserInput(input, existingUsername) {
+    const username = sanitizeSlug(existingUsername || input.username, '');
+    if (!username) {
+        throw new Error('Username is required');
+    }
+    if (!ADMIN_ROLES.includes(input.role)) {
+        throw new Error('Admin role is invalid');
+    }
+    return {
+        username,
+        displayName: input.displayName || username,
+        role: input.role
+    };
+}
+
+async function createOrUpdateAdminUser(userInput, existingUsername) {
+    const users = await readAdminUsers();
+    const user = normalizeAdminUserInput(userInput, existingUsername);
+    const existingIndex = users.findIndex(item => item.username === user.username);
+
+    if (existingUsername && existingIndex === -1) {
+        return { error: 'Admin user not found' };
+    }
+    if (!existingUsername && existingIndex !== -1) {
+        return { error: 'Admin user already exists' };
+    }
+    if (!existingUsername && !userInput.password) {
+        throw new Error('Password is required');
+    }
+
+    if (existingIndex >= 0) {
+        users[existingIndex] = {
+            ...users[existingIndex],
+            ...user,
+            ...(userInput.password ? { passwordHash: hashAdminPassword(userInput.password) } : {}),
+            disabled: userInput.disabled === true,
+            updatedAt: new Date().toISOString()
+        };
+    } else {
+        users.push({
+            ...user,
+            passwordHash: hashAdminPassword(userInput.password),
+            disabled: userInput.disabled === true,
+            createdAt: new Date().toISOString()
+        });
+    }
+
+    await writeAdminUsers(users);
+    const savedUser = existingIndex >= 0 ? users[existingIndex] : users[users.length - 1];
+    return { user: publicAdminUser(savedUser) };
+}
+
+async function disableAdminUser(username) {
+    const users = await readAdminUsers();
+    const index = users.findIndex(item => item.username === username);
+    if (index === -1) {
+        return { error: 'Admin user not found' };
+    }
+    users[index] = {
+        ...users[index],
+        disabled: true,
+        updatedAt: new Date().toISOString()
+    };
+    await writeAdminUsers(users);
+    return { user: publicAdminUser(users[index]) };
+}
+
+function parseCookies(req) {
+    const cookies = {};
+    const rawCookie = req.headers.cookie || '';
+    rawCookie.split(';').forEach(part => {
+        const [name, ...valueParts] = part.trim().split('=');
+        if (name) cookies[name] = decodeURIComponent(valueParts.join('=') || '');
+    });
+    return cookies;
+}
+
+function createAdminSession(user) {
+    const token = crypto.randomBytes(32).toString('hex');
+    ADMIN_SESSIONS.set(token, {
+        user: publicAdminUser(user),
+        createdAt: Date.now()
+    });
+    return token;
+}
+
+function setAdminSessionCookie(res, token) {
+    res.setHeader('Set-Cookie', `${ADMIN_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`);
+}
+
+function clearAdminSessionCookie(res) {
+    res.setHeader('Set-Cookie', `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+}
+
+function getAdminSession(req) {
+    const token = parseCookies(req)[ADMIN_COOKIE_NAME];
+    if (!token) return null;
+    const session = ADMIN_SESSIONS.get(token);
+    return session ? { token, ...session } : null;
+}
+
+function adminPermissions(role) {
+    return {
+        canImportDraft: role === 'editor' || role === 'chief_editor',
+        canEditDraft: role === 'editor' || role === 'chief_editor',
+        canRequestReview: role === 'editor' || role === 'chief_editor',
+        canReview: role === 'tech_reviewer' || role === 'chief_editor',
+        canPublish: role === 'chief_editor',
+        canDeleteDraft: role === 'chief_editor',
+        canListAuthors: role === 'editor' || role === 'chief_editor',
+        canManageAuthors: role === 'editor' || role === 'chief_editor',
+        canManageVolumes: role === 'chief_editor',
+        canManageUsers: role === 'chief_editor',
+        canRunLint: role === 'editor' || role === 'chief_editor' || role === 'tech_reviewer',
+        canRejectDraft: role === 'editor' || role === 'chief_editor',
+        canEditPublished: role === 'editor' || role === 'chief_editor',
+        canUnpublish: role === 'chief_editor',
+        canViewAuditLog: role === 'chief_editor'
+    };
+}
+
+function requireAdmin(req, res, next) {
+    const session = getAdminSession(req);
+    if (!session) {
+        return res.status(401).json({ error: 'Admin login required' });
+    }
+    req.adminSession = session;
+    req.adminUser = session.user;
+    next();
+}
+
+function requireAdminPermission(permission) {
+    return (req, res, next) => {
+        const permissions = adminPermissions(req.adminUser?.role);
+        if (!permissions[permission]) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        next();
+    };
+}
+
+function sanitizeSlug(value, fallback = 'draft') {
+    const slug = String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+    return slug || fallback;
+}
+
+function normalizeVolumeId(value) {
+    const vol = String(value || '').trim();
+    if (!/^\d{3,10}$/.test(vol)) return null;
+    return vol;
+}
+
+function assertInside(baseDir, targetPath) {
+    const resolvedBase = path.resolve(baseDir);
+    const resolvedTarget = path.resolve(targetPath);
+    if (resolvedTarget !== resolvedBase && !resolvedTarget.startsWith(resolvedBase + path.sep)) {
+        throw new Error('Path escapes allowed directory');
+    }
+    return resolvedTarget;
+}
+
+function safeRelativePath(rawPath) {
+    if (!rawPath || typeof rawPath !== 'string') {
+        throw new Error('File path is required');
+    }
+    const normalized = path.posix.normalize(rawPath.replace(/\\/g, '/').trim());
+    if (
+        normalized === '.' ||
+        normalized.startsWith('../') ||
+        normalized.includes('/../') ||
+        normalized.startsWith('/') ||
+        normalized.length > 200
+    ) {
+        throw new Error(`Invalid file path: ${rawPath}`);
+    }
+    if (normalized === 'meta.json') {
+        throw new Error('meta.json is reserved');
+    }
+    return normalized;
+}
+
+function parseMarkdownDocument(raw) {
+    const normalized = String(raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const match = normalized.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+    if (!match) {
+        return { metadata: {}, body: normalized };
+    }
+    try {
+        return {
+            metadata: yaml.load(match[1]) || {},
+            body: match[2] || ''
+        };
+    } catch (error) {
+        const parseError = new Error(`Invalid YAML frontmatter: ${error.message}`);
+        parseError.statusCode = 400;
+        throw parseError;
+    }
+}
+
+function stringifyMarkdownDocument(metadata, body) {
+    return `---\n${yaml.dump(metadata || {}, { lineWidth: -1 })}---\n${body || ''}`;
+}
+
+function submissionStatusForDraft(status) {
+    const map = {
+        editing: 'in_editing',
+        review_requested: 'in_technical_review',
+        changes_requested: 'changes_requested',
+        approved: 'approved',
+        published: 'published',
+        rejected: 'rejected'
+    };
+    return map[status] || 'submitted';
+}
+
+function normalizeSubmitter(input = {}) {
+    return {
+        name: String(input.name || '').trim(),
+        team: String(input.team || '').trim(),
+        role: String(input.role || '').trim(),
+        contact: String(input.contact || '').trim(),
+        authorId: String(input.authorId || '').trim()
+    };
+}
+
+function validateSubmitter(submitter, metadata) {
+    const errors = [];
+    const hasKnownAuthor = typeof metadata.author_id === 'string' && metadata.author_id.trim().length > 0;
+    if (hasKnownAuthor) {
+        return errors;
+    }
+    if (!submitter.name) {
+        errors.push('submitter name is required');
+    }
+    return errors;
+}
+
+function publicSubmissionDetail(detail, token = '') {
+    const reviewHistory = detail.review?.history || [];
+    return {
+        submissionId: detail.meta.draftId,
+        status: detail.meta.submissionStatus || submissionStatusForDraft(detail.meta.status),
+        draftStatus: detail.meta.status,
+        revision: detail.meta.revision || 1,
+        submittedAt: detail.meta.submittedAt,
+        updatedAt: detail.meta.updatedAt,
+        publishedArticleId: detail.meta.publishedArticleId || '',
+        submitter: detail.meta.submitter || null,
+        indexContent: detail.indexContent,
+        files: detail.files.map(file => ({
+            ...file,
+            assetUrl: file.path === 'index.md'
+                ? null
+                : `/api/submissions/${encodeURIComponent(detail.meta.draftId)}/assets/${file.path}?token=${encodeURIComponent(token)}`
+        })),
+        review: {
+            history: reviewHistory.map(entry => ({
+                action: entry.action,
+                role: entry.role,
+                comment: entry.comment || '',
+                at: entry.at
+            }))
+        }
+    };
+}
+
+async function requireSubmissionDetail(draftId, token) {
+    const detail = await readDraftDetail(draftId);
+    if (!detail || detail.meta.source !== 'submission') {
+        return { status: 404, body: { error: 'Submission not found' } };
+    }
+    if (!token || !verifyAccessToken(token, detail.meta.submitterTokenHash)) {
+        return { status: 403, body: { error: 'Invalid submission token' } };
+    }
+    return { detail };
+}
+
+function defaultRadarContent(vol) {
+    const now = new Date();
+    const date = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`;
+    return `---\nvol: "${vol}"\ndate: "${date}"\neditors: []\n---\n\n## Trending\n\n`;
+}
+
+function validateRadarContent(vol, radarContent) {
+    const document = parseMarkdownDocument(radarContent);
+    if (document.metadata.vol !== vol) {
+        throw new Error('radar vol must match target volume');
+    }
+    if (typeof document.metadata.date !== 'string' || document.metadata.date.length === 0) {
+        throw new Error('radar date is required');
+    }
+    if (document.metadata.editors !== undefined && !Array.isArray(document.metadata.editors)) {
+        throw new Error('radar editors must be an array');
+    }
+}
+
+async function listAdminVolumes() {
+    if (!fs.existsSync(PUBLISHED_DIR)) return [];
+    const entries = await fsPromises.readdir(PUBLISHED_DIR, { withFileTypes: true });
+    const volumes = [];
+    for (const entry of entries) {
+        if (!entry.isDirectory() || !entry.name.startsWith('vol-')) continue;
+        const vol = entry.name.replace(/^vol-/, '');
+        const radarPath = path.join(PUBLISHED_DIR, entry.name, 'radar.md');
+        const radarContent = fs.existsSync(radarPath)
+            ? await fsPromises.readFile(radarPath, 'utf8')
+            : defaultRadarContent(vol);
+        const contributionDir = path.join(PUBLISHED_DIR, entry.name, 'contributions');
+        const contributions = fs.existsSync(contributionDir)
+            ? (await fsPromises.readdir(contributionDir, { withFileTypes: true })).filter(item => item.isDirectory()).length
+            : 0;
+        volumes.push({ vol, radarContent, contributions });
+    }
+    return volumes.sort((a, b) => b.vol.localeCompare(a.vol));
+}
+
+async function createOrUpdateVolume(vol, radarContent, options = {}) {
+    const normalizedVol = normalizeVolumeId(vol);
+    if (!normalizedVol) {
+        throw new Error('Invalid volume id');
+    }
+
+    const volumeDir = assertInside(PUBLISHED_DIR, path.join(PUBLISHED_DIR, `vol-${normalizedVol}`));
+    if (options.create && fs.existsSync(volumeDir)) {
+        return { status: 409, body: { error: 'Volume already exists' } };
+    }
+    if (!options.create && !fs.existsSync(volumeDir)) {
+        return { status: 404, body: { error: 'Volume not found' } };
+    }
+
+    const content = radarContent || defaultRadarContent(normalizedVol);
+    validateRadarContent(normalizedVol, content);
+    await fsPromises.mkdir(path.join(volumeDir, 'contributions'), { recursive: true });
+    await fsPromises.writeFile(path.join(volumeDir, 'radar.md'), content, 'utf8');
+    await generateArchiveJson(false);
+    cache.invalidatePattern('volumes');
+    cache.invalidatePattern('search:');
+    cache.invalidate('stats');
+    notifyHotReload('admin-volume', volumeDir);
+    return { status: options.create ? 201 : 200, body: { vol: normalizedVol, radarContent: content } };
+}
+
+function getDraftDir(draftId) {
+    return assertInside(ADMIN_DRAFTS_DIR, path.join(ADMIN_DRAFTS_DIR, draftId));
+}
+
+async function collectFiles(rootDir, options = {}) {
+    const files = [];
+    async function walk(dir) {
+        const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            const filePath = path.join(dir, entry.name);
+            const relative = path.relative(rootDir, filePath).replace(/\\/g, '/');
+            if (options.skip && options.skip(relative, entry)) continue;
+            if (entry.isDirectory()) {
+                await walk(filePath);
+            } else if (entry.isFile()) {
+                const stat = await fsPromises.stat(filePath);
+                files.push({ path: relative, size: stat.size });
+            }
+        }
+    }
+    await walk(rootDir);
+    return files.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+async function readDraftDetail(draftId) {
+    const draftDir = getDraftDir(draftId);
+    const metaPath = path.join(draftDir, 'meta.json');
+    const indexPath = path.join(draftDir, 'index.md');
+
+    if (!fs.existsSync(metaPath)) {
+        return null;
+    }
+
+    const meta = await readJsonFile(metaPath, null);
+    const indexContent = fs.existsSync(indexPath)
+        ? await fsPromises.readFile(indexPath, 'utf8')
+        : '';
+    const files = await collectFiles(draftDir, {
+        skip: relative => relative === 'meta.json'
+    });
+    const review = await readJsonFile(path.join(ADMIN_REVIEWS_DIR, `${draftId}.json`), {
+        draftId,
+        history: []
+    });
+
+    return {
+        meta,
+        indexContent,
+        files: files.map(file => ({
+            ...file,
+            assetUrl: file.path === 'index.md' ? null : `/api/admin/drafts/${encodeURIComponent(draftId)}/assets/${file.path}`
+        })),
+        review
+    };
+}
+
+async function listAdminDrafts() {
+    if (!fs.existsSync(ADMIN_DRAFTS_DIR)) return [];
+    const entries = await fsPromises.readdir(ADMIN_DRAFTS_DIR, { withFileTypes: true });
+    const drafts = [];
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const detail = await readDraftDetail(entry.name);
+        if (detail?.meta) drafts.push(detail.meta);
+    }
+    return drafts.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+function validateDraftMetadata(metadata, options = {}) {
+    const errors = [];
+    if (typeof metadata.title !== 'string' || metadata.title.trim().length === 0) {
+        errors.push('title is required');
+    }
+    if (typeof metadata.description !== 'string' || metadata.description.trim().length === 0) {
+        errors.push('description is required');
+    }
+
+    const hasAuthorId = typeof metadata.author_id === 'string' && metadata.author_id.trim().length > 0;
+    const hasAuthorIds = Array.isArray(metadata.author_ids);
+    const hasTemporaryAuthor = metadata.author && typeof metadata.author === 'object';
+    const authorShapeCount = [hasAuthorId, hasAuthorIds, hasTemporaryAuthor].filter(Boolean).length;
+
+    if (authorShapeCount !== 1) {
+        errors.push('exactly one author shape is required');
+    }
+
+    if (hasAuthorIds && metadata.author_ids.length > 2) {
+        errors.push('author_ids may contain at most 2 authors');
+    }
+
+    if (hasTemporaryAuthor && !options.allowTemporaryAuthor) {
+        errors.push('temporary author must be normalized before publishing');
+    }
+
+    return errors;
+}
+
+async function readAuthorsArray() {
+    const authorsPath = path.join(SHARED_DIR, 'authors.md');
+    try {
+        const content = await fsPromises.readFile(authorsPath, 'utf8');
+        const data = parseYamlFrontmatter(content);
+        return Array.isArray(data.authors) ? data.authors : [];
+    } catch {
+        return [];
+    }
+}
+
+async function writeAuthorsArray(authors) {
+    const authorsPath = path.join(SHARED_DIR, 'authors.md');
+    const content = `---\n${yaml.dump({ authors }, { lineWidth: -1 })}---\n`;
+    await fsPromises.writeFile(authorsPath, content);
+    cache.invalidate('authors');
+    cache.invalidate('stats');
+}
+
+async function appendAuditLog(entry) {
+    const auditLog = await readJsonFile(ADMIN_AUDIT_LOG_FILE, []);
+    auditLog.push({
+        ...entry,
+        at: new Date().toISOString()
+    });
+    await writeJsonFile(ADMIN_AUDIT_LOG_FILE, auditLog);
+}
+
+async function appendReviewHistory(draftId, entry) {
+    const reviewPath = path.join(ADMIN_REVIEWS_DIR, `${draftId}.json`);
+    const review = await readJsonFile(reviewPath, { draftId, history: [] });
+    review.history = Array.isArray(review.history) ? review.history : [];
+    review.history.push({
+        ...entry,
+        at: new Date().toISOString()
+    });
+    await writeJsonFile(reviewPath, review);
+    return review;
+}
+
+async function updateDraftMeta(draftId, patch, operator) {
+    const draftDir = getDraftDir(draftId);
+    const metaPath = path.join(draftDir, 'meta.json');
+    const meta = await readJsonFile(metaPath, null);
+    if (!meta) return null;
+
+    const normalizedPatch = { ...patch };
+    if (
+        meta.source === 'submission' &&
+        normalizedPatch.status &&
+        !normalizedPatch.submissionStatus
+    ) {
+        normalizedPatch.submissionStatus = submissionStatusForDraft(normalizedPatch.status);
+    }
+
+    const updated = {
+        ...meta,
+        ...normalizedPatch,
+        updatedAt: new Date().toISOString(),
+        updatedBy: operator.username
+    };
+    await writeJsonFile(metaPath, updated);
+    return updated;
+}
+
+async function writeDraftFiles(draftDir, files) {
+    let hasIndex = false;
+
+    for (const file of files) {
+        const relative = safeRelativePath(file.path);
+        const target = assertInside(draftDir, path.join(draftDir, relative));
+        await fsPromises.mkdir(path.dirname(target), { recursive: true });
+
+        if (relative === 'index.md') {
+            hasIndex = true;
+        }
+
+        if (file.type === 'base64') {
+            await fsPromises.writeFile(target, Buffer.from(String(file.content || ''), 'base64'));
+        } else if (file.type === 'text') {
+            await fsPromises.writeFile(target, String(file.content || ''), 'utf8');
+        } else {
+            throw new Error(`Unsupported file type for ${relative}`);
+        }
+    }
+
+    return hasIndex;
+}
+
+function normalizeAdminAuthorInput(input, existingId) {
+    const id = sanitizeSlug(existingId || input.id || input.name, '');
+    if (!id) {
+        throw new Error('Author id is required');
+    }
+    if (!input.name || typeof input.name !== 'string') {
+        throw new Error('Author name is required');
+    }
+    return {
+        id,
+        name: input.name,
+        team: input.team || '',
+        role: input.role || '',
+        avatar: input.avatar || ''
+    };
+}
+
+async function saveAuthorAvatar(author, avatarFile) {
+    if (!avatarFile || !avatarFile.content) return author;
+
+    const safeName = safeRelativePath(avatarFile.filename || `${author.id}.png`);
+    const ext = path.extname(safeName).toLowerCase();
+    if (!['.jpg', '.jpeg', '.png', '.webp', '.svg'].includes(ext)) {
+        throw new Error('Unsupported avatar file type');
+    }
+
+    const avatarDir = path.join(ASSETS_DIR, 'images', 'avatars');
+    await fsPromises.mkdir(avatarDir, { recursive: true });
+    const avatarPath = path.join(avatarDir, `${author.id}${ext}`);
+    await fsPromises.writeFile(avatarPath, Buffer.from(String(avatarFile.content), 'base64'));
+    return {
+        ...author,
+        avatar: `/contents/assets/images/avatars/${author.id}${ext}`
+    };
+}
+
+async function createOrUpdateAuthor(authorInput, avatarFile, existingId) {
+    const authors = await readAuthorsArray();
+    let author = normalizeAdminAuthorInput(authorInput, existingId);
+    const existingIndex = authors.findIndex(item => item.id === author.id);
+    if (existingId && existingIndex === -1) {
+        return { error: 'Author not found' };
+    }
+    if (!existingId && existingIndex !== -1) {
+        return { error: 'Author already exists' };
+    }
+    if (existingIndex >= 0 && !authorInput.avatar && !avatarFile?.content) {
+        author.avatar = authors[existingIndex].avatar || '';
+    }
+
+    author = await saveAuthorAvatar(author, avatarFile);
+
+    if (existingIndex >= 0) {
+        authors[existingIndex] = { ...authors[existingIndex], ...author };
+    } else {
+        authors.push(author);
+    }
+
+    await writeAuthorsArray(authors);
+    return { author };
+}
+
+async function resolveTemporaryAuthor(metadata, resolution) {
+    if (!metadata.author) return metadata;
+    if (!resolution || !resolution.mode) {
+        throw new Error('Temporary author must be resolved before publishing');
+    }
+
+    const authors = await readAuthorsArray();
+    let authorId;
+
+    if (resolution.mode === 'existing') {
+        authorId = resolution.authorId;
+        if (!authors.some(author => author.id === authorId)) {
+            throw new Error('Selected author does not exist');
+        }
+    } else if (resolution.mode === 'create') {
+        const result = await createOrUpdateAuthor(resolution.author || metadata.author, resolution.avatarFile);
+        if (result.error) throw new Error(result.error);
+        authorId = result.author.id;
+    } else {
+        throw new Error('Unsupported author resolution mode');
+    }
+
+    const normalized = { ...metadata };
+    delete normalized.author;
+    normalized.author_id = authorId;
+    return normalized;
+}
+
+async function validatePublishedAuthorReferences(metadata) {
+    const authors = await readAuthorsArray();
+    const authorIds = metadata.author_ids || (metadata.author_id ? [metadata.author_id] : []);
+    if (!Array.isArray(authorIds) || authorIds.length === 0 || authorIds.length > 2) {
+        throw new Error('Published content requires 1-2 official authors');
+    }
+    for (const authorId of authorIds) {
+        if (!authors.some(author => author.id === authorId)) {
+            throw new Error(`Unknown author: ${authorId}`);
+        }
+    }
+}
+
+function validateMarkdownAssetReferences(markdown, baseDir) {
+    const missing = [];
+    const imagePattern = /!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+    for (const match of String(markdown || '').matchAll(imagePattern)) {
+        const rawRef = match[1].trim();
+        if (!rawRef || rawRef.startsWith('#') || rawRef.startsWith('/') || rawRef.startsWith('//')) {
+            continue;
+        }
+        if (/^[a-z][a-z0-9+.-]*:/i.test(rawRef)) {
+            continue;
+        }
+        const localRef = rawRef.replace(/^\.\//, '');
+        const assetPath = path.resolve(baseDir, localRef);
+        try {
+            assertInside(baseDir, assetPath);
+            if (!fs.existsSync(assetPath)) {
+                missing.push(rawRef);
+            }
+        } catch {
+            missing.push(rawRef);
+        }
+    }
+    return missing;
+}
+
+function parseArticleId(articleId) {
+    const match = String(articleId || '').match(/^(\d{3,10})-(.+)$/);
+    if (!match) return null;
+    const folderName = sanitizeSlug(match[2], '');
+    if (!folderName || folderName !== match[2]) return null;
+    return { vol: match[1], folderName };
+}
+
+function getPublishedArticleDir(articleId) {
+    const parsed = parseArticleId(articleId);
+    if (!parsed) return null;
+    return assertInside(
+        PUBLISHED_DIR,
+        path.join(PUBLISHED_DIR, `vol-${parsed.vol}`, 'contributions', parsed.folderName)
+    );
+}
+
+function getUnpublishedArticleDir(articleId) {
+    const parsed = parseArticleId(articleId);
+    if (!parsed) return null;
+    return assertInside(ADMIN_UNPUBLISHED_DIR, path.join(ADMIN_UNPUBLISHED_DIR, `${parsed.vol}-${parsed.folderName}`));
+}
+
+async function listPublishedArticles() {
+    if (!fs.existsSync(PUBLISHED_DIR)) return [];
+    const articles = [];
+    const volumeDirs = await fsPromises.readdir(PUBLISHED_DIR, { withFileTypes: true });
+    for (const volumeDir of volumeDirs) {
+        if (!volumeDir.isDirectory() || !volumeDir.name.startsWith('vol-')) continue;
+        const vol = volumeDir.name.replace(/^vol-/, '');
+        const contributionsDir = path.join(PUBLISHED_DIR, volumeDir.name, 'contributions');
+        if (!fs.existsSync(contributionsDir)) continue;
+        const entries = await fsPromises.readdir(contributionsDir, { withFileTypes: true });
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const articleId = `${vol}-${entry.name}`;
+            const indexPath = path.join(contributionsDir, entry.name, 'index.md');
+            let metadata = {};
+            if (fs.existsSync(indexPath)) {
+                metadata = parseMarkdownDocument(await fsPromises.readFile(indexPath, 'utf8')).metadata;
+            }
+            articles.push({
+                articleId,
+                vol,
+                folderName: entry.name,
+                title: metadata.title || entry.name,
+                description: metadata.description || ''
+            });
+        }
+    }
+    return articles.sort((a, b) => b.articleId.localeCompare(a.articleId));
+}
+
+async function readPublishedArticle(articleId, unpublished = false) {
+    const articleDir = unpublished ? getUnpublishedArticleDir(articleId) : getPublishedArticleDir(articleId);
+    if (!articleDir || !fs.existsSync(articleDir)) return null;
+    const indexPath = path.join(articleDir, 'index.md');
+    const indexContent = fs.existsSync(indexPath) ? await fsPromises.readFile(indexPath, 'utf8') : '';
+    const files = await collectFiles(articleDir);
+    return {
+        articleId,
+        indexContent,
+        files: files.map(file => ({
+            ...file,
+            assetUrl: unpublished
+                ? null
+                : `/contents/published/vol-${parseArticleId(articleId).vol}/contributions/${parseArticleId(articleId).folderName}/${file.path}`
+        }))
+    };
+}
+
+async function updatePublishedArticle(articleId, payload, operator) {
+    const articleDir = getPublishedArticleDir(articleId);
+    if (!articleDir || !fs.existsSync(articleDir)) {
+        return { status: 404, body: { error: 'Published article not found' } };
+    }
+
+    const backupDir = `${articleDir}.backup-${Date.now()}`;
+    await fsPromises.cp(articleDir, backupDir, { recursive: true });
+
+    try {
+        if (typeof payload.indexContent === 'string') {
+            const { metadata, body } = parseMarkdownDocument(payload.indexContent);
+            const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: false });
+            if (validationErrors.length > 0) {
+                await fsPromises.rm(backupDir, { recursive: true, force: true });
+                return { status: 400, body: { error: 'Published article frontmatter is invalid', details: validationErrors } };
+            }
+            await validatePublishedAuthorReferences(metadata);
+            await fsPromises.writeFile(path.join(articleDir, 'index.md'), stringifyMarkdownDocument(metadata, body), 'utf8');
+        }
+        if (Array.isArray(payload.files) && payload.files.length > 0) {
+            await writeDraftFiles(articleDir, payload.files);
+        }
+
+        const lintResult = await runContentLint();
+        if (!lintResult.ok) {
+            await fsPromises.rm(articleDir, { recursive: true, force: true });
+            await fsPromises.rename(backupDir, articleDir);
+            return {
+                status: 400,
+                body: { error: 'Content check failed', stdout: lintResult.stdout, stderr: lintResult.stderr }
+            };
+        }
+
+        await fsPromises.rm(backupDir, { recursive: true, force: true });
+        cache.invalidatePattern('contributions');
+        cache.invalidatePattern('search:');
+        cache.invalidate('stats');
+        notifyHotReload('admin-update-published', articleDir);
+        await appendAuditLog({
+            action: 'update_published',
+            actor: operator.username,
+            articleId
+        });
+        return { status: 200, body: await readPublishedArticle(articleId) };
+    } catch (error) {
+        await fsPromises.rm(articleDir, { recursive: true, force: true });
+        await fsPromises.rename(backupDir, articleDir);
+        return { status: 400, body: { error: error.message } };
+    }
+}
+
+async function unpublishArticle(articleId, operator) {
+    const articleDir = getPublishedArticleDir(articleId);
+    const targetDir = getUnpublishedArticleDir(articleId);
+    if (!articleDir || !targetDir || !fs.existsSync(articleDir)) {
+        return { status: 404, body: { error: 'Published article not found' } };
+    }
+    if (fs.existsSync(targetDir)) {
+        return { status: 409, body: { error: 'Unpublished archive already exists' } };
+    }
+    await fsPromises.mkdir(path.dirname(targetDir), { recursive: true });
+    await fsPromises.rename(articleDir, targetDir);
+    await generateArchiveJson(false);
+    cache.invalidatePattern('contributions');
+    cache.invalidatePattern('search:');
+    cache.invalidate('stats');
+    notifyHotReload('admin-unpublish', targetDir);
+    await appendAuditLog({
+        action: 'unpublish_article',
+        actor: operator.username,
+        articleId
+    });
+    return { status: 200, body: { articleId } };
+}
+
+async function restoreArticle(articleId, operator) {
+    const sourceDir = getUnpublishedArticleDir(articleId);
+    const targetDir = getPublishedArticleDir(articleId);
+    if (!sourceDir || !targetDir || !fs.existsSync(sourceDir)) {
+        return { status: 404, body: { error: 'Unpublished article not found' } };
+    }
+    if (fs.existsSync(targetDir)) {
+        return { status: 409, body: { error: 'Published article already exists' } };
+    }
+    await fsPromises.mkdir(path.dirname(targetDir), { recursive: true });
+    await fsPromises.rename(sourceDir, targetDir);
+    await generateArchiveJson(false);
+    const lintResult = await runContentLint();
+    if (!lintResult.ok) {
+        await fsPromises.rename(targetDir, sourceDir);
+        await generateArchiveJson(false);
+        return { status: 400, body: { error: 'Content check failed', stdout: lintResult.stdout, stderr: lintResult.stderr } };
+    }
+    cache.invalidatePattern('contributions');
+    cache.invalidatePattern('search:');
+    cache.invalidate('stats');
+    notifyHotReload('admin-restore', targetDir);
+    await appendAuditLog({
+        action: 'restore_article',
+        actor: operator.username,
+        articleId
+    });
+    return { status: 200, body: { articleId } };
+}
+
+async function publishDraft(draftId, operator, authorResolution) {
+    const detail = await readDraftDetail(draftId);
+    if (!detail) {
+        return { status: 404, body: { error: 'Draft not found' } };
+    }
+    if (detail.meta.status !== 'approved') {
+        return { status: 400, body: { error: 'Only approved drafts can be published' } };
+    }
+
+    const targetVol = normalizeVolumeId(detail.meta.targetVol);
+    const folderName = sanitizeSlug(detail.meta.folderName, '');
+    if (!targetVol || !folderName) {
+        return { status: 400, body: { error: 'Invalid target volume or folder name' } };
+    }
+
+    const draftDir = getDraftDir(draftId);
+    const targetDir = assertInside(
+        PUBLISHED_DIR,
+        path.join(PUBLISHED_DIR, `vol-${targetVol}`, 'contributions', folderName)
+    );
+    if (fs.existsSync(targetDir)) {
+        return { status: 409, body: { error: 'Published target already exists' } };
+    }
+
+    const indexPath = path.join(draftDir, 'index.md');
+    const document = parseMarkdownDocument(await fsPromises.readFile(indexPath, 'utf8'));
+    const metadata = await resolveTemporaryAuthor(document.metadata, authorResolution);
+    const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: false });
+    if (validationErrors.length > 0) {
+        return { status: 400, body: { error: 'Draft is not publishable', details: validationErrors } };
+    }
+
+    try {
+        await validatePublishedAuthorReferences(metadata);
+    } catch (error) {
+        return { status: 400, body: { error: error.message } };
+    }
+
+    const missingAssets = validateMarkdownAssetReferences(document.body, draftDir);
+    if (missingAssets.length > 0) {
+        return { status: 400, body: { error: 'Draft references missing assets', details: missingAssets } };
+    }
+
+    await fsPromises.mkdir(targetDir, { recursive: true });
+    const files = await collectFiles(draftDir, { skip: relative => relative === 'meta.json' });
+    for (const file of files) {
+        const source = path.join(draftDir, file.path);
+        const target = assertInside(targetDir, path.join(targetDir, file.path));
+        await fsPromises.mkdir(path.dirname(target), { recursive: true });
+        if (file.path === 'index.md') {
+            await fsPromises.writeFile(target, stringifyMarkdownDocument(metadata, document.body), 'utf8');
+        } else {
+            await fsPromises.copyFile(source, target);
+        }
+    }
+
+    const publishedArticleId = `${targetVol}-${folderName}`;
+    await generateArchiveJson(false);
+    const lintResult = await runContentLint();
+    if (!lintResult.ok) {
+        await fsPromises.rm(targetDir, { recursive: true, force: true });
+        await generateArchiveJson(false);
+        return {
+            status: 400,
+            body: {
+                error: 'Content check failed',
+                stdout: lintResult.stdout,
+                stderr: lintResult.stderr
+            }
+        };
+    }
+
+    await updateDraftMeta(draftId, {
+        status: 'published',
+        publishedAt: new Date().toISOString(),
+        publishedArticleId
+    }, operator);
+    await appendReviewHistory(draftId, {
+        action: 'published',
+        actor: operator.username,
+        role: operator.role,
+        comment: `Published as ${publishedArticleId}`
+    });
+    await appendAuditLog({
+        action: 'publish_draft',
+        actor: operator.username,
+        draftId,
+        articleId: publishedArticleId
+    });
+
+    cache.invalidatePattern('volumes');
+    cache.invalidatePattern('contributions');
+    cache.invalidatePattern('search:');
+    cache.invalidate('stats');
+    cache.invalidate('authors');
+    notifyHotReload('admin-publish', targetDir);
+
+    return {
+        status: 200,
+        body: {
+            draftId,
+            articleId: publishedArticleId,
+            path: `/contents/published/vol-${targetVol}/contributions/${folderName}/index.md`
+        }
+    };
+}
+
+function runContentLint() {
+    return new Promise(resolve => {
+        execFile(
+            process.execPath,
+            [path.join(__dirname, 'tests', 'content-contract-lint.js')],
+            {
+                cwd: __dirname,
+                env: {
+                    ...process.env,
+                    SITE_CONTENTS_DIR: CONTENTS_DIR
+                }
+            },
+            (error, stdout, stderr) => {
+                resolve({
+                    ok: !error,
+                    exitCode: error ? error.code || 1 : 0,
+                    stdout,
+                    stderr
+                });
+            }
+        );
+    });
+}
+
 // ==================== MIDDLEWARE ====================
 
 // JSON body parser with size limit
-app.use(express.json({ limit: '10kb' }));
+app.use(express.json({ limit: '20mb' }));
 
 // Rate limiting middleware
 function rateLimitMiddleware(type = 'read') {
@@ -457,6 +1531,9 @@ app.use((req, res, next) => {
 // IMPORTANT: Serve contents directories BEFORE generic static middleware
 // This ensures external contents directories work correctly
 app.use('/contents/data', (req, res) => {
+    res.status(403).json({ error: 'Forbidden' });
+});
+app.use('/contents/admin', (req, res) => {
     res.status(403).json({ error: 'Forbidden' });
 });
 app.use('/contents/published', express.static(PUBLISHED_DIR, {
@@ -503,7 +1580,821 @@ app.get('/draft', (req, res) => {
     sendIndexHtml(res);
 });
 
+function sendAdminHtml(res) {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.sendFile(path.join(__dirname, 'admin', 'index.html'));
+}
+
+app.get('/admin', (req, res) => {
+    sendAdminHtml(res);
+});
+
+app.get('/admin/', (req, res) => {
+    sendAdminHtml(res);
+});
+
+app.use('/admin', express.static(path.join(__dirname, 'admin'), {
+    maxAge: '5m',
+    etag: true
+}));
+
+function sendSubmitHtml(res) {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.sendFile(path.join(__dirname, 'submit', 'index.html'));
+}
+
+app.get('/submit', (req, res) => {
+    sendSubmitHtml(res);
+});
+
+app.get('/submit/', (req, res) => {
+    sendSubmitHtml(res);
+});
+
+app.use('/submit', express.static(path.join(__dirname, 'submit'), {
+    maxAge: '5m',
+    etag: true
+}));
+
 // ==================== API ROUTES ====================
+
+function asyncRoute(handler) {
+    return (req, res, next) => {
+        Promise.resolve(handler(req, res, next)).catch(next);
+    };
+}
+
+app.get('/api/submission-authors', rateLimitMiddleware('read'), asyncRoute(async (req, res) => {
+    const query = String(req.query.q || '').trim().toLowerCase();
+    const authors = await readAuthorsArray();
+    const filtered = query.length === 0
+        ? authors.slice(0, 20)
+        : authors.filter(author => {
+            return [author.id, author.name, author.team, author.role]
+                .some(value => String(value || '').toLowerCase().includes(query));
+        }).slice(0, 20);
+
+    res.json({
+        authors: filtered.map(author => ({
+            id: author.id,
+            name: author.name,
+            team: author.team || '',
+            role: author.role || '',
+            avatar: author.avatar || ''
+        }))
+    });
+}));
+
+app.post('/api/submissions', rateLimitMiddleware('write'), asyncRoute(async (req, res) => {
+    const { targetVol, folderName, files } = req.body || {};
+    const submitter = normalizeSubmitter(req.body?.submitter || {});
+    const safeFolderName = sanitizeSlug(folderName, '');
+    const vol = normalizeVolumeId(targetVol);
+
+    if (!vol || !safeFolderName || !Array.isArray(files) || files.length === 0) {
+        return res.status(400).json({ error: 'targetVol, folderName and files are required' });
+    }
+
+    const draftId = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${safeFolderName}`;
+    const draftDir = getDraftDir(draftId);
+    if (fs.existsSync(draftDir)) {
+        return res.status(409).json({ error: 'Submission already exists' });
+    }
+
+    await fsPromises.mkdir(draftDir, { recursive: true });
+    const hasIndex = await writeDraftFiles(draftDir, files);
+    if (!hasIndex) {
+        await fsPromises.rm(draftDir, { recursive: true, force: true });
+        return res.status(400).json({ error: 'index.md is required' });
+    }
+
+    const indexPath = path.join(draftDir, 'index.md');
+    const document = parseMarkdownDocument(await fsPromises.readFile(indexPath, 'utf8'));
+    if (!document.metadata.author_id && !document.metadata.author_ids && !document.metadata.author) {
+        if (submitter.authorId) {
+            document.metadata.author_id = submitter.authorId;
+        } else {
+            document.metadata.author = {
+                name: submitter.name,
+                team: submitter.team,
+                role: submitter.role,
+                avatar: ''
+            };
+        }
+        await fsPromises.writeFile(indexPath, stringifyMarkdownDocument(document.metadata, document.body), 'utf8');
+    }
+
+    const submitterErrors = validateSubmitter(submitter, document.metadata);
+    const validationErrors = validateDraftMetadata(document.metadata, { allowTemporaryAuthor: true });
+    if (submitterErrors.length > 0 || validationErrors.length > 0) {
+        await fsPromises.rm(draftDir, { recursive: true, force: true });
+        return res.status(400).json({
+            error: 'Submission frontmatter is invalid',
+            details: [...submitterErrors, ...validationErrors]
+        });
+    }
+
+    if (document.metadata.author_id) {
+        const authors = await readAuthorsArray();
+        if (!authors.some(author => author.id === document.metadata.author_id)) {
+            await fsPromises.rm(draftDir, { recursive: true, force: true });
+            return res.status(400).json({ error: 'Selected author does not exist' });
+        }
+        submitter.authorId = document.metadata.author_id;
+    }
+    if (document.metadata.author_id || document.metadata.author_ids) {
+        try {
+            await validatePublishedAuthorReferences(document.metadata);
+        } catch (error) {
+            await fsPromises.rm(draftDir, { recursive: true, force: true });
+            return res.status(400).json({ error: error.message });
+        }
+    }
+
+    const token = createAccessToken();
+    const now = new Date().toISOString();
+    const meta = {
+        draftId,
+        source: 'submission',
+        status: 'editing',
+        submissionStatus: 'submitted',
+        targetVol: vol,
+        folderName: safeFolderName,
+        submitter,
+        submitterTokenHash: hashAccessToken(token),
+        submittedAt: now,
+        revision: 1,
+        lastSubmitterReadAt: '',
+        createdBy: 'submitter',
+        updatedBy: 'submitter',
+        createdAt: now,
+        updatedAt: now
+    };
+    await writeJsonFile(path.join(draftDir, 'meta.json'), meta);
+    await writeJsonFile(path.join(ADMIN_REVIEWS_DIR, `${draftId}.json`), { draftId, history: [] });
+    await appendAuditLog({
+        action: 'create_submission',
+        actor: 'submitter',
+        draftId,
+        revision: 1
+    });
+
+    res.status(201).json({
+        submissionId: draftId,
+        accessToken: token,
+        statusUrl: `/submit?id=${encodeURIComponent(draftId)}&token=${encodeURIComponent(token)}`
+    });
+}));
+
+app.get('/api/submissions/:submissionId/assets/*', rateLimitMiddleware('read'), asyncRoute(async (req, res) => {
+    const result = await requireSubmissionDetail(req.params.submissionId, req.query.token);
+    if (!result.detail) {
+        return res.status(result.status).json(result.body);
+    }
+
+    const draftDir = getDraftDir(req.params.submissionId);
+    const assetRelative = safeRelativePath(req.params[0] || '');
+    const assetPath = assertInside(draftDir, path.join(draftDir, assetRelative));
+    if (assetRelative === 'meta.json' || !fs.existsSync(assetPath)) {
+        return res.status(404).json({ error: 'Asset not found' });
+    }
+
+    res.sendFile(assetPath);
+}));
+
+app.get('/api/submissions/:submissionId', rateLimitMiddleware('read'), asyncRoute(async (req, res) => {
+    const result = await requireSubmissionDetail(req.params.submissionId, req.query.token);
+    if (!result.detail) {
+        return res.status(result.status).json(result.body);
+    }
+    await updateDraftMeta(req.params.submissionId, {
+        lastSubmitterReadAt: new Date().toISOString()
+    }, { username: 'submitter' });
+    res.json(publicSubmissionDetail(await readDraftDetail(req.params.submissionId), req.query.token));
+}));
+
+app.put('/api/submissions/:submissionId', rateLimitMiddleware('write'), asyncRoute(async (req, res) => {
+    const result = await requireSubmissionDetail(req.params.submissionId, req.query.token);
+    if (!result.detail) {
+        return res.status(result.status).json(result.body);
+    }
+    const detail = result.detail;
+    if (detail.meta.submissionStatus !== 'changes_requested') {
+        return res.status(400).json({ error: 'Submission cannot be revised from this status' });
+    }
+
+    const { files } = req.body || {};
+    if (!Array.isArray(files) || files.length === 0) {
+        return res.status(400).json({ error: 'files are required' });
+    }
+
+    const draftDir = getDraftDir(req.params.submissionId);
+    const hasIndex = await writeDraftFiles(draftDir, files);
+    if (!hasIndex) {
+        return res.status(400).json({ error: 'index.md is required' });
+    }
+
+    const indexContent = await fsPromises.readFile(path.join(draftDir, 'index.md'), 'utf8');
+    const { metadata } = parseMarkdownDocument(indexContent);
+    const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: true });
+    if (validationErrors.length > 0) {
+        return res.status(400).json({ error: 'Submission frontmatter is invalid', details: validationErrors });
+    }
+    if (metadata.author_id || metadata.author_ids) {
+        try {
+            await validatePublishedAuthorReferences(metadata);
+        } catch (error) {
+            return res.status(400).json({ error: error.message });
+        }
+    }
+
+    const revision = (detail.meta.revision || 1) + 1;
+    await updateDraftMeta(req.params.submissionId, {
+        status: 'editing',
+        submissionStatus: 'submitted',
+        revision,
+        updatedBy: 'submitter'
+    }, { username: 'submitter' });
+    await appendReviewHistory(req.params.submissionId, {
+        action: 'submitter_revision',
+        actor: 'submitter',
+        role: 'submitter-token',
+        comment: `Revision ${revision}`
+    });
+    await appendAuditLog({
+        action: 'revise_submission',
+        actor: 'submitter',
+        draftId: req.params.submissionId,
+        revision
+    });
+
+    res.json(publicSubmissionDetail(await readDraftDetail(req.params.submissionId), req.query.token));
+}));
+
+app.post('/api/admin/login', rateLimitMiddleware('write'), asyncRoute(async (req, res) => {
+    const { username, password } = req.body || {};
+    const users = await readAdminUsers();
+    const user = users.find(item => item.username === username);
+
+    if (!user || user.disabled === true || !verifyAdminPassword(password, user.passwordHash)) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    const token = createAdminSession(user);
+    setAdminSessionCookie(res, token);
+    res.json({
+        user: publicAdminUser(user),
+        permissions: adminPermissions(user.role)
+    });
+}));
+
+app.post('/api/admin/logout', requireAdmin, (req, res) => {
+    if (req.adminSession?.token) {
+        ADMIN_SESSIONS.delete(req.adminSession.token);
+    }
+    clearAdminSessionCookie(res);
+    res.json({ ok: true });
+});
+
+app.get('/api/admin/me', requireAdmin, (req, res) => {
+    res.json({
+        user: req.adminUser,
+        permissions: adminPermissions(req.adminUser.role)
+    });
+});
+
+app.get('/api/admin/drafts', requireAdmin, asyncRoute(async (req, res) => {
+    res.json({ drafts: await listAdminDrafts() });
+}));
+
+app.get('/api/admin/drafts/:draftId/assets/*', requireAdmin, asyncRoute(async (req, res) => {
+    const draftDir = getDraftDir(req.params.draftId);
+    const assetRelative = safeRelativePath(req.params[0] || '');
+    const assetPath = assertInside(draftDir, path.join(draftDir, assetRelative));
+
+    if (assetRelative === 'meta.json' || !fs.existsSync(assetPath)) {
+        return res.status(404).json({ error: 'Asset not found' });
+    }
+
+    res.sendFile(assetPath);
+}));
+
+app.get('/api/admin/drafts/:draftId', requireAdmin, asyncRoute(async (req, res) => {
+    const detail = await readDraftDetail(req.params.draftId);
+    if (!detail) {
+        return res.status(404).json({ error: 'Draft not found' });
+    }
+    res.json(detail);
+}));
+
+app.post(
+    '/api/admin/drafts/import',
+    requireAdmin,
+    requireAdminPermission('canImportDraft'),
+    asyncRoute(async (req, res) => {
+        const { targetVol, folderName, files } = req.body || {};
+        const vol = normalizeVolumeId(targetVol);
+        const safeFolderName = sanitizeSlug(folderName, '');
+
+        if (!vol || !safeFolderName || !Array.isArray(files) || files.length === 0) {
+            return res.status(400).json({ error: 'targetVol, folderName and files are required' });
+        }
+
+        const draftId = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${safeFolderName}`;
+        const draftDir = getDraftDir(draftId);
+        if (fs.existsSync(draftDir)) {
+            return res.status(409).json({ error: 'Draft already exists' });
+        }
+
+        await fsPromises.mkdir(draftDir, { recursive: true });
+        const hasIndex = await writeDraftFiles(draftDir, files);
+        if (!hasIndex) {
+            await fsPromises.rm(draftDir, { recursive: true, force: true });
+            return res.status(400).json({ error: 'index.md is required' });
+        }
+
+        const indexContent = await fsPromises.readFile(path.join(draftDir, 'index.md'), 'utf8');
+        const { metadata } = parseMarkdownDocument(indexContent);
+        const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: true });
+        if (validationErrors.length > 0) {
+            await fsPromises.rm(draftDir, { recursive: true, force: true });
+            return res.status(400).json({ error: 'Draft frontmatter is invalid', details: validationErrors });
+        }
+
+        const now = new Date().toISOString();
+        const meta = {
+            draftId,
+            source: 'admin',
+            status: 'editing',
+            targetVol: vol,
+            folderName: safeFolderName,
+            createdBy: req.adminUser.username,
+            updatedBy: req.adminUser.username,
+            createdAt: now,
+            updatedAt: now
+        };
+        await writeJsonFile(path.join(draftDir, 'meta.json'), meta);
+        await writeJsonFile(path.join(ADMIN_REVIEWS_DIR, `${draftId}.json`), { draftId, history: [] });
+        await appendAuditLog({
+            action: 'import_draft',
+            actor: req.adminUser.username,
+            draftId
+        });
+
+        res.status(201).json(await readDraftDetail(draftId));
+    })
+);
+
+app.put(
+    '/api/admin/drafts/:draftId',
+    requireAdmin,
+    requireAdminPermission('canEditDraft'),
+    asyncRoute(async (req, res) => {
+        const { indexContent, targetVol, folderName, files } = req.body || {};
+        const detail = await readDraftDetail(req.params.draftId);
+        if (!detail) {
+            return res.status(404).json({ error: 'Draft not found' });
+        }
+        if (detail.meta.status === 'published') {
+            return res.status(400).json({ error: 'Published drafts cannot be edited' });
+        }
+
+        const draftDir = getDraftDir(req.params.draftId);
+        if (typeof indexContent === 'string') {
+            const { metadata } = parseMarkdownDocument(indexContent);
+            const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: true });
+            if (validationErrors.length > 0) {
+                return res.status(400).json({ error: 'Draft frontmatter is invalid', details: validationErrors });
+            }
+            await fsPromises.writeFile(path.join(draftDir, 'index.md'), indexContent, 'utf8');
+        }
+
+        if (Array.isArray(files) && files.length > 0) {
+            await writeDraftFiles(draftDir, files);
+        }
+
+        const patch = {};
+        if (targetVol !== undefined) {
+            const vol = normalizeVolumeId(targetVol);
+            if (!vol) return res.status(400).json({ error: 'Invalid target volume' });
+            patch.targetVol = vol;
+        }
+        if (folderName !== undefined) {
+            const safeFolderName = sanitizeSlug(folderName, '');
+            if (!safeFolderName) return res.status(400).json({ error: 'Invalid folder name' });
+            patch.folderName = safeFolderName;
+        }
+        if (detail.meta.status === 'review_requested' || detail.meta.status === 'approved') {
+            patch.status = 'editing';
+        }
+
+        await updateDraftMeta(req.params.draftId, patch, req.adminUser);
+        await appendAuditLog({
+            action: 'update_draft',
+            actor: req.adminUser.username,
+            draftId: req.params.draftId
+        });
+        res.json(await readDraftDetail(req.params.draftId));
+    })
+);
+
+app.delete(
+    '/api/admin/drafts/:draftId',
+    requireAdmin,
+    requireAdminPermission('canDeleteDraft'),
+    asyncRoute(async (req, res) => {
+        const detail = await readDraftDetail(req.params.draftId);
+        if (!detail) {
+            return res.status(404).json({ error: 'Draft not found' });
+        }
+        if (detail.meta.status === 'published') {
+            return res.status(400).json({ error: 'Published drafts are retained for audit' });
+        }
+
+        await fsPromises.rm(getDraftDir(req.params.draftId), { recursive: true, force: true });
+        await fsPromises.rm(path.join(ADMIN_REVIEWS_DIR, `${req.params.draftId}.json`), { force: true });
+        await appendAuditLog({
+            action: 'delete_draft',
+            actor: req.adminUser.username,
+            draftId: req.params.draftId
+        });
+        res.json({ ok: true });
+    })
+);
+
+app.post(
+    '/api/admin/drafts/:draftId/accept',
+    requireAdmin,
+    requireAdminPermission('canEditDraft'),
+    asyncRoute(async (req, res) => {
+        const detail = await readDraftDetail(req.params.draftId);
+        if (!detail) return res.status(404).json({ error: 'Draft not found' });
+        if (detail.meta.source !== 'submission') {
+            return res.status(400).json({ error: 'Only submissions can be accepted' });
+        }
+        if (!['editing', 'rejected'].includes(detail.meta.status)) {
+            return res.status(400).json({ error: 'Draft cannot be accepted from this status' });
+        }
+        await updateDraftMeta(req.params.draftId, {
+            status: 'editing',
+            submissionStatus: 'in_editing'
+        }, req.adminUser);
+        await appendReviewHistory(req.params.draftId, {
+            action: 'accepted',
+            actor: req.adminUser.username,
+            role: req.adminUser.role,
+            comment: req.body?.comment || ''
+        });
+        await appendAuditLog({
+            action: 'accept_submission',
+            actor: req.adminUser.username,
+            draftId: req.params.draftId
+        });
+        res.json(await readDraftDetail(req.params.draftId));
+    })
+);
+
+app.post(
+    '/api/admin/drafts/:draftId/reject',
+    requireAdmin,
+    requireAdminPermission('canRejectDraft'),
+    asyncRoute(async (req, res) => {
+        const detail = await readDraftDetail(req.params.draftId);
+        if (!detail) return res.status(404).json({ error: 'Draft not found' });
+        if (detail.meta.status === 'published') {
+            return res.status(400).json({ error: 'Published drafts cannot be rejected' });
+        }
+        await updateDraftMeta(req.params.draftId, {
+            status: 'rejected',
+            submissionStatus: detail.meta.source === 'submission' ? 'rejected' : undefined
+        }, req.adminUser);
+        await appendReviewHistory(req.params.draftId, {
+            action: 'rejected',
+            actor: req.adminUser.username,
+            role: req.adminUser.role,
+            comment: req.body?.comment || ''
+        });
+        await appendAuditLog({
+            action: 'reject_submission',
+            actor: req.adminUser.username,
+            draftId: req.params.draftId
+        });
+        res.json(await readDraftDetail(req.params.draftId));
+    })
+);
+
+app.post(
+    '/api/admin/drafts/:draftId/review-request',
+    requireAdmin,
+    requireAdminPermission('canRequestReview'),
+    asyncRoute(async (req, res) => {
+        const detail = await readDraftDetail(req.params.draftId);
+        if (!detail) return res.status(404).json({ error: 'Draft not found' });
+        if (!['editing', 'changes_requested'].includes(detail.meta.status)) {
+            return res.status(400).json({ error: 'Draft cannot be submitted for review from this status' });
+        }
+        await updateDraftMeta(req.params.draftId, { status: 'review_requested' }, req.adminUser);
+        await appendReviewHistory(req.params.draftId, {
+            action: 'review_requested',
+            actor: req.adminUser.username,
+            role: req.adminUser.role,
+            comment: req.body?.comment || ''
+        });
+        await appendAuditLog({
+            action: 'request_review',
+            actor: req.adminUser.username,
+            draftId: req.params.draftId
+        });
+        res.json(await readDraftDetail(req.params.draftId));
+    })
+);
+
+app.post(
+    '/api/admin/drafts/:draftId/review',
+    requireAdmin,
+    requireAdminPermission('canReview'),
+    asyncRoute(async (req, res) => {
+        const { action, comment } = req.body || {};
+        const detail = await readDraftDetail(req.params.draftId);
+        if (!detail) return res.status(404).json({ error: 'Draft not found' });
+        if (detail.meta.status !== 'review_requested') {
+            return res.status(400).json({ error: 'Only review_requested drafts can be reviewed' });
+        }
+        if (!['approve', 'request_changes'].includes(action)) {
+            return res.status(400).json({ error: 'Unsupported review action' });
+        }
+
+        const status = action === 'approve' ? 'approved' : 'changes_requested';
+        await updateDraftMeta(req.params.draftId, { status }, req.adminUser);
+        await appendReviewHistory(req.params.draftId, {
+            action,
+            actor: req.adminUser.username,
+            role: req.adminUser.role,
+            comment: comment || ''
+        });
+        await appendAuditLog({
+            action: `review_${action}`,
+            actor: req.adminUser.username,
+            draftId: req.params.draftId
+        });
+        res.json(await readDraftDetail(req.params.draftId));
+    })
+);
+
+app.post(
+    '/api/admin/drafts/:draftId/publish',
+    requireAdmin,
+    requireAdminPermission('canPublish'),
+    asyncRoute(async (req, res) => {
+        const result = await publishDraft(req.params.draftId, req.adminUser, req.body?.authorResolution);
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.get(
+    '/api/admin/authors',
+    requireAdmin,
+    requireAdminPermission('canListAuthors'),
+    asyncRoute(async (req, res) => {
+        res.json({ authors: await readAuthorsArray() });
+    })
+);
+
+app.post(
+    '/api/admin/authors',
+    requireAdmin,
+    requireAdminPermission('canManageAuthors'),
+    asyncRoute(async (req, res) => {
+        try {
+            const result = await createOrUpdateAuthor(req.body?.author || {}, req.body?.avatarFile);
+            if (result.error) {
+                return res.status(result.error.includes('exists') ? 409 : 400).json({ error: result.error });
+            }
+            await appendAuditLog({
+                action: 'create_author',
+                actor: req.adminUser.username,
+                authorId: result.author.id
+            });
+            res.status(201).json({ author: result.author });
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    })
+);
+
+app.put(
+    '/api/admin/authors/:authorId',
+    requireAdmin,
+    requireAdminPermission('canManageAuthors'),
+    asyncRoute(async (req, res) => {
+        try {
+            const result = await createOrUpdateAuthor(req.body?.author || {}, req.body?.avatarFile, req.params.authorId);
+            if (result.error) {
+                return res.status(404).json({ error: result.error });
+            }
+            await appendAuditLog({
+                action: 'update_author',
+                actor: req.adminUser.username,
+                authorId: result.author.id
+            });
+            res.json({ author: result.author });
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    })
+);
+
+app.post(
+    '/api/admin/lint',
+    requireAdmin,
+    requireAdminPermission('canRunLint'),
+    asyncRoute(async (req, res) => {
+        res.json(await runContentLint());
+    })
+);
+
+app.get(
+    '/api/admin/audit-log',
+    requireAdmin,
+    requireAdminPermission('canViewAuditLog'),
+    asyncRoute(async (req, res) => {
+        const auditLog = await readJsonFile(ADMIN_AUDIT_LOG_FILE, []);
+        res.json({ entries: auditLog.slice().reverse().slice(0, 500) });
+    })
+);
+
+app.get(
+    '/api/admin/published',
+    requireAdmin,
+    requireAdminPermission('canEditPublished'),
+    asyncRoute(async (req, res) => {
+        res.json({ articles: await listPublishedArticles() });
+    })
+);
+
+app.get(
+    '/api/admin/published/:articleId',
+    requireAdmin,
+    requireAdminPermission('canEditPublished'),
+    asyncRoute(async (req, res) => {
+        const article = await readPublishedArticle(req.params.articleId);
+        if (!article) return res.status(404).json({ error: 'Published article not found' });
+        res.json(article);
+    })
+);
+
+app.put(
+    '/api/admin/published/:articleId',
+    requireAdmin,
+    requireAdminPermission('canEditPublished'),
+    asyncRoute(async (req, res) => {
+        const result = await updatePublishedArticle(req.params.articleId, req.body || {}, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.post(
+    '/api/admin/published/:articleId/unpublish',
+    requireAdmin,
+    requireAdminPermission('canUnpublish'),
+    asyncRoute(async (req, res) => {
+        const result = await unpublishArticle(req.params.articleId, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.post(
+    '/api/admin/unpublished/:articleId/restore',
+    requireAdmin,
+    requireAdminPermission('canUnpublish'),
+    asyncRoute(async (req, res) => {
+        const result = await restoreArticle(req.params.articleId, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.get(
+    '/api/admin/users',
+    requireAdmin,
+    requireAdminPermission('canManageUsers'),
+    asyncRoute(async (req, res) => {
+        const users = await readAdminUsers();
+        res.json({ users: users.map(publicAdminUser) });
+    })
+);
+
+app.post(
+    '/api/admin/users',
+    requireAdmin,
+    requireAdminPermission('canManageUsers'),
+    asyncRoute(async (req, res) => {
+        try {
+            const result = await createOrUpdateAdminUser(req.body?.user || {});
+            if (result.error) {
+                return res.status(result.error.includes('exists') ? 409 : 400).json({ error: result.error });
+            }
+            await appendAuditLog({
+                action: 'create_admin_user',
+                actor: req.adminUser.username,
+                username: result.user.username
+            });
+            res.status(201).json({ user: result.user });
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    })
+);
+
+app.put(
+    '/api/admin/users/:username',
+    requireAdmin,
+    requireAdminPermission('canManageUsers'),
+    asyncRoute(async (req, res) => {
+        try {
+            const result = await createOrUpdateAdminUser(req.body?.user || {}, req.params.username);
+            if (result.error) {
+                return res.status(404).json({ error: result.error });
+            }
+            await appendAuditLog({
+                action: 'update_admin_user',
+                actor: req.adminUser.username,
+                username: result.user.username
+            });
+            res.json({ user: result.user });
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    })
+);
+
+app.post(
+    '/api/admin/users/:username/disable',
+    requireAdmin,
+    requireAdminPermission('canManageUsers'),
+    asyncRoute(async (req, res) => {
+        const result = await disableAdminUser(req.params.username);
+        if (result.error) {
+            return res.status(404).json({ error: result.error });
+        }
+        await appendAuditLog({
+            action: 'disable_admin_user',
+            actor: req.adminUser.username,
+            username: result.user.username
+        });
+        res.json({ user: result.user });
+    })
+);
+
+app.get(
+    '/api/admin/volumes',
+    requireAdmin,
+    requireAdminPermission('canManageVolumes'),
+    asyncRoute(async (req, res) => {
+        res.json({ volumes: await listAdminVolumes() });
+    })
+);
+
+app.post(
+    '/api/admin/volumes',
+    requireAdmin,
+    requireAdminPermission('canManageVolumes'),
+    asyncRoute(async (req, res) => {
+        try {
+            const result = await createOrUpdateVolume(req.body?.vol, req.body?.radarContent, { create: true });
+            if (result.status < 300) {
+                await appendAuditLog({
+                    action: 'create_volume',
+                    actor: req.adminUser.username,
+                    vol: result.body.vol
+                });
+            }
+            res.status(result.status).json(result.body);
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    })
+);
+
+app.put(
+    '/api/admin/volumes/:vol/radar',
+    requireAdmin,
+    requireAdminPermission('canManageVolumes'),
+    asyncRoute(async (req, res) => {
+        try {
+            const result = await createOrUpdateVolume(req.params.vol, req.body?.radarContent);
+            if (result.status < 300) {
+                await appendAuditLog({
+                    action: 'update_volume_radar',
+                    actor: req.adminUser.username,
+                    vol: result.body.vol
+                });
+            }
+            res.status(result.status).json(result.body);
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    })
+);
 
 // GET /api/site-config - Get site paths configuration for frontend
 app.get('/api/site-config', rateLimitMiddleware('read'), (req, res) => {
@@ -1274,6 +3165,7 @@ async function startServer() {
 
     // Load data files into memory
     await loadDataFiles();
+    await ensureAdminDir();
 
     // Generate archive.json
     await generateArchiveJson(false);
@@ -1528,6 +3420,21 @@ function setupFileWatcher() {
 
     return watcher;
 }
+
+app.use((error, req, res, next) => {
+    if (res.headersSent) {
+        return next(error);
+    }
+    const status = error.status || error.statusCode || 500;
+    if (status === 413) {
+        return res.status(413).json({ error: 'Payload too large' });
+    }
+    if (status >= 400 && status < 500) {
+        return res.status(status).json({ error: error.message });
+    }
+    console.error('Request error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+});
 
 async function bootstrap() {
     await startServer();

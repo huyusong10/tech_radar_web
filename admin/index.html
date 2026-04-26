@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tech Radar Admin</title>
+    <link rel="stylesheet" href="/assets/css/fonts.css">
+    <link rel="stylesheet" href="/assets/css/tokyo-night-dark.min.css">
+    <link rel="stylesheet" href="/admin/admin.css">
+    <script src="/assets/js/marked.min.js"></script>
+    <script src="/assets/js/js-yaml.min.js"></script>
+    <script src="/assets/js/highlight.min.js"></script>
+</head>
+<body>
+    <section class="login-view" id="login-view">
+        <form class="login-panel" id="login-form">
+            <div class="brand-mark">&gt;_ Tech Radar Admin</div>
+            <label>
+                <span>Username</span>
+                <input id="login-username" autocomplete="username" required>
+            </label>
+            <label>
+                <span>Password</span>
+                <input id="login-password" type="password" autocomplete="current-password" required>
+            </label>
+            <button type="submit">Sign in</button>
+            <p class="status-line" id="login-status"></p>
+        </form>
+    </section>
+
+    <main class="admin-shell hidden" id="admin-shell">
+        <aside class="admin-sidebar">
+            <div class="brand-mark">&gt;_ Admin</div>
+            <div class="operator-box">
+                <span id="operator-name">-</span>
+                <small id="operator-role">-</small>
+            </div>
+            <nav class="admin-nav">
+                <button data-view="dashboard" class="active">Dashboard</button>
+                <button data-view="submissions" data-permission="canEditDraft">Submissions</button>
+                <button data-view="drafts">Drafts</button>
+                <button data-view="review">Review</button>
+                <button data-view="publish" data-permission="canPublish">Publish</button>
+                <button data-view="authors" data-permission="canListAuthors">Authors</button>
+                <button data-view="published" data-permission="canEditPublished">Published</button>
+                <button data-view="volumes" data-permission="canManageVolumes">Volumes</button>
+                <button data-view="users" data-permission="canManageUsers">Users</button>
+                <button data-view="audit" data-permission="canViewAuditLog">Audit</button>
+                <button data-view="lint" data-permission="canRunLint">Checks</button>
+            </nav>
+            <button class="ghost-button" id="logout-button">Logout</button>
+        </aside>
+
+        <section class="admin-main">
+            <header class="admin-header">
+                <div>
+                    <h1 id="view-title">Dashboard</h1>
+                    <p id="view-subtitle">Content operations workspace</p>
+                </div>
+                <button id="refresh-button">Refresh</button>
+            </header>
+
+            <section class="view active" id="view-dashboard">
+                <div class="metric-grid">
+                    <div class="metric"><span>Editing</span><strong id="metric-editing">0</strong></div>
+                    <div class="metric"><span>Review</span><strong id="metric-review">0</strong></div>
+                    <div class="metric"><span>Approved</span><strong id="metric-approved">0</strong></div>
+                    <div class="metric"><span>Published</span><strong id="metric-published">0</strong></div>
+                </div>
+                <div class="workspace-grid">
+                    <section class="panel">
+                        <h2>Recent Drafts</h2>
+                        <div id="dashboard-drafts" class="compact-list"></div>
+                    </section>
+                    <section class="panel">
+                        <h2>Queue Snapshot</h2>
+                        <div id="dashboard-snapshot" class="compact-list"></div>
+                    </section>
+                </div>
+            </section>
+
+            <section class="view" id="view-submissions">
+                <div class="workspace-grid">
+                    <section class="panel">
+                        <h2>Submission Queue</h2>
+                        <div id="submission-list" class="compact-list"></div>
+                    </section>
+                    <section class="panel">
+                        <h2>Submission Actions</h2>
+                        <textarea id="submission-action-comment" class="short-textarea" placeholder="Comment"></textarea>
+                        <div class="toolbar">
+                            <button id="accept-submission-button" data-permission="canEditDraft">Accept</button>
+                            <button id="reject-submission-button" data-permission="canRejectDraft">Reject</button>
+                        </div>
+                        <p class="status-line" id="submission-action-status"></p>
+                    </section>
+                </div>
+            </section>
+
+            <section class="view" id="view-drafts">
+                <div class="workspace-grid wide-left">
+                    <section class="panel">
+                        <h2>Import Draft</h2>
+                        <div class="form-grid">
+                            <label><span>Target volume</span><input id="import-vol" placeholder="003"></label>
+                            <label><span>Folder name</span><input id="import-folder" placeholder="react-query-cache"></label>
+                        </div>
+                        <input id="import-files" type="file" multiple webkitdirectory>
+                        <div id="import-file-list" class="file-list"></div>
+                        <div class="toolbar">
+                            <button id="import-preview-button">Preview import</button>
+                            <button id="import-submit-button" data-permission="canImportDraft">Save draft</button>
+                        </div>
+                        <p class="status-line" id="import-status"></p>
+                    </section>
+                    <section class="panel">
+                        <h2>Drafts</h2>
+                        <div id="draft-list" class="compact-list"></div>
+                    </section>
+                </div>
+
+                <section class="panel editor-panel">
+                    <div class="panel-head">
+                        <h2>Draft Editor</h2>
+                        <div class="toolbar">
+                            <button id="save-draft-button" data-permission="canEditDraft">Save</button>
+                            <button id="request-review-button" data-permission="canRequestReview">Request review</button>
+                            <button id="delete-draft-button" data-permission="canDeleteDraft">Delete</button>
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <label><span>Target volume</span><input id="draft-target-vol"></label>
+                        <label><span>Folder name</span><input id="draft-folder-name"></label>
+                    </div>
+                    <div class="split-editor">
+                        <textarea id="draft-editor" spellcheck="false"></textarea>
+                        <div class="preview-surface" id="draft-preview"></div>
+                    </div>
+                    <div id="draft-files" class="file-list"></div>
+                </section>
+            </section>
+
+            <section class="view" id="view-review">
+                <section class="panel">
+                    <div class="panel-head">
+                        <h2>Technical Review</h2>
+                        <div class="toolbar">
+                            <button id="approve-button" data-permission="canReview">Approve</button>
+                            <button id="changes-button" data-permission="canReview">Request changes</button>
+                        </div>
+                    </div>
+                    <textarea id="review-comment" class="short-textarea" placeholder="Review comment"></textarea>
+                    <div id="review-history" class="compact-list"></div>
+                </section>
+            </section>
+
+            <section class="view" id="view-publish">
+                <section class="panel">
+                    <h2>Publish Approved Draft</h2>
+                    <div class="form-grid">
+                        <label><span>Existing author ID</span><input id="publish-existing-author" placeholder="known_author"></label>
+                        <label><span>New author ID</span><input id="publish-new-id" placeholder="wang_xiaoming"></label>
+                        <label><span>New author name</span><input id="publish-new-name" placeholder="Wang Xiaoming"></label>
+                        <label><span>Team</span><input id="publish-new-team"></label>
+                        <label><span>Role</span><input id="publish-new-role"></label>
+                    </div>
+                    <div class="toolbar">
+                        <button id="publish-button" data-permission="canPublish">Publish</button>
+                    </div>
+                    <p class="status-line" id="publish-status"></p>
+                </section>
+            </section>
+
+            <section class="view" id="view-authors">
+                <div class="workspace-grid">
+                    <section class="panel">
+                        <h2>Author Form</h2>
+                        <div class="form-grid">
+                            <label><span>ID</span><input id="author-id"></label>
+                            <label><span>Name</span><input id="author-name"></label>
+                            <label><span>Team</span><input id="author-team"></label>
+                            <label><span>Role</span><input id="author-role"></label>
+                            <label><span>Avatar</span><input id="author-avatar" type="file" accept=".jpg,.jpeg,.png,.webp,.svg"></label>
+                        </div>
+                        <div class="toolbar">
+                            <button id="create-author-button" data-permission="canManageAuthors">Create</button>
+                            <button id="update-author-button" data-permission="canManageAuthors">Update</button>
+                        </div>
+                        <p class="status-line" id="author-status"></p>
+                    </section>
+                    <section class="panel">
+                        <h2>Authors</h2>
+                        <div id="author-list" class="compact-list"></div>
+                    </section>
+                </div>
+            </section>
+
+            <section class="view" id="view-lint">
+                <section class="panel">
+                    <div class="panel-head">
+                        <h2>Content Checks</h2>
+                        <button id="run-lint-button" data-permission="canRunLint">Run checks</button>
+                    </div>
+                    <pre id="lint-output" class="log-output"></pre>
+                </section>
+            </section>
+
+            <section class="view" id="view-published">
+                <div class="workspace-grid wide-left">
+                    <section class="panel">
+                        <h2>Published Editor</h2>
+                        <div id="published-list" class="compact-list"></div>
+                        <div class="toolbar">
+                            <button id="refresh-published-button" data-permission="canEditPublished">Refresh</button>
+                        </div>
+                    </section>
+                    <section class="panel">
+                        <h2>Published Actions</h2>
+                        <textarea id="published-editor" class="short-textarea" spellcheck="false"></textarea>
+                        <div class="toolbar">
+                            <button id="save-published-button" data-permission="canEditPublished">Save</button>
+                            <button id="unpublish-button" data-permission="canUnpublish">Unpublish</button>
+                            <button id="restore-button" data-permission="canUnpublish">Restore</button>
+                        </div>
+                        <p class="status-line" id="published-status"></p>
+                    </section>
+                </div>
+            </section>
+
+            <section class="view" id="view-volumes">
+                <div class="workspace-grid">
+                    <section class="panel">
+                        <h2>Volume Form</h2>
+                        <div class="form-grid">
+                            <label><span>Volume</span><input id="volume-id" placeholder="003"></label>
+                        </div>
+                        <textarea id="volume-radar" class="short-textarea" spellcheck="false"></textarea>
+                        <div class="toolbar">
+                            <button id="create-volume-button" data-permission="canManageVolumes">Create</button>
+                            <button id="update-volume-button" data-permission="canManageVolumes">Update radar</button>
+                        </div>
+                        <p class="status-line" id="volume-status"></p>
+                    </section>
+                    <section class="panel">
+                        <h2>Volumes</h2>
+                        <div id="volume-list" class="compact-list"></div>
+                    </section>
+                </div>
+            </section>
+
+            <section class="view" id="view-users">
+                <div class="workspace-grid">
+                    <section class="panel">
+                        <h2>User Form</h2>
+                        <div class="form-grid">
+                            <label><span>Username</span><input id="user-username"></label>
+                            <label><span>Display name</span><input id="user-display-name"></label>
+                            <label><span>Role</span><input id="user-role" placeholder="editor"></label>
+                            <label><span>Password</span><input id="user-password" type="password"></label>
+                        </div>
+                        <div class="toolbar">
+                            <button id="create-user-button" data-permission="canManageUsers">Create</button>
+                            <button id="update-user-button" data-permission="canManageUsers">Update</button>
+                            <button id="disable-user-button" data-permission="canManageUsers">Disable</button>
+                        </div>
+                        <p class="status-line" id="user-status"></p>
+                    </section>
+                    <section class="panel">
+                        <h2>Users</h2>
+                        <div id="user-list" class="compact-list"></div>
+                    </section>
+                </div>
+            </section>
+
+            <section class="view" id="view-audit">
+                <section class="panel">
+                    <div class="panel-head">
+                        <h2>Audit Log</h2>
+                        <button id="refresh-audit-button" data-permission="canViewAuditLog">Refresh</button>
+                    </div>
+                    <div id="audit-list" class="compact-list"></div>
+                </section>
+            </section>
+        </section>
+    </main>
+
+    <script type="module" src="/admin/js/drafts.js"></script>
+</body>
+</html>

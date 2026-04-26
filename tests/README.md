@@ -29,6 +29,7 @@ npm test
 - 搜索与统计聚合返回结构
 - 发布内容、草稿内容、静态资源的可访问性
 - “打开一期周刊并完成交互”的主流程契约
+- 后台登录、角色权限、投稿导入/返修、草稿审核/发布、作者归一化、已发布内容治理与私有目录保护
 
 ## 内容契约巡检
 
@@ -36,7 +37,7 @@ npm test
 npm run lint:content
 ```
 
-巡检会校验 `contents/` 下的 frontmatter、作者引用、相对资源引用、归档降级文件，以及 `contents/data/` 的运行时数据一致性。运行时数据默认只输出 warning；需要严格失败语义时可运行：
+巡检会校验 `contents/` 下的 frontmatter、作者引用、相对资源引用、归档降级文件、后台私有草稿/下线归档结构，以及 `contents/data/` 的运行时数据一致性。运行时数据默认只输出 warning；需要严格失败语义时可运行：
 
 ```bash
 node tests/content-contract-lint.js --strict-runtime

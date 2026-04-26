@@ -12,6 +12,8 @@
 - **代码高亮**：支持多种编程语言的语法高亮
 - **热重载**：文件变更自动刷新浏览器
 - **草稿预览**：支持草稿模式预览未发布内容
+- **自助投稿**：投稿者可导入 Markdown 和资源、预览、提交并通过 token 链接查看状态
+- **后台治理**：支持投稿接收、技术审核、发布、下线/恢复、作者、卷期、后台用户与审计日志
 - **灵活内容**：Trending 和 Developer's Space 可独立存在或隐藏
 
 ## 项目结构
@@ -19,6 +21,8 @@
 ```
 tech_radar_web/
 ├── index.html              # 前端页面
+├── admin/                  # 后台管理界面（原生 HTML/CSS/JS）
+├── submit/                 # 投稿者自助投稿界面
 ├── server.js               # Node.js 服务器入口（API + 热重载）
 ├── server/                 # 服务器模块
 │   └── utils/
@@ -45,6 +49,11 @@ tech_radar_web/
     ├── assets/             # 静态资源
     │   └── images/
     │       └── avatars/    # 作者头像
+    ├── admin/              # 后台私有数据（自动生成，不公开）
+    │   ├── users.json
+    │   ├── drafts/
+    │   ├── reviews/
+    │   └── audit-log.json
     └── data/               # 运行时数据（自动生成）
         ├── likes/          # 按卷期分片的点赞计数
         ├── like-ips/       # 按卷期分片的点赞身份映射
@@ -83,6 +92,23 @@ node server.js
 ### 草稿预览
 
 访问 `http://localhost:5090/draft` 可预览 `contents/draft/` 目录下的草稿内容。
+
+### 后台管理
+
+访问 `http://localhost:5090/admin` 可进入后台工作台。首次启动会在 `contents/admin/users.json` 初始化一个主编账号，默认用户名和密码均为 `admin`；内网部署时建议通过环境变量覆盖：
+
+```bash
+ADMIN_BOOTSTRAP_USERNAME=chief \
+ADMIN_BOOTSTRAP_PASSWORD='change-me' \
+ADMIN_BOOTSTRAP_DISPLAY_NAME='Chief Editor' \
+npm start
+```
+
+后台支持投稿接收、导入草稿、预览 Markdown 与资源、提交技术审核、主编一键发布、已发布文章编辑、下线/恢复、作者维护、卷期 `radar.md` 管理、后台用户管理和审计日志。`/contents/admin/**` 与 `/contents/data/**` 均不会作为静态资源公开。
+
+### 自助投稿
+
+访问 `http://localhost:5090/submit` 可进入投稿入口。投稿者选择包含 `index.md` 的文件夹或多个文件，填写作者信息或绑定已有作者，预览后提交。提交成功后页面会返回状态链接；投稿者可通过该链接查看审核意见，并在退回修改时提交新版本。
 
 ### 本地验证
 

@@ -6,14 +6,23 @@ const path = require('node:path');
 const yaml = require('js-yaml');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const CONTENTS_DIR = path.join(PROJECT_ROOT, 'contents');
+const CONTENTS_DIR = process.env.SITE_CONTENTS_DIR
+    ? path.resolve(process.env.SITE_CONTENTS_DIR)
+    : path.join(PROJECT_ROOT, 'contents');
 const STRICT_RUNTIME = process.argv.includes('--strict-runtime');
+const ADMIN_DRAFT_STATUSES = new Set(['editing', 'review_requested', 'changes_requested', 'approved', 'published', 'rejected']);
+const SUBMISSION_STATUSES = new Set(['submitted', 'in_editing', 'in_technical_review', 'changes_requested', 'approved', 'published', 'rejected']);
+const ADMIN_ROLES = new Set(['chief_editor', 'editor', 'tech_reviewer']);
 
 const errors = [];
 const warnings = [];
 
 function relativePath(filePath) {
-    return path.relative(PROJECT_ROOT, filePath).replace(/\\/g, '/');
+    const normalized = path.resolve(filePath);
+    if (normalized === CONTENTS_DIR || normalized.startsWith(CONTENTS_DIR + path.sep)) {
+        return `contents/${path.relative(CONTENTS_DIR, normalized).replace(/\\/g, '/')}`;
+    }
+    return path.relative(PROJECT_ROOT, normalized).replace(/\\/g, '/');
 }
 
 function addError(message, filePath) {
@@ -110,12 +119,39 @@ async function loadAuthors() {
     return authors;
 }
 
-function validateAuthorFields(metadata, filePath, authors) {
+function validateTemporaryAuthor(author, filePath) {
+    if (!author || typeof author !== 'object') {
+        addError('temporary author must be an object', filePath);
+        return;
+    }
+    if (typeof author.name !== 'string' || author.name.length === 0) {
+        addError('temporary author name is required', filePath);
+    }
+    for (const field of ['team', 'role', 'avatar']) {
+        if (author[field] !== undefined && typeof author[field] !== 'string') {
+            addError(`temporary author ${field} must be a string`, filePath);
+        }
+    }
+}
+
+function validateAuthorFields(metadata, filePath, authors, options = {}) {
     const hasAuthorId = typeof metadata.author_id === 'string' && metadata.author_id.length > 0;
     const hasAuthorIds = Array.isArray(metadata.author_ids);
+    const hasTemporaryAuthor = metadata.author && typeof metadata.author === 'object';
 
-    if (hasAuthorId === hasAuthorIds) {
-        addError('exactly one of author_id or author_ids is required', filePath);
+    if ([hasAuthorId, hasAuthorIds, hasTemporaryAuthor].filter(Boolean).length !== 1) {
+        addError(options.allowTemporaryAuthor
+            ? 'exactly one of author_id, author_ids or author is required'
+            : 'exactly one of author_id or author_ids is required', filePath);
+        return;
+    }
+
+    if (hasTemporaryAuthor) {
+        if (!options.allowTemporaryAuthor) {
+            addError('temporary author is not allowed outside admin drafts', filePath);
+            return;
+        }
+        validateTemporaryAuthor(metadata.author, filePath);
         return;
     }
 
@@ -293,6 +329,207 @@ async function validateRuntimeData(publishedVolumes) {
     await validateLikeShards(dataDir, publishedVolumes);
 }
 
+async function validateAdminContent(authors) {
+    const adminDir = path.join(CONTENTS_DIR, 'admin');
+    if (!exists(adminDir)) {
+        return;
+    }
+
+    const allowedEntries = new Set(['users.json', 'audit-log.json', 'drafts', 'reviews', 'unpublished']);
+    const entries = await fsPromises.readdir(adminDir, { withFileTypes: true });
+    for (const entry of entries) {
+        if (!allowedEntries.has(entry.name)) {
+            addError(`admin entry is outside the documented contract: ${entry.name}`, path.join(adminDir, entry.name));
+        }
+    }
+
+    await validateAdminUsers(path.join(adminDir, 'users.json'));
+    await validateAdminAuditLog(path.join(adminDir, 'audit-log.json'));
+    await validateAdminDrafts(path.join(adminDir, 'drafts'), path.join(adminDir, 'reviews'), authors);
+    await validateUnpublishedArticles(path.join(adminDir, 'unpublished'), authors);
+}
+
+async function validateAdminUsers(usersPath) {
+    if (!exists(usersPath)) {
+        addError('missing admin users.json', usersPath);
+        return;
+    }
+
+    try {
+        const data = await readJson(usersPath);
+        if (!Array.isArray(data.users)) {
+            addError('users must be an array', usersPath);
+            return;
+        }
+        const usernames = new Set();
+        for (const user of data.users) {
+            if (!user || typeof user !== 'object') {
+                addError('admin user entry must be an object', usersPath);
+                continue;
+            }
+            if (!user.username || typeof user.username !== 'string') {
+                addError('admin user username is required', usersPath);
+            } else if (usernames.has(user.username)) {
+                addError(`duplicate admin username "${user.username}"`, usersPath);
+            } else {
+                usernames.add(user.username);
+            }
+            if (!ADMIN_ROLES.has(user.role)) {
+                addError(`admin user role is invalid: ${user.role || ''}`, usersPath);
+            }
+            if (!user.passwordHash || typeof user.passwordHash !== 'string') {
+                addError(`admin user "${user.username || ''}" is missing passwordHash`, usersPath);
+            }
+            if (user.disabled !== undefined && typeof user.disabled !== 'boolean') {
+                addError(`admin user "${user.username || ''}" disabled must be boolean`, usersPath);
+            }
+        }
+    } catch (error) {
+        addError(`users.json is not valid JSON: ${error.message}`, usersPath);
+    }
+}
+
+async function validateAdminAuditLog(auditLogPath) {
+    if (!exists(auditLogPath)) {
+        addError('missing admin audit-log.json', auditLogPath);
+        return;
+    }
+
+    try {
+        const auditLog = await readJson(auditLogPath);
+        if (!Array.isArray(auditLog)) {
+            addError('audit log must be an array', auditLogPath);
+        }
+    } catch (error) {
+        addError(`audit-log.json is not valid JSON: ${error.message}`, auditLogPath);
+    }
+}
+
+async function validateAdminDrafts(draftsDir, reviewsDir, authors) {
+    if (!exists(draftsDir)) {
+        addError('missing admin drafts directory', draftsDir);
+        return;
+    }
+
+    const draftIds = new Set();
+    const draftEntries = await fsPromises.readdir(draftsDir, { withFileTypes: true });
+    for (const entry of draftEntries) {
+        if (!entry.isDirectory()) {
+            addError('admin drafts may only contain draft directories', path.join(draftsDir, entry.name));
+            continue;
+        }
+        draftIds.add(entry.name);
+        await validateAdminDraft(path.join(draftsDir, entry.name), entry.name, authors);
+    }
+
+    if (!exists(reviewsDir)) {
+        addError('missing admin reviews directory', reviewsDir);
+        return;
+    }
+
+    const reviewEntries = await fsPromises.readdir(reviewsDir, { withFileTypes: true });
+    for (const entry of reviewEntries) {
+        const reviewPath = path.join(reviewsDir, entry.name);
+        if (!entry.isFile() || !entry.name.endsWith('.json')) {
+            addError('admin reviews may only contain JSON files', reviewPath);
+            continue;
+        }
+        const draftId = entry.name.replace(/\.json$/, '');
+        if (!draftIds.has(draftId)) {
+            addWarning(`review file does not match an admin draft: ${entry.name}`, reviewPath);
+        }
+        try {
+            const review = await readJson(reviewPath);
+            if (!Array.isArray(review.history)) {
+                addError('review history must be an array', reviewPath);
+            }
+        } catch (error) {
+            addError(`review file is not valid JSON: ${error.message}`, reviewPath);
+        }
+    }
+}
+
+async function validateAdminDraft(draftDir, draftId, authors) {
+    if (!/^\d{14}-[a-z0-9._-]+$/.test(draftId)) {
+        addError('draft id must use timestamp + slug', draftDir);
+    }
+
+    const metaPath = path.join(draftDir, 'meta.json');
+    const indexPath = path.join(draftDir, 'index.md');
+
+    if (!exists(metaPath)) {
+        addError('admin draft is missing meta.json', draftDir);
+    } else {
+        try {
+            const meta = await readJson(metaPath);
+            if (meta.draftId !== draftId) {
+                addError('meta draftId must match directory name', metaPath);
+            }
+            if (!ADMIN_DRAFT_STATUSES.has(meta.status)) {
+                addError(`draft status is invalid: ${meta.status || ''}`, metaPath);
+            }
+            if (meta.source !== undefined && !['admin', 'submission'].includes(meta.source)) {
+                addError(`draft source is invalid: ${meta.source || ''}`, metaPath);
+            }
+            if (meta.source === 'submission') {
+                if (!SUBMISSION_STATUSES.has(meta.submissionStatus)) {
+                    addError(`submission status is invalid: ${meta.submissionStatus || ''}`, metaPath);
+                }
+                if (!meta.submitter || typeof meta.submitter !== 'object') {
+                    addError('submission submitter is required', metaPath);
+                }
+                if (!meta.submitterTokenHash || typeof meta.submitterTokenHash !== 'string') {
+                    addError('submission token hash is required', metaPath);
+                }
+                if (!Number.isInteger(meta.revision) || meta.revision < 1) {
+                    addError('submission revision must be a positive integer', metaPath);
+                }
+            }
+            if (typeof meta.targetVol !== 'string' || !/^\d{3,10}$/.test(meta.targetVol)) {
+                addError('draft targetVol must be a volume id string', metaPath);
+            }
+            if (typeof meta.folderName !== 'string' || !/^[a-z0-9._-]+$/.test(meta.folderName)) {
+                addError('draft folderName must be a slug', metaPath);
+            }
+        } catch (error) {
+            addError(`meta.json is not valid JSON: ${error.message}`, metaPath);
+        }
+    }
+
+    if (!exists(indexPath)) {
+        addError('admin draft is missing index.md', draftDir);
+        return;
+    }
+
+    const { metadata, content } = parseFrontmatter(await fsPromises.readFile(indexPath, 'utf8'), indexPath);
+    if (typeof metadata.title !== 'string' || metadata.title.length === 0) {
+        addError('title is required', indexPath);
+    }
+    if (typeof metadata.description !== 'string' || metadata.description.length === 0) {
+        addError('description is required', indexPath);
+    }
+    validateAuthorFields(metadata, indexPath, authors, { allowTemporaryAuthor: true });
+    validateRelativeAssets(content, draftDir, indexPath);
+}
+
+async function validateUnpublishedArticles(unpublishedDir, authors) {
+    if (!exists(unpublishedDir)) {
+        return;
+    }
+    const entries = await fsPromises.readdir(unpublishedDir, { withFileTypes: true });
+    for (const entry of entries) {
+        const entryPath = path.join(unpublishedDir, entry.name);
+        if (!entry.isDirectory()) {
+            addError('unpublished archive may only contain article directories', entryPath);
+            continue;
+        }
+        if (!/^\d{3,10}-[a-z0-9._-]+$/.test(entry.name)) {
+            addError('unpublished article id must follow <vol>-<folder>', entryPath);
+        }
+        await validateCollectionEntry(entryPath, authors);
+    }
+}
+
 async function validateLikeShards(dataDir, publishedVolumes) {
     const likesDir = path.join(dataDir, 'likes');
     const likeIpsDir = path.join(dataDir, 'like-ips');
@@ -361,6 +598,7 @@ async function main() {
     const authors = await loadAuthors();
     const publishedVolumes = await validateVolumeRoot('published', authors);
     await validateVolumeRoot('draft', authors);
+    await validateAdminContent(authors);
     await validateRuntimeData(publishedVolumes);
 
     if (warnings.length > 0) {

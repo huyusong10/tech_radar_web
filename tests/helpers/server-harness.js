@@ -35,6 +35,7 @@ async function createContentsSandbox() {
     const sandboxRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tech-radar-web-'));
     const contentsDir = path.join(sandboxRoot, 'contents');
     await fs.cp(SOURCE_CONTENTS_DIR, contentsDir, { recursive: true });
+    await fs.rm(path.join(contentsDir, 'admin'), { recursive: true, force: true });
 
     return { sandboxRoot, contentsDir };
 }
