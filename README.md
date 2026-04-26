@@ -46,8 +46,9 @@ tech_radar_web/
     │   └── images/
     │       └── avatars/    # 作者头像
     └── data/               # 运行时数据（自动生成）
-        ├── likes.json      # 点赞数据
-        └── views.json      # 阅读量数据
+        ├── likes/          # 按卷期分片的点赞计数
+        ├── like-ips/       # 按卷期分片的点赞身份映射
+        └── views.json      # 阅读量计数
 ```
 
 ## 快速开始
@@ -82,6 +83,24 @@ node server.js
 ### 草稿预览
 
 访问 `http://localhost:5090/draft` 可预览 `contents/draft/` 目录下的草稿内容。
+
+### 本地验证
+
+```bash
+npm test
+```
+
+`npm test` 会先运行内容契约巡检，再运行 HTTP、前端、持久化与主流程契约测试。若只想检查内容目录结构、作者引用、资源引用和运行时数据一致性，可运行：
+
+```bash
+npm run lint:content
+```
+
+运行时数据默认只输出 warning；如果需要让运行时数据问题也导致命令失败，可以使用：
+
+```bash
+node tests/content-contract-lint.js --strict-runtime
+```
 
 ## 配置说明
 
@@ -230,8 +249,11 @@ authors:
 | `/api/authors` | GET | 获取所有作者 |
 | `/api/volumes` | GET | 获取期刊列表（支持 `?draft=true`） |
 | `/api/contributions/:vol` | GET | 获取某期投稿列表 |
+| `/api/best-practices/:vol` | GET | 获取某期 Best Practices 列表 |
+| `/api/search` | GET | 搜索已发布内容 |
 | `/api/stats` | GET | 获取作者统计排名 |
 | `/api/likes` | GET | 获取点赞数据 |
+| `/api/user-likes` | GET | 获取当前客户端点赞状态 |
 | `/api/likes/:articleId` | POST | 点赞/取消点赞 |
 | `/api/views/:vol` | GET/POST | 获取/增加阅读量 |
 | `/api/hot-reload` | GET | SSE 热重载连接 |

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "start:test": "LOAD_TEST_MODE=true node server.js",
-    "test": "node --test tests/*.test.js",
+    "lint:content": "node tests/content-contract-lint.js",
+    "test": "npm run lint:content && npm run test:contracts",
     "test:contracts": "node --test tests/*.test.js",
     "test:load": "node tests/load-test.js",
     "test:load:api": "node tests/load-test.js --test api --concurrency 500",

@@ -1,9 +1,10 @@
 # Tests
 
-本目录现在分成两类测试：
+本目录现在分成三类测试/验证入口：
 
 | 类型 | 文件 | 目标 |
 |------|------|------|
+| 内容契约巡检 | `content-contract-lint.js` | 检查内容目录、作者引用、资源引用与运行时数据一致性 |
 | 契约/集成测试 | `*.test.js` | 锁定对外 HTTP、静态资源与主流程行为，支持后续重构 |
 | 压测脚本 | `load-test.js` | 验证高并发与 SSE 容量，不作为回归契约测试 |
 
@@ -12,6 +13,8 @@
 ```bash
 npm test
 ```
+
+`npm test` 会先运行内容契约巡检，再运行 `*.test.js`。
 
 设计原则：
 
@@ -27,6 +30,18 @@ npm test
 - 发布内容、草稿内容、静态资源的可访问性
 - “打开一期周刊并完成交互”的主流程契约
 
+## 内容契约巡检
+
+```bash
+npm run lint:content
+```
+
+巡检会校验 `contents/` 下的 frontmatter、作者引用、相对资源引用、归档降级文件，以及 `contents/data/` 的运行时数据一致性。运行时数据默认只输出 warning；需要严格失败语义时可运行：
+
+```bash
+node tests/content-contract-lint.js --strict-runtime
+```
+
 ## 压测脚本
 
 ```bash
@@ -37,4 +52,4 @@ npm run start:test
 npm run test:benchmark
 ```
 
-`LOAD_TEST_MODE=true` 时，服务会放宽读取限流、写入限流和 SSE 连接上限，适合容量测试，不适合作为日常回归测试环境。
+`LOAD_TEST_MODE=true` 时，服务会禁用 API 限流并放宽 SSE 连接上限，适合容量测试，不适合作为日常回归测试环境。

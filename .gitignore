@@ -13,6 +13,3 @@ contents/data/
 # Auto-generated archive files
 contents/published/archive.json
 contents/draft/archive.json
-
-# Lock files
-package-lock.json

@@ -9,7 +9,7 @@
  * ├── draft/              # Draft volumes for preview
  * ├── shared/             # Shared config (authors.md, config.md, submit-guide.md)
  * ├── assets/             # Static assets (images, avatars, etc.)
- * └── data/               # Runtime data (likes.json, views.json)
+ * └── data/               # Runtime data (likes/, like-ips/, views.json)
  *
  * You can use relative or absolute paths.
  * Example: contentsDir: '/data/my-team/tech-radar-contents'

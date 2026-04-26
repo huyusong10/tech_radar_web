@@ -6,7 +6,14 @@ const yaml = require('js-yaml');
 const chokidar = require('chokidar');
 
 // Import utilities
-const { Cache, AsyncMutex, RateLimiter, WriteQueue, DEFAULTS: CONFIG } = require('./server/utils/concurrency');
+const {
+    Cache,
+    AsyncMutex,
+    RateLimiter,
+    WriteQueue,
+    createRateLimitConfig,
+    DEFAULTS: CONFIG
+} = require('./server/utils/concurrency');
 const { getClientIP } = require('./server/utils/ip');
 
 
@@ -48,7 +55,7 @@ const LEGACY_LIKE_IPS_FILE = path.join(DATA_DIR, 'like-ips.json');
 // Set LOAD_TEST_MODE=true to relax rate limits and connection limits for benchmarking
 const LOAD_TEST_MODE = process.env.LOAD_TEST_MODE === 'true';
 if (LOAD_TEST_MODE) {
-    console.log('⚠️  LOAD TEST MODE ENABLED - Rate limits and connection limits are relaxed');
+    console.log('LOAD TEST MODE ENABLED - API rate limits and SSE connection limits are disabled');
 }
 
 // ==================== CONCURRENCY CONFIGURATION ====================
@@ -58,7 +65,7 @@ if (LOAD_TEST_MODE) {
 // ==================== INSTANCES ====================
 const cache = new Cache();
 const mutex = new AsyncMutex();
-const rateLimiter = new RateLimiter();
+const rateLimiter = new RateLimiter(createRateLimitConfig({ loadTestMode: LOAD_TEST_MODE }));
 const writeQueue = new WriteQueue();
 
 
@@ -1278,7 +1285,11 @@ async function startServer() {
         console.log(`Concurrency optimizations enabled:`);
         console.log(`  - In-memory caching with TTL`);
         console.log(`  - Async file I/O`);
-        console.log(`  - Rate limiting (${CONFIG.RATE_LIMIT.maxRequests.read} read, ${CONFIG.RATE_LIMIT.maxRequests.write} write per minute)`);
+        if (LOAD_TEST_MODE) {
+            console.log(`  - Rate limiting disabled for load testing`);
+        } else {
+            console.log(`  - Rate limiting (${CONFIG.RATE_LIMIT.maxRequests.read} read, ${CONFIG.RATE_LIMIT.maxRequests.write} write per minute)`);
+        }
         console.log(`  - Proper mutex-based locking`);
         console.log(`  - Debounced writes`);
     });

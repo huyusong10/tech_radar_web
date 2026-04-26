@@ -4,7 +4,11 @@ const os = require('node:os');
 const path = require('node:path');
 const { after, test } = require('node:test');
 
-const { WriteQueue } = require('../server/utils/concurrency');
+const {
+    RateLimiter,
+    WriteQueue,
+    createRateLimitConfig
+} = require('../server/utils/concurrency');
 
 const tempDirs = [];
 
@@ -30,4 +34,24 @@ test('WriteQueue resolves superseded writes and persists the latest payload', as
     const written = JSON.parse(await fs.readFile(targetFile, 'utf8'));
     assert.equal(firstResolved, true);
     assert.deepEqual(written, { value: 2 });
+});
+
+test('RateLimiter enforces normal limits and can be disabled for load tests', () => {
+    const normalLimiter = new RateLimiter({
+        windowMs: 60000,
+        maxRequests: {
+            read: 2,
+            write: 1
+        }
+    });
+
+    assert.equal(normalLimiter.isAllowed('127.0.0.1', 'read'), true);
+    assert.equal(normalLimiter.isAllowed('127.0.0.1', 'read'), true);
+    assert.equal(normalLimiter.isAllowed('127.0.0.1', 'read'), false);
+
+    const loadTestLimiter = new RateLimiter(createRateLimitConfig({ loadTestMode: true }));
+    for (let i = 0; i < 1000; i += 1) {
+        assert.equal(loadTestLimiter.isAllowed('127.0.0.1', 'read'), true);
+        assert.equal(loadTestLimiter.isAllowed('127.0.0.1', 'write'), true);
+    }
 });

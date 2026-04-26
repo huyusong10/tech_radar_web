@@ -22,6 +22,17 @@ const DEFAULTS = {
     }
 };
 
+function createRateLimitConfig(options = {}) {
+    if (!options.loadTestMode) {
+        return DEFAULTS.RATE_LIMIT;
+    }
+
+    return {
+        ...DEFAULTS.RATE_LIMIT,
+        enabled: false
+    };
+}
+
 // ==================== IN-MEMORY CACHE ====================
 class Cache {
     constructor() {
@@ -98,10 +109,17 @@ class RateLimiter {
         this.requests = new Map();
         this.config = config;
         // Clean up old entries every minute
-        setInterval(() => this.cleanup(), 60000);
+        this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
+        if (typeof this.cleanupInterval.unref === 'function') {
+            this.cleanupInterval.unref();
+        }
     }
 
     isAllowed(ip, type = 'read') {
+        if (this.config.enabled === false) {
+            return true;
+        }
+
         const key = `${ip}:${type}`;
         const now = Date.now();
         const windowStart = now - this.config.windowMs;
@@ -206,5 +224,6 @@ module.exports = {
     AsyncMutex,
     RateLimiter,
     WriteQueue,
+    createRateLimitConfig,
     DEFAULTS
 };
