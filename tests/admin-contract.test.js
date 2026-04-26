@@ -103,6 +103,11 @@ description: "Submission through token flow"
 
 Initial version.
 `
+            },
+            {
+                path: 'diagram.png',
+                type: 'base64',
+                content: Buffer.from('not-a-real-image-but-valid-base64').toString('base64')
             }
         ]
     };
@@ -381,6 +386,27 @@ describe('Admin contract', () => {
             assert.equal(acceptResponse.status, 200);
             assert.equal((await readJson(acceptResponse)).meta.submissionStatus, 'in_editing');
 
+            const assignResponse = await harness.request(
+                `/api/admin/drafts/${submission.submissionId}/assign`,
+                jsonRequest({ assignee: 'flow_editor' }, editorCookie)
+            );
+            assert.equal(assignResponse.status, 200);
+            assert.equal((await readJson(assignResponse)).meta.assignee, 'flow_editor');
+
+            const linkResponse = await harness.request(
+                `/api/admin/drafts/${submission.submissionId}/status-link`,
+                jsonRequest({}, editorCookie)
+            );
+            assert.equal(linkResponse.status, 200);
+            const reissuedLink = await readJson(linkResponse);
+            assert.ok(reissuedLink.accessToken);
+
+            const expiredTokenResponse = await harness.request(
+                `/api/submissions/${submission.submissionId}?token=${submission.accessToken}`
+            );
+            assert.equal(expiredTokenResponse.status, 403);
+            submission.accessToken = reissuedLink.accessToken;
+
             const reviewRequestResponse = await harness.request(
                 `/api/admin/drafts/${submission.submissionId}/review-request`,
                 jsonRequest({}, editorCookie)
@@ -395,7 +421,7 @@ describe('Admin contract', () => {
 
             const changesResponse = await harness.request(
                 `/api/admin/drafts/${submission.submissionId}/review`,
-                jsonRequest({ action: 'request_changes', comment: 'Please expand the example' }, reviewerCookie)
+                jsonRequest({ action: 'request_changes', comment: 'Please expand the example', visibility: 'public' }, reviewerCookie)
             );
             assert.equal(changesResponse.status, 200);
             assert.equal((await readJson(changesResponse)).meta.submissionStatus, 'changes_requested');
@@ -405,18 +431,28 @@ describe('Admin contract', () => {
             ));
             assert.equal(returnedStatus.status, 'changes_requested');
             assert.ok(returnedStatus.review.history.some(entry => entry.comment === 'Please expand the example'));
+            assert.ok(!returnedStatus.review.history.some(entry => entry.comment === 'Accepted by editor'));
+            assert.ok(returnedStatus.files.some(file => file.path === 'diagram.png'));
 
             const revisedMarkdown = returnedStatus.indexContent.replace('Initial version.', 'Initial version.\n\nExpanded example.');
             const revisionResponse = await harness.request(
                 `/api/submissions/${submission.submissionId}?token=${submission.accessToken}`,
                 putJsonRequest({
-                    files: [{ path: 'index.md', type: 'text', content: revisedMarkdown }]
+                    indexContent: revisedMarkdown,
+                    deleteFiles: ['diagram.png']
                 })
             );
             assert.equal(revisionResponse.status, 200);
             const revised = await readJson(revisionResponse);
             assert.equal(revised.status, 'submitted');
             assert.equal(revised.revision, 2);
+            assert.ok(!revised.files.some(file => file.path === 'diagram.png'));
+
+            const revisedDetail = await readJson(await harness.request(`/api/admin/drafts/${submission.submissionId}`, {
+                headers: { Cookie: editorCookie }
+            }));
+            assert.equal(revisedDetail.revisionSummary.toRevision, 2);
+            assert.ok(revisedDetail.revisionSummary.addedLines >= 1);
 
             await harness.request(
                 `/api/admin/drafts/${submission.submissionId}/accept`,
@@ -432,6 +468,23 @@ describe('Admin contract', () => {
             );
             assert.equal(approveResponse.status, 200);
             assert.equal((await readJson(approveResponse)).meta.submissionStatus, 'approved');
+
+            const publishCheckResponse = await harness.request(
+                `/api/admin/drafts/${submission.submissionId}/publish-check`,
+                jsonRequest({
+                    authorResolution: {
+                        mode: 'create',
+                        author: {
+                            id: 'first_submitter_author',
+                            name: 'First Submitter',
+                            team: 'Platform Team',
+                            role: 'Engineer'
+                        }
+                    }
+                }, chiefCookie)
+            );
+            assert.equal(publishCheckResponse.status, 200);
+            assert.equal((await readJson(publishCheckResponse)).ok, true);
 
             const publishResponse = await harness.request(
                 `/api/admin/drafts/${submission.submissionId}/publish`,
@@ -455,9 +508,33 @@ describe('Admin contract', () => {
             ));
             assert.equal(publishedStatus.status, 'published');
             assert.equal(publishedStatus.publishedArticleId, '003-submitter-flow');
+            assert.ok(publishedStatus.review.history.some(entry => entry.action === 'published'));
 
             let contributions = await readJson(await harness.request('/api/contributions/003'));
             assert.ok(contributions.includes('submitter-flow'));
+
+            const targetAuthorResponse = await harness.request('/api/admin/authors', jsonRequest({
+                author: {
+                    id: 'first_submitter_target',
+                    name: 'First Submitter',
+                    team: 'Platform Team',
+                    role: 'Engineer'
+                }
+            }, editorCookie));
+            assert.equal(targetAuthorResponse.status, 201);
+            const mergeResponse = await harness.request('/api/admin/authors/merge', jsonRequest({
+                sourceId: 'first_submitter_author',
+                targetId: 'first_submitter_target'
+            }, editorCookie));
+            assert.equal(mergeResponse.status, 200);
+            let staticMarkdown = await (await harness.request('/contents/published/vol-003/contributions/submitter-flow/index.md')).text();
+            assert.match(staticMarkdown, /author_id: first_submitter_target/);
+
+            const authorsResponse = await harness.request('/api/admin/authors', {
+                headers: { Cookie: editorCookie }
+            });
+            const authors = (await readJson(authorsResponse)).authors;
+            assert.ok(authors.some(author => author.id === 'first_submitter_target' && author.usageCount >= 1));
 
             const publishedDetail = await readJson(await harness.request('/api/admin/published/003-submitter-flow', {
                 headers: { Cookie: editorCookie }
@@ -465,11 +542,29 @@ describe('Admin contract', () => {
             const editedMarkdown = publishedDetail.indexContent.replace('Expanded example.', 'Expanded example.\n\nEdited after publication.');
             const editResponse = await harness.request(
                 '/api/admin/published/003-submitter-flow',
-                putJsonRequest({ indexContent: editedMarkdown }, editorCookie)
+                putJsonRequest({
+                    indexContent: editedMarkdown,
+                    files: [{ path: 'appendix.txt', type: 'text', content: 'appendix' }]
+                }, editorCookie)
             );
             assert.equal(editResponse.status, 200);
-            const staticMarkdown = await (await harness.request('/contents/published/vol-003/contributions/submitter-flow/index.md')).text();
+            staticMarkdown = await (await harness.request('/contents/published/vol-003/contributions/submitter-flow/index.md')).text();
             assert.match(staticMarkdown, /Edited after publication/);
+
+            const historyResponse = await harness.request('/api/admin/published/003-submitter-flow/history', {
+                headers: { Cookie: chiefCookie }
+            });
+            assert.equal(historyResponse.status, 200);
+            const history = await readJson(historyResponse);
+            assert.ok(history.snapshots.length >= 1);
+
+            const rollbackResponse = await harness.request(
+                '/api/admin/published/003-submitter-flow/rollback',
+                jsonRequest({ snapshotId: history.snapshots[0].snapshotId }, chiefCookie)
+            );
+            assert.equal(rollbackResponse.status, 200);
+            staticMarkdown = await (await harness.request('/contents/published/vol-003/contributions/submitter-flow/index.md')).text();
+            assert.ok(!/Edited after publication/.test(staticMarkdown));
 
             const forbiddenUnpublish = await harness.request(
                 '/api/admin/published/003-submitter-flow/unpublish',
@@ -484,6 +579,12 @@ describe('Admin contract', () => {
             assert.equal(unpublishResponse.status, 200);
             contributions = await readJson(await harness.request('/api/contributions/003'));
             assert.ok(!contributions.includes('submitter-flow'));
+
+            const unpublishedResponse = await harness.request('/api/admin/unpublished', {
+                headers: { Cookie: chiefCookie }
+            });
+            assert.equal(unpublishedResponse.status, 200);
+            assert.ok((await readJson(unpublishedResponse)).articles.some(article => article.articleId === '003-submitter-flow'));
 
             const restoreResponse = await harness.request(
                 '/api/admin/unpublished/003-submitter-flow/restore',
@@ -504,12 +605,23 @@ describe('Admin contract', () => {
             }));
             assert.equal(disabledLoginResponse.status, 401);
 
+            const enableResponse = await harness.request(
+                '/api/admin/users/flow_reviewer/enable',
+                jsonRequest({}, chiefCookie)
+            );
+            assert.equal(enableResponse.status, 200);
+            const enabledLogin = await login(harness, 'flow_reviewer', 'flow-reviewer-secret');
+            assert.equal(enabledLogin.body.user.disabled, false);
+
             const auditResponse = await harness.request('/api/admin/audit-log', {
                 headers: { Cookie: chiefCookie }
             });
             assert.equal(auditResponse.status, 200);
             const audit = await readJson(auditResponse);
             assert.ok(audit.entries.some(entry => entry.action === 'create_submission'));
+            assert.ok(audit.entries.some(entry => entry.action === 'issue_submission_status_link'));
+            assert.ok(audit.entries.some(entry => entry.action === 'merge_author'));
+            assert.ok(audit.entries.some(entry => entry.action === 'rollback_published'));
             assert.ok(audit.entries.some(entry => entry.action === 'unpublish_article'));
             assert.ok(audit.entries.some(entry => entry.action === 'restore_article'));
         } finally {

@@ -83,15 +83,28 @@
                 <div class="workspace-grid">
                     <section class="panel">
                         <h2>Submission Queue</h2>
+                        <div class="form-grid">
+                            <label><span>Status</span><input id="queue-status-filter" placeholder="editing / review_requested"></label>
+                            <label><span>Submission status</span><input id="queue-submission-status-filter" placeholder="submitted"></label>
+                            <label><span>Assignee</span><input id="queue-assignee-filter" placeholder="username"></label>
+                            <label><span>Search</span><input id="queue-search-filter" placeholder="author / folder / contact"></label>
+                        </div>
                         <div id="submission-list" class="compact-list"></div>
                     </section>
                     <section class="panel">
                         <h2>Submission Actions</h2>
+                        <div class="form-grid">
+                            <label><span>Assignee</span><input id="submission-assignee" placeholder="username"></label>
+                            <label><span>Visibility</span><select id="submission-comment-visibility"><option value="internal">Internal</option><option value="public">Public</option></select></label>
+                        </div>
                         <textarea id="submission-action-comment" class="short-textarea" placeholder="Comment"></textarea>
                         <div class="toolbar">
                             <button id="accept-submission-button" data-permission="canEditDraft">Accept</button>
                             <button id="reject-submission-button" data-permission="canRejectDraft">Reject</button>
+                            <button id="assign-submission-button" data-permission="canAssignDraft">Assign</button>
+                            <button id="issue-status-link-button" data-permission="canIssueStatusLink">Issue link</button>
                         </div>
+                        <div class="token-box" id="issued-status-link"></div>
                         <p class="status-line" id="submission-action-status"></p>
                     </section>
                 </div>
@@ -131,7 +144,10 @@
                     <div class="form-grid">
                         <label><span>Target volume</span><input id="draft-target-vol"></label>
                         <label><span>Folder name</span><input id="draft-folder-name"></label>
+                        <label><span>Assignee</span><input id="draft-assignee"></label>
+                        <label><span>Delete assets</span><input id="draft-delete-files" placeholder="asset.png, diagrams/a.svg"></label>
                     </div>
+                    <input id="draft-files-input" type="file" multiple webkitdirectory>
                     <div class="split-editor">
                         <textarea id="draft-editor" spellcheck="false"></textarea>
                         <div class="preview-surface" id="draft-preview"></div>
@@ -149,6 +165,9 @@
                             <button id="changes-button" data-permission="canReview">Request changes</button>
                         </div>
                     </div>
+                    <div class="form-grid">
+                        <label><span>Comment visibility</span><select id="review-comment-visibility"><option value="public">Public</option><option value="internal">Internal</option></select></label>
+                    </div>
                     <textarea id="review-comment" class="short-textarea" placeholder="Review comment"></textarea>
                     <div id="review-history" class="compact-list"></div>
                 </section>
@@ -165,8 +184,10 @@
                         <label><span>Role</span><input id="publish-new-role"></label>
                     </div>
                     <div class="toolbar">
+                        <button id="publish-check-button" data-permission="canPublish">Check</button>
                         <button id="publish-button" data-permission="canPublish">Publish</button>
                     </div>
+                    <div id="publish-checks" class="compact-list"></div>
                     <p class="status-line" id="publish-status"></p>
                 </section>
             </section>
@@ -185,6 +206,13 @@
                         <div class="toolbar">
                             <button id="create-author-button" data-permission="canManageAuthors">Create</button>
                             <button id="update-author-button" data-permission="canManageAuthors">Update</button>
+                        </div>
+                        <div class="form-grid">
+                            <label><span>Merge source</span><input id="merge-source-author" placeholder="duplicate_author"></label>
+                            <label><span>Merge target</span><input id="merge-target-author" placeholder="canonical_author"></label>
+                        </div>
+                        <div class="toolbar">
+                            <button id="merge-author-button" data-permission="canManageAuthors">Merge</button>
                         </div>
                         <p class="status-line" id="author-status"></p>
                     </section>
@@ -217,11 +245,19 @@
                     <section class="panel">
                         <h2>Published Actions</h2>
                         <textarea id="published-editor" class="short-textarea" spellcheck="false"></textarea>
+                        <input id="published-files-input" type="file" multiple webkitdirectory>
+                        <input id="published-delete-files" placeholder="delete asset paths, comma separated">
                         <div class="toolbar">
                             <button id="save-published-button" data-permission="canEditPublished">Save</button>
                             <button id="unpublish-button" data-permission="canUnpublish">Unpublish</button>
                             <button id="restore-button" data-permission="canUnpublish">Restore</button>
+                            <button id="rollback-button" data-permission="canRollbackPublished">Rollback</button>
                         </div>
+                        <div id="published-files" class="file-list"></div>
+                        <h2>Unpublished</h2>
+                        <div id="unpublished-list" class="compact-list"></div>
+                        <h2>History</h2>
+                        <div id="published-history-list" class="compact-list"></div>
                         <p class="status-line" id="published-status"></p>
                     </section>
                 </div>
@@ -262,6 +298,7 @@
                             <button id="create-user-button" data-permission="canManageUsers">Create</button>
                             <button id="update-user-button" data-permission="canManageUsers">Update</button>
                             <button id="disable-user-button" data-permission="canManageUsers">Disable</button>
+                            <button id="enable-user-button" data-permission="canManageUsers">Enable</button>
                         </div>
                         <p class="status-line" id="user-status"></p>
                     </section>

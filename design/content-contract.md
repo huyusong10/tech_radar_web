@@ -11,6 +11,8 @@
 | `contents/shared/submit-guide.md` | 投稿指南正文 | 以 Markdown 正文形式展示 |
 | `contents/assets/` | 共享静态资源 | 以静态路径暴露，供作者头像和共享图片使用 |
 | `contents/admin/` | 后台与投稿私有数据 | 仅供服务端读写；不通过静态资源公开 |
+| `contents/admin/revisions/<draftId>/` | 投稿修订快照 | 存储投稿者每次提交后的正文快照 |
+| `contents/admin/published-history/<articleId>/` | 已发布文章快照 | 保存编辑或下线前的最近版本，用于回滚 |
 | `contents/data/likes/vol-<vol>.json` | 分片点赞快照 | 仅供服务端读写；键为 `articleId`，值为非负整数 |
 | `contents/data/views.json` | 阅读量快照 | 键为 `vol`，值为非负整数 |
 | `contents/data/like-ips/vol-<vol>.json` | 分片点赞身份映射 | 仅供服务端读写；键为 `articleId`，值为身份数组 |
@@ -114,15 +116,45 @@
 | `submitter` | 投稿者资料，仅 `source=submission` 必填 |
 | `submitterTokenHash` | 投稿状态访问 token 摘要，仅 `source=submission` 必填 |
 | `submittedAt` / `lastSubmitterReadAt` | 投稿者流程时间戳 |
+| `lastStatusLinkIssuedAt` / `lastStatusLinkIssuedBy` | 状态链接补发记录 |
+| `assignee` | 当前责任人用户名，可为空 |
 | `revision` | 投稿修订版本，从 `1` 开始 |
 | `createdBy` / `updatedBy` | 后台操作者用户名 |
 | `createdAt` / `updatedAt` | ISO 时间戳 |
 
 后台草稿不会直接出现在读者页；发布转正时必须生成符合 `contents/published` 契约的正式投稿。
 
+### `contents/admin/reviews/<draftId>.json`
+
+| 字段 | 说明 |
+|------|------|
+| `draftId` | 后台草稿稳定标识 |
+| `history[]` | 审核、编辑和发布过程中的事件流 |
+
+`history[]` 稳定字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `action` | string | 是 | 稳定事件标识 |
+| `actor` | string | 否 | 后台用户名或 `submitter` |
+| `role` | string | 否 | 事件角色 |
+| `comment` | string | 否 | 备注正文 |
+| `visibility` | string | 否 | `public` 或 `internal`；未声明时按内部事件处理 |
+| `at` | string | 是 | ISO 时间戳 |
+
+投稿者接口只能返回 `visibility=public` 的历史记录。
+
+### `contents/admin/revisions/<draftId>/revision-<n>.md`
+
+投稿来源草稿每次创建或返修后保存当前 `index.md` 快照。后台详情可以基于相邻快照提供轻量变更摘要；快照不直接暴露给浏览器静态资源。
+
 ### `contents/admin/unpublished/<articleId>/`
 
 已下线文章使用与正式投稿目录相同的文件结构，但不出现在读者 API、搜索、统计或归档中。恢复时必须重新写回 `contents/published/vol-<vol>/contributions/<folder>/` 并通过内容契约巡检。
+
+### `contents/admin/published-history/<articleId>/`
+
+已发布文章在编辑、下线或回滚前保存目录快照。服务端可以保留最近若干个快照；快照目录名只作为服务端私有标识，不进入读者契约。
 
 ### `contents/shared/config.md`
 

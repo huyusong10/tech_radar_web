@@ -43,8 +43,12 @@ export function me() {
     return request('/api/admin/me');
 }
 
-export function listDrafts() {
-    return request('/api/admin/drafts');
+export function listDrafts(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+    });
+    return request(`/api/admin/drafts${params.toString() ? `?${params}` : ''}`);
 }
 
 export function getDraft(draftId) {
@@ -65,42 +69,62 @@ export function updateDraft(draftId, payload) {
     });
 }
 
+export function assignDraft(draftId, assignee) {
+    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/assign`, {
+        method: 'POST',
+        body: { assignee }
+    });
+}
+
+export function issueStatusLink(draftId) {
+    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/status-link`, {
+        method: 'POST'
+    });
+}
+
 export function deleteDraft(draftId) {
     return request(`/api/admin/drafts/${encodeURIComponent(draftId)}`, {
         method: 'DELETE'
     });
 }
 
-export function acceptDraft(draftId, comment = '') {
+export function acceptDraft(draftId, comment = '', visibility = 'internal') {
     return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/accept`, {
         method: 'POST',
-        body: { comment }
+        body: { comment, visibility }
     });
 }
 
-export function rejectDraft(draftId, comment = '') {
+export function rejectDraft(draftId, comment = '', visibility = 'public') {
     return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/reject`, {
         method: 'POST',
-        body: { comment }
+        body: { comment, visibility }
     });
 }
 
-export function requestReview(draftId, comment = '') {
+export function requestReview(draftId, comment = '', visibility = 'internal') {
     return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/review-request`, {
         method: 'POST',
-        body: { comment }
+        body: { comment, visibility }
     });
 }
 
-export function reviewDraft(draftId, action, comment = '') {
+export function reviewDraft(draftId, action, comment = '', visibility = 'public') {
     return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/review`, {
         method: 'POST',
-        body: { action, comment }
+        body: { action, comment, visibility }
     });
 }
 
 export function publishDraft(draftId, authorResolution) {
     return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/publish`, {
+        method: 'POST',
+        body: { authorResolution }
+    });
+}
+
+export function checkPublish(draftId, authorResolution) {
+    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/publish-check`, {
         method: 'POST',
         body: { authorResolution }
     });
@@ -121,6 +145,13 @@ export function updateAuthor(authorId, author, avatarFile) {
     return request(`/api/admin/authors/${encodeURIComponent(authorId)}`, {
         method: 'PUT',
         body: { author, avatarFile }
+    });
+}
+
+export function mergeAuthors(sourceId, targetId) {
+    return request('/api/admin/authors/merge', {
+        method: 'POST',
+        body: { sourceId, targetId }
     });
 }
 
@@ -147,10 +178,25 @@ export function updatePublished(articleId, payload) {
     });
 }
 
+export function listPublishedHistory(articleId) {
+    return request(`/api/admin/published/${encodeURIComponent(articleId)}/history`);
+}
+
+export function rollbackPublished(articleId, snapshotId) {
+    return request(`/api/admin/published/${encodeURIComponent(articleId)}/rollback`, {
+        method: 'POST',
+        body: { snapshotId }
+    });
+}
+
 export function unpublishArticle(articleId) {
     return request(`/api/admin/published/${encodeURIComponent(articleId)}/unpublish`, {
         method: 'POST'
     });
+}
+
+export function listUnpublished() {
+    return request('/api/admin/unpublished');
 }
 
 export function restoreArticle(articleId) {
@@ -179,6 +225,12 @@ export function updateAdminUser(username, user) {
 
 export function disableAdminUser(username) {
     return request(`/api/admin/users/${encodeURIComponent(username)}/disable`, {
+        method: 'POST'
+    });
+}
+
+export function enableAdminUser(username) {
+    return request(`/api/admin/users/${encodeURIComponent(username)}/enable`, {
         method: 'POST'
     });
 }

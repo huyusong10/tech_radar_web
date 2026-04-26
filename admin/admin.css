@@ -46,6 +46,7 @@ body::before {
 
 button,
 input,
+select,
 textarea {
     font: inherit;
 }
@@ -75,6 +76,7 @@ button:disabled {
 }
 
 input,
+select,
 textarea {
     width: 100%;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -90,6 +92,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
     border-color: var(--accent-cyan);
     box-shadow: 0 0 0 2px rgba(0, 243, 255, 0.14);

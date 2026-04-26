@@ -1,4 +1,4 @@
-import { createAuthor, listAuthors, updateAuthor } from './api.js';
+import { createAuthor, listAuthors, mergeAuthors, updateAuthor } from './api.js';
 
 function $(id) {
     return document.getElementById(id);
@@ -55,7 +55,8 @@ function renderAuthors(authors, onSelect) {
         item.className = 'compact-item';
         item.innerHTML = `
             <strong>${author.name || author.id}</strong>
-            <small>${author.id}${author.team ? ` · ${author.team}` : ''}</small>
+            <small>${author.id}${author.team ? ` · ${author.team}` : ''}${Number.isInteger(author.usageCount) ? ` · ${author.usageCount} articles` : ''}</small>
+            ${author.duplicateHints?.length ? `<small>Possible duplicate: ${author.duplicateHints.join(', ')}</small>` : ''}
         `;
         item.addEventListener('click', () => onSelect(author));
         list.appendChild(item);
@@ -97,6 +98,17 @@ export function bindAuthorPanel({ getPermissions }) {
             const avatarFile = await fileToBase64Payload($('author-avatar').files[0]);
             const result = await updateAuthor(author.id, author, avatarFile);
             setStatus(`Updated ${result.author.id}`, 'ok');
+            await refreshAuthors();
+        } catch (error) {
+            setStatus(error.message, 'error');
+        }
+    });
+
+    $('merge-author-button').addEventListener('click', async () => {
+        try {
+            const result = await mergeAuthors($('merge-source-author').value.trim(), $('merge-target-author').value.trim());
+            setStatus(`Merged ${result.sourceId} into ${result.targetId}`, 'ok');
+            $('merge-source-author').value = '';
             await refreshAuthors();
         } catch (error) {
             setStatus(error.message, 'error');

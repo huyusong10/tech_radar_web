@@ -1,9 +1,12 @@
 import {
     acceptDraft,
+    assignDraft,
+    checkPublish,
     createAdminUser,
     createVolume,
     deleteDraft,
     disableAdminUser,
+    enableAdminUser,
     getDraft,
     getPublished,
     importDraft,
@@ -11,10 +14,14 @@ import {
     listAuditLog,
     listDrafts,
     listPublished,
+    listPublishedHistory,
+    listUnpublished,
     listVolumes,
     publishDraft,
     requestReview,
     rejectDraft,
+    issueStatusLink,
+    rollbackPublished,
     reviewDraft,
     runLint,
     updateAdminUser,
@@ -41,7 +48,12 @@ const state = {
     selectedDraft: null,
     published: [],
     selectedPublished: null,
+    unpublished: [],
+    selectedUnpublished: null,
+    selectedPublishedSnapshotId: '',
     selectedImportFiles: [],
+    selectedDraftFiles: [],
+    selectedPublishedFiles: [],
     authorPanel: null,
     previewTimer: null
 };
@@ -123,6 +135,13 @@ async function toAdminFilePayload(item) {
     };
 }
 
+function parsePathList(value) {
+    return String(value || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
 async function readSelectedIndexContent() {
     const index = state.selectedImportFiles.find(file => file.relativePath === 'index.md');
     return index ? index.file.text() : '';
@@ -184,7 +203,7 @@ function createDraftItem(draft) {
     item.innerHTML = `
         <span class="status-pill">${escapeHtml(draft.status)}</span>
         <strong>${escapeHtml(draft.folderName || draft.draftId)}</strong>
-        <small>${escapeHtml(draft.targetVol || '-')}${draft.source ? ` · ${escapeHtml(draft.source)}` : ''}${draft.submissionStatus ? ` · ${escapeHtml(draft.submissionStatus)}` : ''}${draft.updatedAt ? ` · ${escapeHtml(draft.updatedAt)}` : ''}</small>
+        <small>${escapeHtml(draft.targetVol || '-')}${draft.source ? ` · ${escapeHtml(draft.source)}` : ''}${draft.submissionStatus ? ` · ${escapeHtml(draft.submissionStatus)}` : ''}${draft.assignee ? ` · @${escapeHtml(draft.assignee)}` : ''}${draft.revision ? ` · r${escapeHtml(draft.revision)}` : ''}${draft.updatedAt ? ` · ${escapeHtml(draft.updatedAt)}` : ''}</small>
     `;
     item.addEventListener('click', () => selectDraft(draft.draftId));
     return item;
@@ -207,7 +226,24 @@ function renderSubmissionList() {
     const list = $('submission-list');
     if (!list) return;
     list.innerHTML = '';
-    const submissions = state.drafts.filter(draft => draft.source === 'submission');
+    const filters = currentSubmissionFilters();
+    const submissions = state.drafts.filter(draft => {
+        if (draft.source !== 'submission') return false;
+        if (filters.status && draft.status !== filters.status) return false;
+        if (filters.submissionStatus && draft.submissionStatus !== filters.submissionStatus) return false;
+        if (filters.assignee && draft.assignee !== filters.assignee) return false;
+        if (filters.q) {
+            const haystack = [
+                draft.draftId,
+                draft.folderName,
+                draft.submitter?.name,
+                draft.submitter?.team,
+                draft.submitter?.contact
+            ].join(' ').toLowerCase();
+            if (!haystack.includes(filters.q.toLowerCase())) return false;
+        }
+        return true;
+    });
     submissions.forEach(draft => list.appendChild(createDraftItem(draft)));
     if (submissions.length === 0) {
         list.innerHTML = '<div class="compact-item"><small>No submissions</small></div>';
@@ -219,10 +255,14 @@ function renderSelectedDraft() {
     const canEdit = state.permissions.canEditDraft && detail?.meta?.status !== 'published';
     $('draft-target-vol').value = detail?.meta?.targetVol || '';
     $('draft-folder-name').value = detail?.meta?.folderName || '';
+    $('draft-assignee').value = detail?.meta?.assignee || '';
     $('draft-editor').value = detail?.indexContent || '';
     $('draft-editor').disabled = !canEdit;
     $('draft-target-vol').disabled = !canEdit;
     $('draft-folder-name').disabled = !canEdit;
+    $('draft-assignee').disabled = !canEdit;
+    $('draft-delete-files').disabled = !canEdit;
+    $('draft-files-input').disabled = !canEdit;
     renderFileList($('draft-files'), detail?.files || []);
 
     if (detail) {
@@ -244,13 +284,24 @@ function renderReviewHistory() {
         item.className = 'compact-item';
         item.innerHTML = `
             <strong>${escapeHtml(entry.action)}</strong>
-            <small>${escapeHtml(entry.actor || '-')}${entry.at ? ` · ${escapeHtml(entry.at)}` : ''}</small>
+            <small>${escapeHtml(entry.actor || '-')}${entry.visibility ? ` · ${escapeHtml(entry.visibility)}` : ''}${entry.at ? ` · ${escapeHtml(entry.at)}` : ''}</small>
             ${entry.comment ? `<small>${escapeHtml(entry.comment)}</small>` : ''}
         `;
         container.appendChild(item);
     });
 
-    if (history.length === 0) {
+    if (state.selectedDraft?.revisionSummary) {
+        const summary = state.selectedDraft.revisionSummary;
+        const item = document.createElement('div');
+        item.className = 'compact-item';
+        item.innerHTML = `
+            <strong>Revision diff ${escapeHtml(summary.fromRevision)} -> ${escapeHtml(summary.toRevision)}</strong>
+            <small>+${escapeHtml(summary.addedLines)} / -${escapeHtml(summary.removedLines)} lines</small>
+        `;
+        container.prepend(item);
+    }
+
+    if (history.length === 0 && !state.selectedDraft?.revisionSummary) {
         container.innerHTML = '<div class="compact-item"><small>No review history</small></div>';
     }
 }
@@ -266,6 +317,13 @@ function syncActionState() {
     $('delete-draft-button').disabled = !hasDraft || !state.permissions.canDeleteDraft || status === 'published';
     $('accept-submission-button').disabled = !hasDraft || !state.permissions.canEditDraft || state.selectedDraft?.meta?.source !== 'submission' || !['editing', 'rejected'].includes(status);
     $('reject-submission-button').disabled = !hasDraft || !state.permissions.canRejectDraft || status === 'published';
+    $('assign-submission-button').disabled = !hasDraft || !state.permissions.canAssignDraft;
+    $('issue-status-link-button').disabled = !hasDraft || !state.permissions.canIssueStatusLink || state.selectedDraft?.meta?.source !== 'submission';
+    $('publish-check-button').disabled = !hasDraft || !state.permissions.canPublish;
+    $('rollback-button').disabled = !state.selectedPublished || !state.selectedPublishedSnapshotId || !state.permissions.canRollbackPublished;
+    $('restore-button').disabled = !state.selectedUnpublished || !state.permissions.canUnpublish;
+    $('unpublish-button').disabled = !state.selectedPublished || !state.permissions.canUnpublish;
+    $('save-published-button').disabled = !state.selectedPublished || !state.permissions.canEditPublished;
 }
 
 async function refreshDrafts() {
@@ -273,6 +331,15 @@ async function refreshDrafts() {
     state.drafts = data.drafts || [];
     renderDraftList();
     syncActionState();
+}
+
+function currentSubmissionFilters() {
+    return {
+        status: $('queue-status-filter')?.value.trim() || '',
+        submissionStatus: $('queue-submission-status-filter')?.value.trim() || '',
+        assignee: $('queue-assignee-filter')?.value.trim() || '',
+        q: $('queue-search-filter')?.value.trim() || ''
+    };
 }
 
 async function selectDraft(draftId) {
@@ -376,6 +443,11 @@ function bindImportFlow() {
 }
 
 function bindDraftEditor() {
+    $('draft-files-input').addEventListener('change', () => {
+        state.selectedDraftFiles = normalizeFileSelection($('draft-files-input').files);
+        setStatus('import-status', `${state.selectedDraftFiles.length} draft resource files selected`);
+    });
+
     $('draft-editor').addEventListener('input', () => {
         clearTimeout(state.previewTimer);
         state.previewTimer = setTimeout(() => {
@@ -390,11 +462,18 @@ function bindDraftEditor() {
     $('save-draft-button').addEventListener('click', async () => {
         try {
             if (!selectedDraftId()) return;
+            const files = await Promise.all(state.selectedDraftFiles.map(toAdminFilePayload));
             state.selectedDraft = await updateDraft(selectedDraftId(), {
                 indexContent: $('draft-editor').value,
                 targetVol: $('draft-target-vol').value.trim(),
-                folderName: $('draft-folder-name').value.trim()
+                folderName: $('draft-folder-name').value.trim(),
+                assignee: $('draft-assignee').value.trim(),
+                files,
+                deleteFiles: parsePathList($('draft-delete-files').value)
             });
+            state.selectedDraftFiles = [];
+            $('draft-files-input').value = '';
+            $('draft-delete-files').value = '';
             setStatus('import-status', `Saved ${selectedDraftId()}`, 'ok');
             await refreshDrafts();
             renderSelectedDraft();
@@ -429,10 +508,18 @@ function bindDraftEditor() {
 }
 
 function bindSubmissionFlow() {
+    ['queue-status-filter', 'queue-submission-status-filter', 'queue-assignee-filter', 'queue-search-filter'].forEach(id => {
+        $(id).addEventListener('input', renderSubmissionList);
+    });
+
     $('accept-submission-button').addEventListener('click', async () => {
         try {
             if (!selectedDraftId()) return;
-            state.selectedDraft = await acceptDraft(selectedDraftId(), $('submission-action-comment').value.trim());
+            state.selectedDraft = await acceptDraft(
+                selectedDraftId(),
+                $('submission-action-comment').value.trim(),
+                $('submission-comment-visibility').value
+            );
             $('submission-action-comment').value = '';
             await refreshDrafts();
             renderSelectedDraft();
@@ -445,11 +532,38 @@ function bindSubmissionFlow() {
     $('reject-submission-button').addEventListener('click', async () => {
         try {
             if (!selectedDraftId()) return;
-            state.selectedDraft = await rejectDraft(selectedDraftId(), $('submission-action-comment').value.trim());
+            state.selectedDraft = await rejectDraft(
+                selectedDraftId(),
+                $('submission-action-comment').value.trim(),
+                $('submission-comment-visibility').value
+            );
             $('submission-action-comment').value = '';
             await refreshDrafts();
             renderSelectedDraft();
             setStatus('submission-action-status', 'Submission rejected', 'ok');
+        } catch (error) {
+            setStatus('submission-action-status', error.message, 'error');
+        }
+    });
+
+    $('assign-submission-button').addEventListener('click', async () => {
+        try {
+            if (!selectedDraftId()) return;
+            state.selectedDraft = await assignDraft(selectedDraftId(), $('submission-assignee').value.trim());
+            await refreshDrafts();
+            renderSelectedDraft();
+            setStatus('submission-action-status', 'Assignee updated', 'ok');
+        } catch (error) {
+            setStatus('submission-action-status', error.message, 'error');
+        }
+    });
+
+    $('issue-status-link-button').addEventListener('click', async () => {
+        try {
+            if (!selectedDraftId()) return;
+            const result = await issueStatusLink(selectedDraftId());
+            $('issued-status-link').textContent = new URL(result.statusUrl, window.location.origin).toString();
+            setStatus('submission-action-status', 'Status link issued', 'ok');
         } catch (error) {
             setStatus('submission-action-status', error.message, 'error');
         }
@@ -460,7 +574,12 @@ function bindReviewFlow() {
     async function submit(action) {
         try {
             if (!selectedDraftId()) return;
-            state.selectedDraft = await reviewDraft(selectedDraftId(), action, $('review-comment').value.trim());
+            state.selectedDraft = await reviewDraft(
+                selectedDraftId(),
+                action,
+                $('review-comment').value.trim(),
+                $('review-comment-visibility').value
+            );
             $('review-comment').value = '';
             await refreshDrafts();
             renderSelectedDraft();
@@ -501,7 +620,29 @@ function buildAuthorResolution() {
     };
 }
 
+function renderPublishCheck(result) {
+    const container = $('publish-checks');
+    container.innerHTML = (result.checks || []).map(check => `
+        <div class="compact-item">
+            <strong>${check.ok ? 'OK' : 'BLOCKED'} · ${escapeHtml(check.id)}</strong>
+            <small>${escapeHtml(check.message)}</small>
+            ${check.details !== undefined ? `<small>${escapeHtml(Array.isArray(check.details) ? check.details.join(', ') : check.details)}</small>` : ''}
+        </div>
+    `).join('');
+}
+
 function bindPublishFlow() {
+    $('publish-check-button').addEventListener('click', async () => {
+        try {
+            if (!selectedDraftId()) return;
+            const result = await checkPublish(selectedDraftId(), buildAuthorResolution());
+            renderPublishCheck(result);
+            setStatus('publish-status', result.ok ? `Ready to publish ${result.articleId}` : 'Publish check blocked', result.ok ? 'ok' : 'error');
+        } catch (error) {
+            setStatus('publish-status', error.message, 'error');
+        }
+    });
+
     $('publish-button').addEventListener('click', async () => {
         try {
             if (!selectedDraftId()) return;
@@ -509,6 +650,12 @@ function bindPublishFlow() {
             const authorResolution = buildAuthorResolution();
             if (authorResolution?.mode === 'create' && avatarFile) {
                 authorResolution.avatarFile = avatarFile;
+            }
+            const check = await checkPublish(selectedDraftId(), authorResolution);
+            renderPublishCheck(check);
+            if (!check.ok) {
+                setStatus('publish-status', 'Publish check blocked', 'error');
+                return;
             }
             const result = await publishDraft(selectedDraftId(), authorResolution);
             setStatus('publish-status', `Published ${result.articleId}`, 'ok');
@@ -525,7 +672,13 @@ function bindLintFlow() {
         $('lint-output').textContent = 'Running...\n';
         try {
             const result = await runLint();
-            $('lint-output').textContent = `${result.ok ? 'OK' : 'FAILED'}\n\n${result.stdout || ''}${result.stderr || ''}`;
+            const issueLines = (result.issues || []).map(issue => `${issue.severity}: ${issue.message}`).join('\n');
+            $('lint-output').textContent = [
+                `${result.ok ? 'OK' : 'FAILED'} · ${result.summary?.errorCount || 0} errors · ${result.summary?.warningCount || 0} warnings`,
+                issueLines,
+                result.stdout || '',
+                result.stderr || ''
+            ].filter(Boolean).join('\n\n');
         } catch (error) {
             $('lint-output').textContent = error.message;
         }
@@ -546,7 +699,10 @@ function renderPublishedList() {
         item.addEventListener('click', async () => {
             state.selectedPublished = await getPublished(article.articleId);
             $('published-editor').value = state.selectedPublished.indexContent || '';
+            renderFileList($('published-files'), state.selectedPublished.files || []);
+            await refreshPublishedHistory();
             renderPublishedList();
+            syncActionState();
         });
         list.appendChild(item);
     });
@@ -561,16 +717,89 @@ async function refreshPublished() {
     const data = await listPublished();
     state.published = data.articles || [];
     renderPublishedList();
+    await refreshUnpublished();
+}
+
+function renderUnpublishedList() {
+    const list = $('unpublished-list');
+    list.innerHTML = '';
+    state.unpublished.forEach(article => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = `compact-item${state.selectedUnpublished?.articleId === article.articleId ? ' active' : ''}`;
+        item.innerHTML = `
+            <strong>${escapeHtml(article.title || article.articleId)}</strong>
+            <small>${escapeHtml(article.articleId)}</small>
+        `;
+        item.addEventListener('click', () => {
+            state.selectedUnpublished = article;
+            renderUnpublishedList();
+        });
+        list.appendChild(item);
+    });
+    if (state.unpublished.length === 0) {
+        list.innerHTML = '<div class="compact-item"><small>No unpublished articles</small></div>';
+    }
+}
+
+async function refreshUnpublished() {
+    if (!state.permissions.canUnpublish) return;
+    const data = await listUnpublished();
+    state.unpublished = data.articles || [];
+    renderUnpublishedList();
+}
+
+async function refreshPublishedHistory() {
+    const list = $('published-history-list');
+    list.innerHTML = '';
+    state.selectedPublishedSnapshotId = '';
+    if (!state.selectedPublished || !state.permissions.canViewPublishedHistory) {
+        list.innerHTML = '<div class="compact-item"><small>No history selected</small></div>';
+        return;
+    }
+    const data = await listPublishedHistory(state.selectedPublished.articleId);
+    (data.snapshots || []).forEach(snapshot => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'compact-item';
+        item.innerHTML = `
+            <strong>${escapeHtml(snapshot.reason || snapshot.snapshotId)}</strong>
+            <small>${escapeHtml(snapshot.snapshotId)}${snapshot.at ? ` · ${escapeHtml(snapshot.at)}` : ''}</small>
+        `;
+        item.addEventListener('click', () => {
+            state.selectedPublishedSnapshotId = snapshot.snapshotId;
+            list.querySelectorAll('.compact-item').forEach(node => node.classList.remove('active'));
+            item.classList.add('active');
+            syncActionState();
+        });
+        list.appendChild(item);
+    });
+    if (!data.snapshots?.length) {
+        list.innerHTML = '<div class="compact-item"><small>No history snapshots</small></div>';
+    }
+    syncActionState();
 }
 
 function bindPublishedFlow() {
     $('refresh-published-button').addEventListener('click', refreshPublished);
+    $('published-files-input').addEventListener('change', () => {
+        state.selectedPublishedFiles = normalizeFileSelection($('published-files-input').files);
+        setStatus('published-status', `${state.selectedPublishedFiles.length} published resource files selected`);
+    });
     $('save-published-button').addEventListener('click', async () => {
         try {
             if (!state.selectedPublished) return;
+            const files = await Promise.all(state.selectedPublishedFiles.map(toAdminFilePayload));
             state.selectedPublished = await updatePublished(state.selectedPublished.articleId, {
-                indexContent: $('published-editor').value
+                indexContent: $('published-editor').value,
+                files,
+                deleteFiles: parsePathList($('published-delete-files').value)
             });
+            state.selectedPublishedFiles = [];
+            $('published-files-input').value = '';
+            $('published-delete-files').value = '';
+            renderFileList($('published-files'), state.selectedPublished.files || []);
+            await refreshPublishedHistory();
             setStatus('published-status', `Saved ${state.selectedPublished.articleId}`, 'ok');
             await refreshPublished();
         } catch (error) {
@@ -584,6 +813,7 @@ function bindPublishedFlow() {
             setStatus('published-status', `Unpublished ${state.selectedPublished.articleId}`, 'ok');
             state.selectedPublished = null;
             $('published-editor').value = '';
+            $('published-files').innerHTML = '';
             await refreshPublished();
         } catch (error) {
             setStatus('published-status', error.message, 'error');
@@ -591,11 +821,24 @@ function bindPublishedFlow() {
     });
     $('restore-button').addEventListener('click', async () => {
         try {
-            const articleId = window.prompt('Article ID to restore');
+            const articleId = state.selectedUnpublished?.articleId;
             if (!articleId) return;
-            await restoreArticle(articleId.trim());
-            setStatus('published-status', `Restored ${articleId.trim()}`, 'ok');
+            await restoreArticle(articleId);
+            state.selectedUnpublished = null;
+            setStatus('published-status', `Restored ${articleId}`, 'ok');
             await refreshPublished();
+        } catch (error) {
+            setStatus('published-status', error.message, 'error');
+        }
+    });
+    $('rollback-button').addEventListener('click', async () => {
+        try {
+            if (!state.selectedPublished || !state.selectedPublishedSnapshotId) return;
+            state.selectedPublished = await rollbackPublished(state.selectedPublished.articleId, state.selectedPublishedSnapshotId);
+            $('published-editor').value = state.selectedPublished.indexContent || '';
+            renderFileList($('published-files'), state.selectedPublished.files || []);
+            await refreshPublishedHistory();
+            setStatus('published-status', `Rolled back ${state.selectedPublished.articleId}`, 'ok');
         } catch (error) {
             setStatus('published-status', error.message, 'error');
         }
@@ -736,6 +979,17 @@ function bindUserFlow() {
             const username = $('user-username').value.trim();
             const result = await disableAdminUser(username);
             setStatus('user-status', `Disabled ${result.user.username}`, 'ok');
+            await refreshAdminUsers();
+        } catch (error) {
+            setStatus('user-status', error.message, 'error');
+        }
+    });
+
+    $('enable-user-button').addEventListener('click', async () => {
+        try {
+            const username = $('user-username').value.trim();
+            const result = await enableAdminUser(username);
+            setStatus('user-status', `Enabled ${result.user.username}`, 'ok');
             await refreshAdminUsers();
         } catch (error) {
             setStatus('user-status', error.message, 'error');

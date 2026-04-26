@@ -335,7 +335,7 @@ async function validateAdminContent(authors) {
         return;
     }
 
-    const allowedEntries = new Set(['users.json', 'audit-log.json', 'drafts', 'reviews', 'unpublished']);
+    const allowedEntries = new Set(['users.json', 'audit-log.json', 'drafts', 'reviews', 'revisions', 'unpublished', 'published-history']);
     const entries = await fsPromises.readdir(adminDir, { withFileTypes: true });
     for (const entry of entries) {
         if (!allowedEntries.has(entry.name)) {
@@ -345,8 +345,9 @@ async function validateAdminContent(authors) {
 
     await validateAdminUsers(path.join(adminDir, 'users.json'));
     await validateAdminAuditLog(path.join(adminDir, 'audit-log.json'));
-    await validateAdminDrafts(path.join(adminDir, 'drafts'), path.join(adminDir, 'reviews'), authors);
+    await validateAdminDrafts(path.join(adminDir, 'drafts'), path.join(adminDir, 'reviews'), path.join(adminDir, 'revisions'), authors);
     await validateUnpublishedArticles(path.join(adminDir, 'unpublished'), authors);
+    await validatePublishedHistory(path.join(adminDir, 'published-history'), authors);
 }
 
 async function validateAdminUsers(usersPath) {
@@ -405,7 +406,7 @@ async function validateAdminAuditLog(auditLogPath) {
     }
 }
 
-async function validateAdminDrafts(draftsDir, reviewsDir, authors) {
+async function validateAdminDrafts(draftsDir, reviewsDir, revisionsDir, authors) {
     if (!exists(draftsDir)) {
         addError('missing admin drafts directory', draftsDir);
         return;
@@ -442,9 +443,35 @@ async function validateAdminDrafts(draftsDir, reviewsDir, authors) {
             const review = await readJson(reviewPath);
             if (!Array.isArray(review.history)) {
                 addError('review history must be an array', reviewPath);
+            } else {
+                for (const entry of review.history) {
+                    if (entry.visibility !== undefined && !['public', 'internal'].includes(entry.visibility)) {
+                        addError(`review visibility is invalid: ${entry.visibility || ''}`, reviewPath);
+                    }
+                }
             }
         } catch (error) {
             addError(`review file is not valid JSON: ${error.message}`, reviewPath);
+        }
+    }
+
+    if (exists(revisionsDir)) {
+        const revisionEntries = await fsPromises.readdir(revisionsDir, { withFileTypes: true });
+        for (const entry of revisionEntries) {
+            const revisionPath = path.join(revisionsDir, entry.name);
+            if (!entry.isDirectory()) {
+                addError('admin revisions may only contain draft directories', revisionPath);
+                continue;
+            }
+            if (!draftIds.has(entry.name)) {
+                addWarning(`revision directory does not match an admin draft: ${entry.name}`, revisionPath);
+            }
+            const files = await fsPromises.readdir(revisionPath, { withFileTypes: true });
+            for (const file of files) {
+                if (!file.isFile() || !/^revision-\d+\.md$/.test(file.name)) {
+                    addError('revision snapshots must be named revision-<n>.md', path.join(revisionPath, file.name));
+                }
+            }
         }
     }
 }
@@ -484,6 +511,9 @@ async function validateAdminDraft(draftDir, draftId, authors) {
                 if (!Number.isInteger(meta.revision) || meta.revision < 1) {
                     addError('submission revision must be a positive integer', metaPath);
                 }
+            }
+            if (meta.assignee !== undefined && typeof meta.assignee !== 'string') {
+                addError('draft assignee must be a string', metaPath);
             }
             if (typeof meta.targetVol !== 'string' || !/^\d{3,10}$/.test(meta.targetVol)) {
                 addError('draft targetVol must be a volume id string', metaPath);
@@ -527,6 +557,41 @@ async function validateUnpublishedArticles(unpublishedDir, authors) {
             addError('unpublished article id must follow <vol>-<folder>', entryPath);
         }
         await validateCollectionEntry(entryPath, authors);
+    }
+}
+
+async function validatePublishedHistory(historyDir, authors) {
+    if (!exists(historyDir)) {
+        return;
+    }
+    const entries = await fsPromises.readdir(historyDir, { withFileTypes: true });
+    for (const articleEntry of entries) {
+        const articleHistoryPath = path.join(historyDir, articleEntry.name);
+        if (!articleEntry.isDirectory()) {
+            addError('published history may only contain article directories', articleHistoryPath);
+            continue;
+        }
+        if (!/^\d{3,10}-[a-z0-9._-]+$/.test(articleEntry.name)) {
+            addError('published history article id must follow <vol>-<folder>', articleHistoryPath);
+        }
+        const snapshots = await fsPromises.readdir(articleHistoryPath, { withFileTypes: true });
+        for (const snapshot of snapshots) {
+            const snapshotPath = path.join(articleHistoryPath, snapshot.name);
+            if (!snapshot.isDirectory()) {
+                addError('published history article entries may only contain snapshot directories', snapshotPath);
+                continue;
+            }
+            const metaPath = path.join(snapshotPath, 'meta.json');
+            const contentDir = path.join(snapshotPath, 'content');
+            if (!exists(metaPath)) {
+                addError('published history snapshot is missing meta.json', snapshotPath);
+            }
+            if (!exists(contentDir)) {
+                addError('published history snapshot is missing content directory', snapshotPath);
+            } else {
+                await validateCollectionEntry(contentDir, authors);
+            }
+        }
     }
 }
 

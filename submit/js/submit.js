@@ -168,10 +168,11 @@ function renderSubmission(detail) {
     $('submit-result-view').classList.add('hidden');
     $('submission-status-view').classList.remove('hidden');
     $('submission-heading').textContent = detail.submissionId;
-    $('submission-meta').textContent = `${detail.status} · revision ${detail.revision}`;
+    $('submission-meta').textContent = `${detail.status} · revision ${detail.revision}${detail.publishedArticleId ? ` · ${detail.publishedArticleId}` : ''}`;
     $('submit-editor').value = detail.indexContent || '';
     $('submit-editor').disabled = detail.status !== 'changes_requested';
     renderPreview($('submit-preview'), detail.indexContent || '', buildDraftAssetResolver(detail.files || []));
+    renderFileList($('submission-file-list'), detail.files || []);
 
     const history = detail.review?.history || [];
     $('submission-review-history').innerHTML = history.slice().reverse().map(entry => `
@@ -184,6 +185,7 @@ function renderSubmission(detail) {
 
     const canRevise = detail.status === 'changes_requested';
     $('revision-files').disabled = !canRevise;
+    $('revision-delete-files').disabled = !canRevise;
     $('revision-preview-button').disabled = !canRevise;
     $('revision-submit-button').disabled = !canRevise;
 }
@@ -206,10 +208,24 @@ async function submitRevision() {
     try {
         if (!state.currentSubmission) return;
         const files = await Promise.all(state.revisionFiles.map(toPayloadFile));
+        const deleteFiles = $('revision-delete-files').value
+            .split(',')
+            .map(item => item.trim())
+            .filter(Boolean);
         const detail = await api(
             `/api/submissions/${encodeURIComponent(state.currentSubmission.submissionId)}?token=${encodeURIComponent(state.currentToken)}`,
-            { method: 'PUT', body: { files } }
+            {
+                method: 'PUT',
+                body: {
+                    indexContent: $('submit-editor').value,
+                    files,
+                    deleteFiles
+                }
+            }
         );
+        state.revisionFiles = [];
+        $('revision-files').value = '';
+        $('revision-delete-files').value = '';
         setStatus('revision-status', 'Revision submitted', 'ok');
         renderSubmission(detail);
     } catch (error) {

@@ -46,7 +46,9 @@ const ADMIN_DIR = path.join(CONTENTS_DIR, 'admin');
 const ADMIN_USERS_FILE = path.join(ADMIN_DIR, 'users.json');
 const ADMIN_DRAFTS_DIR = path.join(ADMIN_DIR, 'drafts');
 const ADMIN_REVIEWS_DIR = path.join(ADMIN_DIR, 'reviews');
+const ADMIN_REVISIONS_DIR = path.join(ADMIN_DIR, 'revisions');
 const ADMIN_UNPUBLISHED_DIR = path.join(ADMIN_DIR, 'unpublished');
+const ADMIN_PUBLISHED_HISTORY_DIR = path.join(ADMIN_DIR, 'published-history');
 const ADMIN_AUDIT_LOG_FILE = path.join(ADMIN_DIR, 'audit-log.json');
 
 // Data directory inside contents (persists with content across code upgrades)
@@ -83,6 +85,7 @@ const ADMIN_SESSIONS = new Map();
 const ADMIN_COOKIE_NAME = 'tech_radar_admin_session';
 const ADMIN_DRAFT_STATUSES = ['editing', 'review_requested', 'changes_requested', 'approved', 'published', 'rejected'];
 const SUBMISSION_STATUSES = ['submitted', 'in_editing', 'in_technical_review', 'changes_requested', 'approved', 'published', 'rejected'];
+const REVIEW_VISIBILITIES = ['public', 'internal'];
 
 
 // ==================== ASYNC FILE OPERATIONS ====================
@@ -486,7 +489,9 @@ function verifyAccessToken(token, tokenHash) {
 async function ensureAdminDir() {
     await fsPromises.mkdir(ADMIN_DRAFTS_DIR, { recursive: true });
     await fsPromises.mkdir(ADMIN_REVIEWS_DIR, { recursive: true });
+    await fsPromises.mkdir(ADMIN_REVISIONS_DIR, { recursive: true });
     await fsPromises.mkdir(ADMIN_UNPUBLISHED_DIR, { recursive: true });
+    await fsPromises.mkdir(ADMIN_PUBLISHED_HISTORY_DIR, { recursive: true });
 
     if (!fs.existsSync(ADMIN_USERS_FILE)) {
         const username = process.env.ADMIN_BOOTSTRAP_USERNAME || 'admin';
@@ -564,7 +569,7 @@ async function createOrUpdateAdminUser(userInput, existingUsername) {
             ...users[existingIndex],
             ...user,
             ...(userInput.password ? { passwordHash: hashAdminPassword(userInput.password) } : {}),
-            disabled: userInput.disabled === true,
+            ...(typeof userInput.disabled === 'boolean' ? { disabled: userInput.disabled } : {}),
             updatedAt: new Date().toISOString()
         };
     } else {
@@ -590,6 +595,21 @@ async function disableAdminUser(username) {
     users[index] = {
         ...users[index],
         disabled: true,
+        updatedAt: new Date().toISOString()
+    };
+    await writeAdminUsers(users);
+    return { user: publicAdminUser(users[index]) };
+}
+
+async function enableAdminUser(username) {
+    const users = await readAdminUsers();
+    const index = users.findIndex(item => item.username === username);
+    if (index === -1) {
+        return { error: 'Admin user not found' };
+    }
+    users[index] = {
+        ...users[index],
+        disabled: false,
         updatedAt: new Date().toISOString()
     };
     await writeAdminUsers(users);
@@ -644,8 +664,12 @@ function adminPermissions(role) {
         canManageUsers: role === 'chief_editor',
         canRunLint: role === 'editor' || role === 'chief_editor' || role === 'tech_reviewer',
         canRejectDraft: role === 'editor' || role === 'chief_editor',
+        canAssignDraft: role === 'editor' || role === 'chief_editor',
+        canIssueStatusLink: role === 'editor' || role === 'chief_editor',
         canEditPublished: role === 'editor' || role === 'chief_editor',
         canUnpublish: role === 'chief_editor',
+        canViewPublishedHistory: role === 'chief_editor',
+        canRollbackPublished: role === 'chief_editor',
         canViewAuditLog: role === 'chief_editor'
     };
 }
@@ -655,9 +679,19 @@ function requireAdmin(req, res, next) {
     if (!session) {
         return res.status(401).json({ error: 'Admin login required' });
     }
-    req.adminSession = session;
-    req.adminUser = session.user;
-    next();
+    readAdminUsers()
+        .then(users => {
+            const user = users.find(item => item.username === session.user.username);
+            if (!user || user.disabled === true) {
+                ADMIN_SESSIONS.delete(session.token);
+                clearAdminSessionCookie(res);
+                return res.status(401).json({ error: 'Admin login required' });
+            }
+            req.adminSession = session;
+            req.adminUser = publicAdminUser(user);
+            next();
+        })
+        .catch(next);
 }
 
 function requireAdminPermission(permission) {
@@ -759,6 +793,10 @@ function normalizeSubmitter(input = {}) {
     };
 }
 
+function normalizeReviewVisibility(value, fallback = 'internal') {
+    return REVIEW_VISIBILITIES.includes(value) ? value : fallback;
+}
+
 function validateSubmitter(submitter, metadata) {
     const errors = [];
     const hasKnownAuthor = typeof metadata.author_id === 'string' && metadata.author_id.trim().length > 0;
@@ -771,8 +809,12 @@ function validateSubmitter(submitter, metadata) {
     return errors;
 }
 
+function isPublicReviewEntry(entry) {
+    return normalizeReviewVisibility(entry.visibility, 'internal') === 'public';
+}
+
 function publicSubmissionDetail(detail, token = '') {
-    const reviewHistory = detail.review?.history || [];
+    const reviewHistory = (detail.review?.history || []).filter(isPublicReviewEntry);
     return {
         submissionId: detail.meta.draftId,
         status: detail.meta.submissionStatus || submissionStatusForDraft(detail.meta.status),
@@ -794,6 +836,7 @@ function publicSubmissionDetail(detail, token = '') {
                 action: entry.action,
                 role: entry.role,
                 comment: entry.comment || '',
+                visibility: 'public',
                 at: entry.at
             }))
         }
@@ -900,6 +943,73 @@ async function collectFiles(rootDir, options = {}) {
     return files.sort((a, b) => a.path.localeCompare(b.path));
 }
 
+function getRevisionDir(draftId) {
+    return assertInside(ADMIN_REVISIONS_DIR, path.join(ADMIN_REVISIONS_DIR, draftId));
+}
+
+async function saveSubmissionRevision(draftId, revision, indexContent) {
+    if (!revision || Number(revision) < 1) return;
+    const revisionDir = getRevisionDir(draftId);
+    await fsPromises.mkdir(revisionDir, { recursive: true });
+    await fsPromises.writeFile(path.join(revisionDir, `revision-${revision}.md`), String(indexContent || ''), 'utf8');
+}
+
+async function listSubmissionRevisions(draftId) {
+    const revisionDir = getRevisionDir(draftId);
+    if (!fs.existsSync(revisionDir)) return [];
+    const entries = await fsPromises.readdir(revisionDir, { withFileTypes: true });
+    const revisions = [];
+    for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const match = entry.name.match(/^revision-(\d+)\.md$/);
+        if (!match) continue;
+        const filePath = path.join(revisionDir, entry.name);
+        const stat = await fsPromises.stat(filePath);
+        revisions.push({
+            revision: Number(match[1]),
+            size: stat.size,
+            updatedAt: stat.mtime.toISOString()
+        });
+    }
+    return revisions.sort((a, b) => a.revision - b.revision);
+}
+
+function buildLineDiffSummary(previousContent, currentContent) {
+    const previousLines = String(previousContent || '').split('\n');
+    const currentLines = String(currentContent || '').split('\n');
+    const previousSet = new Map();
+    previousLines.forEach(line => previousSet.set(line, (previousSet.get(line) || 0) + 1));
+
+    let added = 0;
+    for (const line of currentLines) {
+        const count = previousSet.get(line) || 0;
+        if (count > 0) {
+            previousSet.set(line, count - 1);
+        } else {
+            added += 1;
+        }
+    }
+    const removed = Array.from(previousSet.values()).reduce((sum, count) => sum + count, 0);
+    return { addedLines: added, removedLines: removed };
+}
+
+async function readRevisionSummary(draftId, revision) {
+    if (!revision || revision <= 1) return null;
+    const revisionDir = getRevisionDir(draftId);
+    const previousPath = path.join(revisionDir, `revision-${revision - 1}.md`);
+    const currentPath = path.join(revisionDir, `revision-${revision}.md`);
+    if (!fs.existsSync(previousPath) || !fs.existsSync(currentPath)) return null;
+    const [previousContent, currentContent] = await Promise.all([
+        fsPromises.readFile(previousPath, 'utf8'),
+        fsPromises.readFile(currentPath, 'utf8')
+    ]);
+    return {
+        fromRevision: revision - 1,
+        toRevision: revision,
+        ...buildLineDiffSummary(previousContent, currentContent)
+    };
+}
+
 async function readDraftDetail(draftId) {
     const draftDir = getDraftDir(draftId);
     const metaPath = path.join(draftDir, 'meta.json');
@@ -921,6 +1031,10 @@ async function readDraftDetail(draftId) {
         history: []
     });
 
+    const revisions = meta?.source === 'submission'
+        ? await listSubmissionRevisions(draftId)
+        : [];
+
     return {
         meta,
         indexContent,
@@ -928,20 +1042,56 @@ async function readDraftDetail(draftId) {
             ...file,
             assetUrl: file.path === 'index.md' ? null : `/api/admin/drafts/${encodeURIComponent(draftId)}/assets/${file.path}`
         })),
-        review
+        review,
+        revisions,
+        revisionSummary: meta?.source === 'submission'
+            ? await readRevisionSummary(draftId, Number(meta.revision || 1))
+            : null
     };
 }
 
-async function listAdminDrafts() {
+function draftMatchesFilters(meta, filters = {}) {
+    if (filters.source && meta.source !== filters.source) return false;
+    if (filters.status && meta.status !== filters.status) return false;
+    if (filters.submissionStatus && meta.submissionStatus !== filters.submissionStatus) return false;
+    if (filters.assignee && String(meta.assignee || '') !== filters.assignee) return false;
+    if (filters.q) {
+        const haystack = [
+            meta.draftId,
+            meta.folderName,
+            meta.targetVol,
+            meta.source,
+            meta.status,
+            meta.submissionStatus,
+            meta.assignee,
+            meta.submitter?.name,
+            meta.submitter?.team,
+            meta.submitter?.contact
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(filters.q.toLowerCase())) return false;
+    }
+    return true;
+}
+
+async function listAdminDrafts(filters = {}) {
     if (!fs.existsSync(ADMIN_DRAFTS_DIR)) return [];
     const entries = await fsPromises.readdir(ADMIN_DRAFTS_DIR, { withFileTypes: true });
     const drafts = [];
     for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const detail = await readDraftDetail(entry.name);
-        if (detail?.meta) drafts.push(detail.meta);
+        if (detail?.meta && draftMatchesFilters(detail.meta, filters)) drafts.push(detail.meta);
     }
-    return drafts.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+    const sort = filters.sort || 'updatedAt';
+    return drafts.sort((a, b) => {
+        if (sort === 'submittedAt') {
+            return String(b.submittedAt || '').localeCompare(String(a.submittedAt || ''));
+        }
+        if (sort === 'status') {
+            return String(a.status || '').localeCompare(String(b.status || ''));
+        }
+        return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+    });
 }
 
 function validateDraftMetadata(metadata, options = {}) {
@@ -1007,6 +1157,7 @@ async function appendReviewHistory(draftId, entry) {
     review.history = Array.isArray(review.history) ? review.history : [];
     review.history.push({
         ...entry,
+        visibility: normalizeReviewVisibility(entry.visibility, 'internal'),
         at: new Date().toISOString()
     });
     await writeJsonFile(reviewPath, review);
@@ -1060,6 +1211,23 @@ async function writeDraftFiles(draftDir, files) {
     }
 
     return hasIndex;
+}
+
+async function deleteManagedFiles(rootDir, files = []) {
+    if (!Array.isArray(files) || files.length === 0) return [];
+    const deleted = [];
+    for (const rawPath of files) {
+        const relative = safeRelativePath(rawPath);
+        if (relative === 'index.md') {
+            throw new Error('index.md cannot be deleted');
+        }
+        const target = assertInside(rootDir, path.join(rootDir, relative));
+        if (fs.existsSync(target)) {
+            await fsPromises.rm(target, { force: true });
+            deleted.push(relative);
+        }
+    }
+    return deleted;
 }
 
 function normalizeAdminAuthorInput(input, existingId) {
@@ -1122,6 +1290,122 @@ async function createOrUpdateAuthor(authorInput, avatarFile, existingId) {
 
     await writeAuthorsArray(authors);
     return { author };
+}
+
+function collectAuthorIdsFromMetadata(metadata) {
+    if (Array.isArray(metadata.author_ids)) return metadata.author_ids.filter(Boolean);
+    if (metadata.author_id) return [metadata.author_id];
+    return [];
+}
+
+function replaceAuthorReference(metadata, sourceId, targetId) {
+    const updated = { ...metadata };
+    let changed = false;
+    if (updated.author_id === sourceId) {
+        updated.author_id = targetId;
+        changed = true;
+    }
+    if (Array.isArray(updated.author_ids)) {
+        const nextIds = [];
+        for (const authorId of updated.author_ids) {
+            const nextId = authorId === sourceId ? targetId : authorId;
+            if (!nextIds.includes(nextId)) nextIds.push(nextId);
+            if (nextId !== authorId) changed = true;
+        }
+        updated.author_ids = nextIds;
+    }
+    return { metadata: updated, changed };
+}
+
+async function rewriteAuthorReferencesInRoot(rootDir, sourceId, targetId) {
+    if (!fs.existsSync(rootDir)) return 0;
+    const files = await collectFiles(rootDir);
+    let changedCount = 0;
+    for (const file of files) {
+        if (file.path !== 'index.md' && !file.path.endsWith('/index.md')) continue;
+        const indexPath = path.join(rootDir, file.path);
+        const document = parseMarkdownDocument(await fsPromises.readFile(indexPath, 'utf8'));
+        const replaced = replaceAuthorReference(document.metadata, sourceId, targetId);
+        if (!replaced.changed) continue;
+        await fsPromises.writeFile(indexPath, stringifyMarkdownDocument(replaced.metadata, document.body), 'utf8');
+        changedCount += 1;
+    }
+    return changedCount;
+}
+
+async function countPublishedAuthorUsage() {
+    const usage = {};
+    if (!fs.existsSync(PUBLISHED_DIR)) return usage;
+    const files = await collectFiles(PUBLISHED_DIR);
+    for (const file of files) {
+        if (file.path !== 'index.md' && !file.path.endsWith('/index.md')) continue;
+        if (!file.path.includes('/contributions/')) continue;
+        const document = parseMarkdownDocument(await fsPromises.readFile(path.join(PUBLISHED_DIR, file.path), 'utf8'));
+        for (const authorId of collectAuthorIdsFromMetadata(document.metadata)) {
+            usage[authorId] = (usage[authorId] || 0) + 1;
+        }
+    }
+    return usage;
+}
+
+function enrichAuthorRecords(authors, usageCounts = {}) {
+    const groups = new Map();
+    for (const author of authors) {
+        const key = `${String(author.name || '').trim().toLowerCase()}::${String(author.team || '').trim().toLowerCase()}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(author.id);
+    }
+    return authors.map(author => {
+        const key = `${String(author.name || '').trim().toLowerCase()}::${String(author.team || '').trim().toLowerCase()}`;
+        return {
+            ...author,
+            usageCount: usageCounts[author.id] || 0,
+            duplicateHints: (groups.get(key) || []).filter(id => id !== author.id)
+        };
+    });
+}
+
+async function mergeAuthors(sourceId, targetId, operator) {
+    const source = sanitizeSlug(sourceId, '');
+    const target = sanitizeSlug(targetId, '');
+    if (!source || !target || source === target) {
+        return { status: 400, body: { error: 'sourceId and targetId are required and must differ' } };
+    }
+
+    const authors = await readAuthorsArray();
+    if (!authors.some(author => author.id === source) || !authors.some(author => author.id === target)) {
+        return { status: 404, body: { error: 'Author not found' } };
+    }
+
+    const changedPublished = await rewriteAuthorReferencesInRoot(PUBLISHED_DIR, source, target);
+    const changedDrafts = await rewriteAuthorReferencesInRoot(ADMIN_DRAFTS_DIR, source, target);
+    const changedUnpublished = await rewriteAuthorReferencesInRoot(ADMIN_UNPUBLISHED_DIR, source, target);
+    await writeAuthorsArray(authors.filter(author => author.id !== source));
+
+    const lintResult = await runContentLint();
+    if (!lintResult.ok) {
+        return {
+            status: 400,
+            body: { error: 'Content check failed after author merge', stdout: lintResult.stdout, stderr: lintResult.stderr }
+        };
+    }
+
+    await appendAuditLog({
+        action: 'merge_author',
+        actor: operator.username,
+        authorId: source,
+        targetAuthorId: target,
+        changedPublished,
+        changedDrafts,
+        changedUnpublished
+    });
+    cache.invalidate('authors');
+    cache.invalidate('stats');
+    cache.invalidatePattern('search:');
+    return {
+        status: 200,
+        body: { sourceId: source, targetId: target, changedPublished, changedDrafts, changedUnpublished }
+    };
 }
 
 async function resolveTemporaryAuthor(metadata, resolution) {
@@ -1261,6 +1545,107 @@ async function readPublishedArticle(articleId, unpublished = false) {
     };
 }
 
+async function listUnpublishedArticles() {
+    if (!fs.existsSync(ADMIN_UNPUBLISHED_DIR)) return [];
+    const entries = await fsPromises.readdir(ADMIN_UNPUBLISHED_DIR, { withFileTypes: true });
+    const articles = [];
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const articleId = entry.name;
+        const article = await readPublishedArticle(articleId, true);
+        if (!article) continue;
+        const { metadata } = parseMarkdownDocument(article.indexContent || '');
+        articles.push({
+            articleId,
+            title: metadata.title || articleId,
+            description: metadata.description || '',
+            files: article.files.length
+        });
+    }
+    return articles.sort((a, b) => b.articleId.localeCompare(a.articleId));
+}
+
+function getPublishedHistoryRoot(articleId) {
+    const parsed = parseArticleId(articleId);
+    if (!parsed) return null;
+    return assertInside(ADMIN_PUBLISHED_HISTORY_DIR, path.join(ADMIN_PUBLISHED_HISTORY_DIR, `${parsed.vol}-${parsed.folderName}`));
+}
+
+async function snapshotPublishedArticle(articleId, sourceDir, reason, operator) {
+    const historyRoot = getPublishedHistoryRoot(articleId);
+    if (!historyRoot || !sourceDir || !fs.existsSync(sourceDir)) return null;
+    const snapshotId = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${sanitizeSlug(reason, 'snapshot')}-${crypto.randomBytes(3).toString('hex')}`;
+    const snapshotDir = assertInside(historyRoot, path.join(historyRoot, snapshotId));
+    await fsPromises.mkdir(snapshotDir, { recursive: true });
+    await fsPromises.cp(sourceDir, path.join(snapshotDir, 'content'), { recursive: true });
+    await writeJsonFile(path.join(snapshotDir, 'meta.json'), {
+        snapshotId,
+        articleId,
+        reason,
+        actor: operator.username,
+        at: new Date().toISOString()
+    });
+    return snapshotId;
+}
+
+async function listPublishedHistory(articleId) {
+    const historyRoot = getPublishedHistoryRoot(articleId);
+    if (!historyRoot || !fs.existsSync(historyRoot)) return [];
+    const entries = await fsPromises.readdir(historyRoot, { withFileTypes: true });
+    const snapshots = [];
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const meta = await readJsonFile(path.join(historyRoot, entry.name, 'meta.json'), null);
+        if (meta) snapshots.push(meta);
+    }
+    return snapshots.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+}
+
+async function rollbackPublishedArticle(articleId, snapshotId, operator) {
+    const articleDir = getPublishedArticleDir(articleId);
+    const historyRoot = getPublishedHistoryRoot(articleId);
+    if (!articleDir || !historyRoot || !fs.existsSync(articleDir)) {
+        return { status: 404, body: { error: 'Published article not found' } };
+    }
+    const safeSnapshotId = safeRelativePath(snapshotId);
+    const snapshotContentDir = assertInside(historyRoot, path.join(historyRoot, safeSnapshotId, 'content'));
+    if (!fs.existsSync(snapshotContentDir)) {
+        return { status: 400, body: { error: 'Published snapshot not found' } };
+    }
+
+    const rollbackBackup = `${articleDir}.rollback-${Date.now()}`;
+    await fsPromises.cp(articleDir, rollbackBackup, { recursive: true });
+    await snapshotPublishedArticle(articleId, articleDir, 'before-rollback', operator);
+    try {
+        await fsPromises.rm(articleDir, { recursive: true, force: true });
+        await fsPromises.cp(snapshotContentDir, articleDir, { recursive: true });
+        const lintResult = await runContentLint();
+        if (!lintResult.ok) {
+            await fsPromises.rm(articleDir, { recursive: true, force: true });
+            await fsPromises.rename(rollbackBackup, articleDir);
+            return { status: 400, body: { error: 'Content check failed', stdout: lintResult.stdout, stderr: lintResult.stderr } };
+        }
+        await fsPromises.rm(rollbackBackup, { recursive: true, force: true });
+        cache.invalidatePattern('contributions');
+        cache.invalidatePattern('search:');
+        cache.invalidate('stats');
+        notifyHotReload('admin-rollback-published', articleDir);
+        await appendAuditLog({
+            action: 'rollback_published',
+            actor: operator.username,
+            articleId,
+            snapshotId: safeSnapshotId
+        });
+        return { status: 200, body: await readPublishedArticle(articleId) };
+    } catch (error) {
+        await fsPromises.rm(articleDir, { recursive: true, force: true });
+        if (fs.existsSync(rollbackBackup)) {
+            await fsPromises.rename(rollbackBackup, articleDir);
+        }
+        return { status: 400, body: { error: error.message } };
+    }
+}
+
 async function updatePublishedArticle(articleId, payload, operator) {
     const articleDir = getPublishedArticleDir(articleId);
     if (!articleDir || !fs.existsSync(articleDir)) {
@@ -1269,6 +1654,7 @@ async function updatePublishedArticle(articleId, payload, operator) {
 
     const backupDir = `${articleDir}.backup-${Date.now()}`;
     await fsPromises.cp(articleDir, backupDir, { recursive: true });
+    await snapshotPublishedArticle(articleId, articleDir, 'before-edit', operator);
 
     try {
         if (typeof payload.indexContent === 'string') {
@@ -1283,6 +1669,9 @@ async function updatePublishedArticle(articleId, payload, operator) {
         }
         if (Array.isArray(payload.files) && payload.files.length > 0) {
             await writeDraftFiles(articleDir, payload.files);
+        }
+        if (Array.isArray(payload.deleteFiles) && payload.deleteFiles.length > 0) {
+            await deleteManagedFiles(articleDir, payload.deleteFiles);
         }
 
         const lintResult = await runContentLint();
@@ -1322,6 +1711,7 @@ async function unpublishArticle(articleId, operator) {
     if (fs.existsSync(targetDir)) {
         return { status: 409, body: { error: 'Unpublished archive already exists' } };
     }
+    await snapshotPublishedArticle(articleId, articleDir, 'before-unpublish', operator);
     await fsPromises.mkdir(path.dirname(targetDir), { recursive: true });
     await fsPromises.rename(articleDir, targetDir);
     await generateArchiveJson(false);
@@ -1367,7 +1757,124 @@ async function restoreArticle(articleId, operator) {
     return { status: 200, body: { articleId } };
 }
 
+async function previewResolvedAuthorMetadata(metadata, resolution) {
+    if (!metadata.author) {
+        return {
+            metadata,
+            requiresAuthorResolution: false,
+            resolvedAuthorId: metadata.author_id || (Array.isArray(metadata.author_ids) ? metadata.author_ids.join(',') : ''),
+            createsAuthor: false
+        };
+    }
+
+    if (!resolution || !resolution.mode) {
+        return {
+            metadata,
+            requiresAuthorResolution: true,
+            resolvedAuthorId: '',
+            error: 'Temporary author must be resolved before publishing'
+        };
+    }
+
+    const authors = await readAuthorsArray();
+    if (resolution.mode === 'existing') {
+        const authorId = sanitizeSlug(resolution.authorId, '');
+        if (!authors.some(author => author.id === authorId)) {
+            return { metadata, requiresAuthorResolution: true, resolvedAuthorId: authorId, error: 'Selected author does not exist' };
+        }
+        const normalized = { ...metadata, author_id: authorId };
+        delete normalized.author;
+        return { metadata: normalized, requiresAuthorResolution: false, resolvedAuthorId: authorId, createsAuthor: false };
+    }
+
+    if (resolution.mode === 'create') {
+        let author;
+        try {
+            author = normalizeAdminAuthorInput(resolution.author || metadata.author || {}, undefined);
+        } catch (error) {
+            return { metadata, requiresAuthorResolution: true, resolvedAuthorId: '', error: error.message };
+        }
+        if (authors.some(item => item.id === author.id)) {
+            return { metadata, requiresAuthorResolution: true, resolvedAuthorId: author.id, error: 'Author already exists' };
+        }
+        const normalized = { ...metadata, author_id: author.id };
+        delete normalized.author;
+        return { metadata: normalized, requiresAuthorResolution: false, resolvedAuthorId: author.id, createsAuthor: true };
+    }
+
+    return { metadata, requiresAuthorResolution: true, resolvedAuthorId: '', error: 'Unsupported author resolution mode' };
+}
+
+async function buildPublishCheck(draftId, authorResolution) {
+    const detail = await readDraftDetail(draftId);
+    if (!detail) {
+        return { status: 404, body: { error: 'Draft not found' } };
+    }
+
+    const checks = [];
+    const addCheck = (id, ok, message, details) => {
+        checks.push({ id, ok, message, ...(details !== undefined ? { details } : {}) });
+    };
+
+    addCheck('status', detail.meta.status === 'approved', 'Draft must be approved before publishing');
+
+    const targetVol = normalizeVolumeId(detail.meta.targetVol);
+    const folderName = sanitizeSlug(detail.meta.folderName, '');
+    const articleId = targetVol && folderName ? `${targetVol}-${folderName}` : '';
+    addCheck('target', Boolean(targetVol && folderName), 'Target volume and folder name must be valid');
+
+    const targetDir = targetVol && folderName
+        ? assertInside(PUBLISHED_DIR, path.join(PUBLISHED_DIR, `vol-${targetVol}`, 'contributions', folderName))
+        : null;
+    addCheck('target_available', Boolean(targetDir && !fs.existsSync(targetDir)), 'Published target path must be available');
+
+    const draftDir = getDraftDir(draftId);
+    const document = parseMarkdownDocument(detail.indexContent || '');
+    const authorPreview = await previewResolvedAuthorMetadata(document.metadata, authorResolution);
+    if (authorPreview.error) {
+        addCheck('author_resolution', false, authorPreview.error);
+    } else {
+        addCheck('author_resolution', true, 'Author resolution is ready', authorPreview.resolvedAuthorId);
+    }
+
+    const validationErrors = validateDraftMetadata(authorPreview.metadata, { allowTemporaryAuthor: false });
+    addCheck('frontmatter', validationErrors.length === 0, 'Frontmatter must match the published article contract', validationErrors);
+
+    try {
+        if (!authorPreview.requiresAuthorResolution && !authorPreview.error && !authorPreview.createsAuthor) {
+            await validatePublishedAuthorReferences(authorPreview.metadata);
+        }
+        addCheck('author_references', true, 'Official author references are valid');
+    } catch (error) {
+        addCheck('author_references', false, error.message);
+    }
+
+    const missingAssets = validateMarkdownAssetReferences(document.body, draftDir);
+    addCheck('assets', missingAssets.length === 0, 'Referenced local assets must exist', missingAssets);
+
+    return {
+        status: 200,
+        body: {
+            ok: checks.every(check => check.ok),
+            draftId,
+            articleId,
+            targetVol,
+            folderName,
+            targetPath: targetVol && folderName ? `/contents/published/vol-${targetVol}/contributions/${folderName}/index.md` : '',
+            requiresAuthorResolution: authorPreview.requiresAuthorResolution,
+            resolvedAuthorId: authorPreview.resolvedAuthorId,
+            checks
+        }
+    };
+}
+
 async function publishDraft(draftId, operator, authorResolution) {
+    const preflight = await buildPublishCheck(draftId, authorResolution);
+    if (preflight.status !== 200) return preflight;
+    if (!preflight.body.ok) {
+        return { status: 400, body: { error: 'Publish check failed', checks: preflight.body.checks } };
+    }
+
     const detail = await readDraftDetail(draftId);
     if (!detail) {
         return { status: 404, body: { error: 'Draft not found' } };
@@ -1448,7 +1955,8 @@ async function publishDraft(draftId, operator, authorResolution) {
         action: 'published',
         actor: operator.username,
         role: operator.role,
-        comment: `Published as ${publishedArticleId}`
+        comment: `Published as ${publishedArticleId}`,
+        visibility: 'public'
     });
     await appendAuditLog({
         action: 'publish_draft',
@@ -1474,6 +1982,23 @@ async function publishDraft(draftId, operator, authorResolution) {
     };
 }
 
+function parseLintOutput(stdout, stderr) {
+    const lines = `${stdout || ''}\n${stderr || ''}`
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+    const issues = lines
+        .filter(line => /^[-✗!]|\b(error|warning|invalid|missing|unknown|outside)\b/i.test(line))
+        .map(line => ({
+            severity: /\b(warning|unknown)\b/i.test(line) ? 'warning' : 'error',
+            message: line
+        }));
+    return {
+        issueCount: issues.length,
+        issues
+    };
+}
+
 function runContentLint() {
     return new Promise(resolve => {
         execFile(
@@ -1487,11 +2012,18 @@ function runContentLint() {
                 }
             },
             (error, stdout, stderr) => {
+                const parsed = parseLintOutput(stdout, stderr);
                 resolve({
                     ok: !error,
                     exitCode: error ? error.code || 1 : 0,
                     stdout,
-                    stderr
+                    stderr,
+                    summary: {
+                        issueCount: parsed.issueCount,
+                        errorCount: parsed.issues.filter(issue => issue.severity === 'error').length,
+                        warningCount: parsed.issues.filter(issue => issue.severity === 'warning').length
+                    },
+                    issues: parsed.issues
                 });
             }
         );
@@ -1732,6 +2264,7 @@ app.post('/api/submissions', rateLimitMiddleware('write'), asyncRoute(async (req
     };
     await writeJsonFile(path.join(draftDir, 'meta.json'), meta);
     await writeJsonFile(path.join(ADMIN_REVIEWS_DIR, `${draftId}.json`), { draftId, history: [] });
+    await saveSubmissionRevision(draftId, 1, await fsPromises.readFile(indexPath, 'utf8'));
     await appendAuditLog({
         action: 'create_submission',
         actor: 'submitter',
@@ -1783,19 +2316,30 @@ app.put('/api/submissions/:submissionId', rateLimitMiddleware('write'), asyncRou
         return res.status(400).json({ error: 'Submission cannot be revised from this status' });
     }
 
-    const { files } = req.body || {};
-    if (!Array.isArray(files) || files.length === 0) {
-        return res.status(400).json({ error: 'files are required' });
+    const { files, indexContent: payloadIndexContent, deleteFiles } = req.body || {};
+    if (typeof payloadIndexContent !== 'string' && (!Array.isArray(files) || files.length === 0) && (!Array.isArray(deleteFiles) || deleteFiles.length === 0)) {
+        return res.status(400).json({ error: 'indexContent, files or deleteFiles are required' });
     }
-
     const draftDir = getDraftDir(req.params.submissionId);
-    const hasIndex = await writeDraftFiles(draftDir, files);
-    if (!hasIndex) {
+    if (Array.isArray(deleteFiles) && deleteFiles.length > 0) {
+        try {
+            await deleteManagedFiles(draftDir, deleteFiles);
+        } catch (error) {
+            return res.status(400).json({ error: error.message });
+        }
+    }
+    if (Array.isArray(files) && files.length > 0) {
+        await writeDraftFiles(draftDir, files);
+    }
+    if (typeof payloadIndexContent === 'string') {
+        await fsPromises.writeFile(path.join(draftDir, 'index.md'), payloadIndexContent, 'utf8');
+    }
+    if (!fs.existsSync(path.join(draftDir, 'index.md'))) {
         return res.status(400).json({ error: 'index.md is required' });
     }
 
-    const indexContent = await fsPromises.readFile(path.join(draftDir, 'index.md'), 'utf8');
-    const { metadata } = parseMarkdownDocument(indexContent);
+    const currentIndexContent = await fsPromises.readFile(path.join(draftDir, 'index.md'), 'utf8');
+    const { metadata } = parseMarkdownDocument(currentIndexContent);
     const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: true });
     if (validationErrors.length > 0) {
         return res.status(400).json({ error: 'Submission frontmatter is invalid', details: validationErrors });
@@ -1809,6 +2353,7 @@ app.put('/api/submissions/:submissionId', rateLimitMiddleware('write'), asyncRou
     }
 
     const revision = (detail.meta.revision || 1) + 1;
+    await saveSubmissionRevision(req.params.submissionId, revision, currentIndexContent);
     await updateDraftMeta(req.params.submissionId, {
         status: 'editing',
         submissionStatus: 'submitted',
@@ -1819,7 +2364,8 @@ app.put('/api/submissions/:submissionId', rateLimitMiddleware('write'), asyncRou
         action: 'submitter_revision',
         actor: 'submitter',
         role: 'submitter-token',
-        comment: `Revision ${revision}`
+        comment: `Revision ${revision}`,
+        visibility: 'internal'
     });
     await appendAuditLog({
         action: 'revise_submission',
@@ -1864,7 +2410,16 @@ app.get('/api/admin/me', requireAdmin, (req, res) => {
 });
 
 app.get('/api/admin/drafts', requireAdmin, asyncRoute(async (req, res) => {
-    res.json({ drafts: await listAdminDrafts() });
+    res.json({
+        drafts: await listAdminDrafts({
+            source: req.query.source,
+            status: req.query.status,
+            submissionStatus: req.query.submissionStatus,
+            assignee: req.query.assignee,
+            q: req.query.q,
+            sort: req.query.sort
+        })
+    });
 }));
 
 app.get('/api/admin/drafts/:draftId/assets/*', requireAdmin, asyncRoute(async (req, res) => {
@@ -1950,7 +2505,7 @@ app.put(
     requireAdmin,
     requireAdminPermission('canEditDraft'),
     asyncRoute(async (req, res) => {
-        const { indexContent, targetVol, folderName, files } = req.body || {};
+        const { indexContent, targetVol, folderName, files, deleteFiles, assignee } = req.body || {};
         const detail = await readDraftDetail(req.params.draftId);
         if (!detail) {
             return res.status(404).json({ error: 'Draft not found' });
@@ -1972,6 +2527,13 @@ app.put(
         if (Array.isArray(files) && files.length > 0) {
             await writeDraftFiles(draftDir, files);
         }
+        if (Array.isArray(deleteFiles) && deleteFiles.length > 0) {
+            try {
+                await deleteManagedFiles(draftDir, deleteFiles);
+            } catch (error) {
+                return res.status(400).json({ error: error.message });
+            }
+        }
 
         const patch = {};
         if (targetVol !== undefined) {
@@ -1983,6 +2545,9 @@ app.put(
             const safeFolderName = sanitizeSlug(folderName, '');
             if (!safeFolderName) return res.status(400).json({ error: 'Invalid folder name' });
             patch.folderName = safeFolderName;
+        }
+        if (assignee !== undefined) {
+            patch.assignee = sanitizeSlug(assignee, '');
         }
         if (detail.meta.status === 'review_requested' || detail.meta.status === 'approved') {
             patch.status = 'editing';
@@ -2043,7 +2608,8 @@ app.post(
             action: 'accepted',
             actor: req.adminUser.username,
             role: req.adminUser.role,
-            comment: req.body?.comment || ''
+            comment: req.body?.comment || '',
+            visibility: normalizeReviewVisibility(req.body?.visibility, 'internal')
         });
         await appendAuditLog({
             action: 'accept_submission',
@@ -2051,6 +2617,55 @@ app.post(
             draftId: req.params.draftId
         });
         res.json(await readDraftDetail(req.params.draftId));
+    })
+);
+
+app.post(
+    '/api/admin/drafts/:draftId/assign',
+    requireAdmin,
+    requireAdminPermission('canAssignDraft'),
+    asyncRoute(async (req, res) => {
+        const detail = await readDraftDetail(req.params.draftId);
+        if (!detail) return res.status(404).json({ error: 'Draft not found' });
+        const assignee = sanitizeSlug(req.body?.assignee || '', '');
+        await updateDraftMeta(req.params.draftId, { assignee }, req.adminUser);
+        await appendAuditLog({
+            action: 'assign_draft',
+            actor: req.adminUser.username,
+            draftId: req.params.draftId,
+            assignee
+        });
+        res.json(await readDraftDetail(req.params.draftId));
+    })
+);
+
+app.post(
+    '/api/admin/drafts/:draftId/status-link',
+    requireAdmin,
+    requireAdminPermission('canIssueStatusLink'),
+    asyncRoute(async (req, res) => {
+        const detail = await readDraftDetail(req.params.draftId);
+        if (!detail) return res.status(404).json({ error: 'Draft not found' });
+        if (detail.meta.source !== 'submission') {
+            return res.status(400).json({ error: 'Only submission drafts have status links' });
+        }
+        const token = createAccessToken();
+        const now = new Date().toISOString();
+        await updateDraftMeta(req.params.draftId, {
+            submitterTokenHash: hashAccessToken(token),
+            lastStatusLinkIssuedAt: now,
+            lastStatusLinkIssuedBy: req.adminUser.username
+        }, req.adminUser);
+        await appendAuditLog({
+            action: 'issue_submission_status_link',
+            actor: req.adminUser.username,
+            draftId: req.params.draftId
+        });
+        res.json({
+            submissionId: req.params.draftId,
+            accessToken: token,
+            statusUrl: `/submit?id=${encodeURIComponent(req.params.draftId)}&token=${encodeURIComponent(token)}`
+        });
     })
 );
 
@@ -2072,7 +2687,8 @@ app.post(
             action: 'rejected',
             actor: req.adminUser.username,
             role: req.adminUser.role,
-            comment: req.body?.comment || ''
+            comment: req.body?.comment || '',
+            visibility: normalizeReviewVisibility(req.body?.visibility, 'public')
         });
         await appendAuditLog({
             action: 'reject_submission',
@@ -2098,7 +2714,8 @@ app.post(
             action: 'review_requested',
             actor: req.adminUser.username,
             role: req.adminUser.role,
-            comment: req.body?.comment || ''
+            comment: req.body?.comment || '',
+            visibility: normalizeReviewVisibility(req.body?.visibility, 'internal')
         });
         await appendAuditLog({
             action: 'request_review',
@@ -2130,7 +2747,8 @@ app.post(
             action,
             actor: req.adminUser.username,
             role: req.adminUser.role,
-            comment: comment || ''
+            comment: comment || '',
+            visibility: normalizeReviewVisibility(req.body?.visibility, 'public')
         });
         await appendAuditLog({
             action: `review_${action}`,
@@ -2138,6 +2756,16 @@ app.post(
             draftId: req.params.draftId
         });
         res.json(await readDraftDetail(req.params.draftId));
+    })
+);
+
+app.post(
+    '/api/admin/drafts/:draftId/publish-check',
+    requireAdmin,
+    requireAdminPermission('canPublish'),
+    asyncRoute(async (req, res) => {
+        const result = await buildPublishCheck(req.params.draftId, req.body?.authorResolution);
+        res.status(result.status).json(result.body);
     })
 );
 
@@ -2156,7 +2784,17 @@ app.get(
     requireAdmin,
     requireAdminPermission('canListAuthors'),
     asyncRoute(async (req, res) => {
-        res.json({ authors: await readAuthorsArray() });
+        res.json({ authors: enrichAuthorRecords(await readAuthorsArray(), await countPublishedAuthorUsage()) });
+    })
+);
+
+app.post(
+    '/api/admin/authors/merge',
+    requireAdmin,
+    requireAdminPermission('canManageAuthors'),
+    asyncRoute(async (req, res) => {
+        const result = await mergeAuthors(req.body?.sourceId, req.body?.targetId, req.adminUser);
+        res.status(result.status).json(result.body);
     })
 );
 
@@ -2253,6 +2891,25 @@ app.put(
     })
 );
 
+app.get(
+    '/api/admin/published/:articleId/history',
+    requireAdmin,
+    requireAdminPermission('canViewPublishedHistory'),
+    asyncRoute(async (req, res) => {
+        res.json({ snapshots: await listPublishedHistory(req.params.articleId) });
+    })
+);
+
+app.post(
+    '/api/admin/published/:articleId/rollback',
+    requireAdmin,
+    requireAdminPermission('canRollbackPublished'),
+    asyncRoute(async (req, res) => {
+        const result = await rollbackPublishedArticle(req.params.articleId, req.body?.snapshotId, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
+
 app.post(
     '/api/admin/published/:articleId/unpublish',
     requireAdmin,
@@ -2260,6 +2917,15 @@ app.post(
     asyncRoute(async (req, res) => {
         const result = await unpublishArticle(req.params.articleId, req.adminUser);
         res.status(result.status).json(result.body);
+    })
+);
+
+app.get(
+    '/api/admin/unpublished',
+    requireAdmin,
+    requireAdminPermission('canUnpublish'),
+    asyncRoute(async (req, res) => {
+        res.json({ articles: await listUnpublishedArticles() });
     })
 );
 
@@ -2338,6 +3004,24 @@ app.post(
         }
         await appendAuditLog({
             action: 'disable_admin_user',
+            actor: req.adminUser.username,
+            username: result.user.username
+        });
+        res.json({ user: result.user });
+    })
+);
+
+app.post(
+    '/api/admin/users/:username/enable',
+    requireAdmin,
+    requireAdminPermission('canManageUsers'),
+    asyncRoute(async (req, res) => {
+        const result = await enableAdminUser(req.params.username);
+        if (result.error) {
+            return res.status(404).json({ error: result.error });
+        }
+        await appendAuditLog({
+            action: 'enable_admin_user',
             actor: req.adminUser.username,
             username: result.user.username
         });

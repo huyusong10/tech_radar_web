@@ -48,7 +48,7 @@
 |------|------|-----------|
 | `POST /api/submissions` | public | 创建后台投稿草稿，返回 `submissionId`、`accessToken`、`statusUrl` |
 | `GET /api/submissions/:submissionId` | token | 查看自己的投稿状态、正文、文件列表和审核意见 |
-| `PUT /api/submissions/:submissionId` | token | 在返修状态提交新版 `index.md` 与资源 |
+| `PUT /api/submissions/:submissionId` | token | 在返修状态提交编辑器正文、上传/替换资源或删除非正文资源 |
 | `GET /api/submissions/:submissionId/assets/*` | token | 查看自己投稿中的资源 |
 | `GET /api/submission-authors` | public | 搜索已有正式作者，返回有限公开字段 |
 
@@ -58,6 +58,7 @@
 - 投稿不存在返回 `404`。
 - 非返修状态提交修订返回 `400`。
 - 内容结构、作者引用或文件路径非法返回 `400`。
+- 删除 `index.md` 返回 `400`。
 
 ## 后台管理接口
 
@@ -68,30 +69,38 @@
 | `POST /api/admin/login` | public | 登录成功设置 httpOnly 会话 cookie，返回当前操作者 |
 | `POST /api/admin/logout` | logged-in | 清除后台会话 |
 | `GET /api/admin/me` | logged-in | 当前操作者与权限 |
-| `GET /api/admin/drafts` | all roles | 后台草稿列表 |
+| `GET /api/admin/drafts` | all roles | 后台草稿列表；支持按来源、状态、投稿状态、负责人和关键词筛选 |
 | `GET /api/admin/drafts/:draftId` | all roles | 草稿元数据、正文、文件列表、审核记录 |
 | `GET /api/admin/drafts/:draftId/assets/*` | all roles | 草稿资源文件 |
 | `POST /api/admin/drafts/import` | `editor`、`chief_editor` | 导入 `index.md` 与资源文件为后台草稿 |
-| `PUT /api/admin/drafts/:draftId` | `editor`、`chief_editor` | 更新草稿正文、目标卷期、目标文件夹或资源 |
+| `PUT /api/admin/drafts/:draftId` | `editor`、`chief_editor` | 更新草稿正文、目标卷期、目标文件夹、负责人或资源；支持删除非正文资源 |
 | `DELETE /api/admin/drafts/:draftId` | `chief_editor` | 删除未发布后台草稿及其审核记录 |
 | `POST /api/admin/drafts/:draftId/accept` | `editor`、`chief_editor` | 接收投稿来源草稿进入编辑处理 |
+| `POST /api/admin/drafts/:draftId/assign` | `editor`、`chief_editor` | 设置草稿责任人 |
+| `POST /api/admin/drafts/:draftId/status-link` | `editor`、`chief_editor` | 为投稿来源草稿补发状态链接并使旧链接失效 |
 | `POST /api/admin/drafts/:draftId/reject` | `editor`、`chief_editor` | 拒绝未发布草稿或投稿 |
 | `POST /api/admin/drafts/:draftId/review-request` | `editor`、`chief_editor` | 提交技术审核 |
 | `POST /api/admin/drafts/:draftId/review` | `tech_reviewer`、`chief_editor` | 审核通过或退回 |
+| `POST /api/admin/drafts/:draftId/publish-check` | `chief_editor` | 返回发布前检查结果，不写正式内容 |
 | `POST /api/admin/drafts/:draftId/publish` | `chief_editor` | 发布 approved 草稿到 `contents/published` |
 | `GET /api/admin/authors` | `editor`、`chief_editor` | 作者主数据列表 |
 | `POST /api/admin/authors` | `editor`、`chief_editor` | 创建正式作者 |
 | `PUT /api/admin/authors/:authorId` | `editor`、`chief_editor` | 更新正式作者资料 |
+| `POST /api/admin/authors/merge` | `editor`、`chief_editor` | 合并两个正式作者并重写引用 |
 | `GET /api/admin/audit-log` | `chief_editor` | 查看全局审计日志 |
 | `GET /api/admin/published` | `editor`、`chief_editor` | 已发布投稿列表 |
 | `GET /api/admin/published/:articleId` | `editor`、`chief_editor` | 已发布投稿详情 |
-| `PUT /api/admin/published/:articleId` | `editor`、`chief_editor` | 修改已发布投稿，必须通过内容检查 |
+| `PUT /api/admin/published/:articleId` | `editor`、`chief_editor` | 修改已发布投稿正文或资源，必须通过内容检查 |
+| `GET /api/admin/published/:articleId/history` | `chief_editor` | 查看已发布文章最近版本快照 |
+| `POST /api/admin/published/:articleId/rollback` | `chief_editor` | 将已发布文章回滚到指定快照，必须通过内容检查 |
 | `POST /api/admin/published/:articleId/unpublish` | `chief_editor` | 下线文章到后台私有归档 |
+| `GET /api/admin/unpublished` | `chief_editor` | 查看已下线文章列表 |
 | `POST /api/admin/unpublished/:articleId/restore` | `chief_editor` | 恢复已下线文章 |
 | `GET /api/admin/users` | `chief_editor` | 后台操作者列表，不返回密码摘要 |
 | `POST /api/admin/users` | `chief_editor` | 创建后台操作者 |
 | `PUT /api/admin/users/:username` | `chief_editor` | 更新后台操作者资料、角色或密码 |
 | `POST /api/admin/users/:username/disable` | `chief_editor` | 停用后台操作者 |
+| `POST /api/admin/users/:username/enable` | `chief_editor` | 重新启用后台操作者 |
 | `GET /api/admin/volumes` | `chief_editor` | 已发布卷期列表与 `radar.md` 内容 |
 | `POST /api/admin/volumes` | `chief_editor` | 新建已发布卷期目录和 `radar.md` |
 | `PUT /api/admin/volumes/:vol/radar` | `chief_editor` | 更新指定卷期的 `radar.md` |
@@ -104,6 +113,7 @@
 - 草稿、作者或资源不存在返回 `404`。
 - 内容结构、状态流或目标路径非法返回 `400`。
 - 目标发布路径已存在返回 `409`。
+- 删除 `index.md` 或回滚到不存在的快照返回 `400`。
 
 ## 返回结构约束
 
