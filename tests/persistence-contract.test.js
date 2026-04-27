@@ -25,11 +25,19 @@ describe('Persistence contract', () => {
     test('persists views and likes across graceful restart', async () => {
         const volumes = await readJson(await harness.request('/api/volumes'));
         assert.ok(volumes.length > 0);
-        const vol = volumes[0].vol;
 
-        const contributions = await readJson(await harness.request(`/api/contributions/${vol}`));
-        assert.ok(contributions.length > 0);
-        const articleId = `${vol}-${contributions[0]}`;
+        let vol = '';
+        let contribution = '';
+        for (const candidate of volumes) {
+            const contributions = await readJson(await harness.request(`/api/contributions/${candidate.vol}`));
+            if (contributions.length > 0) {
+                vol = candidate.vol;
+                contribution = contributions[0];
+                break;
+            }
+        }
+        assert.ok(vol && contribution);
+        const articleId = `${vol}-${contribution}`;
 
         const beforeViews = await readJson(await harness.request(`/api/views/${vol}`));
         const beforeLikes = await readJson(await harness.request('/api/likes'));

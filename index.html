@@ -1808,33 +1808,6 @@
             text-align: center;
         }
 
-        .export-button {
-            display: inline-flex;
-            align-items: center;
-            gap: var(--spacing-xs);
-            padding: 0.5rem 1rem;
-            background: rgba(0, 243, 255, 0.1);
-            border: 1px solid rgba(0, 243, 255, 0.3);
-            border-radius: var(--radius-md);
-            color: var(--accent-cyan);
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .export-button:hover {
-            background: rgba(0, 243, 255, 0.2);
-            border-color: var(--accent-cyan);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0, 243, 255, 0.3);
-        }
-
-        .export-button .btn-text-cn {
-            font-size: 0.75rem;
-            opacity: 0.8;
-        }
-
         .footer-links {
             display: flex;
             gap: var(--spacing-md);
@@ -1877,9 +1850,10 @@
             font-weight: 700;
             cursor: pointer;
             overflow: hidden;
+            text-decoration: none;
             transition: all 0.4s ease;
             text-transform: uppercase;
-            letter-spacing: 2px;
+            letter-spacing: 0;
         }
 
         .submit-button::before {
@@ -2703,18 +2677,11 @@
     <footer>
         <div class="container">
             <div class="submit-section">
-                <button class="submit-button" onclick="openSubmitModal()">
+                <a class="submit-button" href="/submit">
                     <span class="btn-icon">✨</span>
-                    <span class="btn-text-en">Submit Your Work!</span>
-                    <span class="btn-text-cn">提交你的作品</span>
-                </button>
-            </div>
-            <div class="footer-content">
-                <button class="export-button" onclick="exportAsImage()">
-                    <span class="btn-icon">📸</span>
-                    <span class="btn-text-en">Export</span>
-                    <span class="btn-text-cn">导出图片</span>
-                </button>
+                    <span class="btn-text-en">Start Submission</span>
+                    <span class="btn-text-cn">进入投稿台</span>
+                </a>
             </div>
             <div class="footer-content">
                 <div class="copyright" id="site-footer">
@@ -2724,19 +2691,6 @@
         </div>
     </footer>
     </div> <!-- End of main-content -->
-
-    <!-- ==================== SUBMIT MODAL ==================== -->
-    <div class="modal-overlay" id="submit-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <span class="modal-title">📝 How to Submit Your Work</span>
-                <button class="modal-close" onclick="closeSubmitModal()">×</button>
-            </div>
-            <div class="modal-body" id="submit-modal-body">
-                Loading...
-            </div>
-        </div>
-    </div>
 
     <!-- ==================== STATS MODAL ==================== -->
     <div class="modal-overlay" id="stats-modal">
@@ -2873,6 +2827,27 @@
             return window.location.pathname === '/draft' || window.location.pathname.startsWith('/draft/');
         }
 
+        function isAdminIssuePreviewMode() {
+            return /^\/admin\/issue-drafts\/[^/]+\/preview-page\/?$/.test(window.location.pathname);
+        }
+
+        function isReadOnlyPreviewMode() {
+            return isDraftMode() || isAdminIssuePreviewMode();
+        }
+
+        function getAdminIssuePreviewId() {
+            const match = window.location.pathname.match(/^\/admin\/issue-drafts\/([^/]+)\/preview-page\/?$/);
+            return match ? decodeURIComponent(match[1]) : '';
+        }
+
+        function getAdminIssuePreviewApiBase() {
+            return `/api/admin/issue-drafts/${encodeURIComponent(getAdminIssuePreviewId())}`;
+        }
+
+        function getAdminIssuePreviewContentDir() {
+            return `${getAdminIssuePreviewApiBase()}/preview-content`;
+        }
+
         // Load site paths from API (for dynamic configuration)
         async function loadSitePaths() {
             try {
@@ -2889,7 +2864,9 @@
                 console.log('Using default content paths');
             }
             // Set active content directory based on draft mode
-            CONTENT_DIR = isDraftMode() ? DRAFT_DIR : PUBLISHED_DIR;
+            CONTENT_DIR = isAdminIssuePreviewMode()
+                ? getAdminIssuePreviewContentDir()
+                : (isDraftMode() ? DRAFT_DIR : PUBLISHED_DIR);
         }
 
         // Parse frontmatter from markdown
@@ -2935,6 +2912,12 @@
 
             volumesCachePromise = (async () => {
                 try {
+                    if (isAdminIssuePreviewMode()) {
+                        const response = await fetchWithRetry(`${getAdminIssuePreviewApiBase()}/preview-volume`, { cache: 'no-store' });
+                        if (!response.ok) throw new Error('Issue draft preview not available');
+                        volumesCache = await response.json();
+                        return volumesCache;
+                    }
                     // Try to load from API first (when using node server.js)
                     // Use cache: 'no-store' to always get fresh views counts
                     const draftParam = isDraftMode() ? '?draft=true' : '';
@@ -3335,11 +3318,13 @@
 
         // Views API functions
         // Increment views and return new count
-        // Draft mode: returns 0 without recording
+        // Draft and admin preview modes return 0 without recording
         async function incrementViews(vol) {
+            if (isReadOnlyPreviewMode()) {
+                return 0;
+            }
             try {
-                const draftParam = isDraftMode() ? '?draft=true' : '';
-                const response = await fetchWithRetry(`/api/views/${vol}${draftParam}`, { method: 'POST' });
+                const response = await fetchWithRetry(`/api/views/${vol}`, { method: 'POST' });
                 if (!response.ok) {
                     console.warn('Views increment returned non-OK status:', response.status);
                     return 0;
@@ -3353,10 +3338,9 @@
         }
 
         // Likes API functions
-        // Draft mode: returns empty data without fetching
+        // Draft and admin preview modes return empty data without fetching
         async function fetchLikes() {
-            // Draft mode: return empty likes
-            if (isDraftMode()) {
+            if (isReadOnlyPreviewMode()) {
                 return {};
             }
             try {
@@ -3369,10 +3353,9 @@
         }
 
         // Fetch user's liked articles from server (IP-based)
-        // Draft mode: returns empty set without fetching
+        // Draft and admin preview modes return empty set without fetching
         async function fetchUserLikes() {
-            // Draft mode: return empty user likes
-            if (isDraftMode()) {
+            if (isReadOnlyPreviewMode()) {
                 return new Set();
             }
             try {
@@ -3389,10 +3372,9 @@
         }
 
         // Send like request to server (IP-based, no unlike supported)
-        // Draft mode: returns fake response without recording
+        // Draft and admin preview modes return fake response without recording
         async function sendLike(articleId) {
-            // Draft mode: return fake response without recording
-            if (isDraftMode()) {
+            if (isReadOnlyPreviewMode()) {
                 return { articleId, likes: 0, userLiked: false, draft: true };
             }
             try {
@@ -3606,6 +3588,14 @@
         // Get list of contribution folders from API
         async function getContributionFolders(vol) {
             try {
+                if (isAdminIssuePreviewMode()) {
+                    const response = await fetchWithRetry(`${getAdminIssuePreviewApiBase()}/preview-contributions/${encodeURIComponent(vol)}`);
+                    if (response.ok) {
+                        return await response.json();
+                    }
+                    console.warn(`Failed to get preview contributions for vol-${vol}: ${response.status}`);
+                    return [];
+                }
                 const draftParam = isDraftMode() ? '?draft=true' : '';
                 const response = await fetchWithRetry(`/api/contributions/${vol}${draftParam}`);
                 if (response.ok) {
@@ -3943,6 +3933,9 @@
 
         // Get list of best practice folders from API
         async function getBestPracticeFolders(vol) {
+            if (isAdminIssuePreviewMode()) {
+                return [];
+            }
             try {
                 const draftParam = isDraftMode() ? '?draft=true' : '';
                 const response = await fetchWithRetry(`/api/best-practices/${vol}${draftParam}`);
@@ -4487,13 +4480,14 @@
             } else {
                 // Need to load the volume first
                 // Update URL and trigger load
-                const isDraftMode = window.location.pathname === '/draft';
-                const newUrl = isDraftMode ? `/draft?vol=${vol}` : `/?vol=${vol}`;
+                const newUrl = isAdminIssuePreviewMode()
+                    ? `${window.location.pathname}?vol=${vol}`
+                    : (isDraftMode() ? `/draft?vol=${vol}` : `/?vol=${vol}`);
                 window.history.pushState({ vol }, '', newUrl);
                 currentVolume = vol;
 
                 // Load the volume content
-                await loadVolumeContent(vol, isDraftMode);
+                await loadVolumeContent(vol);
 
                 // Update sidebar active state
                 updateSidebarActiveState(vol);
@@ -4507,9 +4501,8 @@
         }
 
         // Load volume content (radar + contributions)
-        async function loadVolumeContent(vol, isDraftMode) {
-            const baseDir = isDraftMode ? '/contents/draft' : '/contents/published';
-            const volPath = `${baseDir}/vol-${vol}`;
+        async function loadVolumeContent(vol) {
+            const volPath = `${CONTENT_DIR}/vol-${vol}`;
 
             // Load radar content
             try {
@@ -4540,10 +4533,13 @@
                 console.error('Failed to load contributions:', error);
             }
 
-            // Update views (draft mode: show 0 without recording)
+            // Update views (draft and admin preview modes show 0 without recording)
             try {
-                const draftParam = isDraftMode ? '?draft=true' : '';
-                const viewsResult = await fetchWithRetry(`/api/views/${vol}${draftParam}`, { method: 'POST' });
+                if (isReadOnlyPreviewMode()) {
+                    document.getElementById('page-views').textContent = '0';
+                    return;
+                }
+                const viewsResult = await fetchWithRetry(`/api/views/${vol}`, { method: 'POST' });
                 if (viewsResult.ok) {
                     const viewsData = await viewsResult.json();
                     document.getElementById('page-views').textContent = viewsData.views;
@@ -4760,37 +4756,6 @@
 
         function renderMarkdownSafely(markdown) {
             return sanitizeRenderedHtml(marked.parse(markdown));
-        }
-
-        // Submit modal functions
-        let submitGuideLoaded = false;
-
-        async function openSubmitModal() {
-            const modal = document.getElementById('submit-modal');
-            const modalBody = document.getElementById('submit-modal-body');
-
-            modal.classList.add('active');
-            document.body.style.overflow = 'hidden';
-
-            // Load content only once
-            if (!submitGuideLoaded) {
-                try {
-                    const content = await loadMarkdown(`${SHARED_DIR}/submit-guide.md`);
-                    if (content) {
-                        const { content: markdownContent } = parseFrontmatter(content);
-                        modalBody.innerHTML = renderMarkdownSafely(markdownContent);
-                        submitGuideLoaded = true;
-                    }
-                } catch (error) {
-                    modalBody.innerHTML = '<p style="color: var(--accent-pink);">Failed to load guide. Please try again.</p>';
-                }
-            }
-        }
-
-        function closeSubmitModal() {
-            const modal = document.getElementById('submit-modal');
-            modal.classList.remove('active');
-            document.body.style.overflow = '';
         }
 
         // Stats modal functions
@@ -5124,12 +5089,12 @@
             const mainContent = document.querySelector('.main-content');
             const exportUtils = window.TechRadarExport;
 
-            if (!exportBtn || !exportOverlay || !mainContent || !exportUtils) {
+            if (!exportOverlay || !mainContent || !exportUtils) {
                 console.error('Export failed: required export elements are missing');
                 return;
             }
 
-            const originalText = exportBtn.innerHTML;
+            const originalText = exportBtn?.innerHTML || '';
             const originalStyles = {
                 body: document.body.style.cssText,
                 mainContent: mainContent.style.cssText
@@ -5164,8 +5129,10 @@
                 document.body.style.overflow = 'hidden';
 
                 // Show loading state on button
-                exportBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Exporting...</span>';
-                exportBtn.disabled = true;
+                if (exportBtn) {
+                    exportBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Exporting...</span>';
+                    exportBtn.disabled = true;
+                }
 
                 trendingItems.forEach(item => {
                     item.classList.remove('expanded');  // Collapse for export
@@ -5244,18 +5211,22 @@
                 });
                 exportOverlay.classList.remove('active');
                 if (!exportStarted && saveCancelled) {
-                    exportBtn.innerHTML = originalText;
-                    exportBtn.disabled = false;
+                    if (exportBtn) {
+                        exportBtn.innerHTML = originalText;
+                        exportBtn.disabled = false;
+                    }
                     return;
                 }
 
-                exportBtn.innerHTML = exportSucceeded
-                    ? '<span class="btn-icon">✅</span><span>Done!</span>'
-                    : '<span class="btn-icon">❌</span><span>Failed</span>';
-                setTimeout(() => {
-                    exportBtn.innerHTML = originalText;
-                    exportBtn.disabled = false;
-                }, 2000);
+                if (exportBtn) {
+                    exportBtn.innerHTML = exportSucceeded
+                        ? '<span class="btn-icon">✅</span><span>Done!</span>'
+                        : '<span class="btn-icon">❌</span><span>Failed</span>';
+                    setTimeout(() => {
+                        exportBtn.innerHTML = originalText;
+                        exportBtn.disabled = false;
+                    }, 2000);
+                }
             }
         }
 

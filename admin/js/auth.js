@@ -27,7 +27,7 @@ export function bindAuth({ onSignedIn, onSignedOut }) {
             status.textContent = '';
             onSignedIn(session);
         } catch (error) {
-            status.textContent = error.message;
+            status.textContent = `登录失败：${error.message}`;
             status.classList.add('is-error');
         }
     });

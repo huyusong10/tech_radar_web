@@ -6,6 +6,8 @@ const { describe, test } = require('node:test');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const INDEX_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'index.html'), 'utf8');
+const SUBMIT_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'submit', 'index.html'), 'utf8');
+const ADMIN_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'admin', 'index.html'), 'utf8');
 const INLINE_SCRIPT = INDEX_HTML.match(/<script>([\s\S]*)<\/script>\s*<\/body>/)[1];
 
 function createResponse(body, options = {}) {
@@ -201,8 +203,113 @@ describe('Frontend contract', () => {
         assert.ok(!requestedUrls.includes('/contents/published/archive.json'));
     });
 
+    test('admin issue preview mode reads issue draft preview APIs', async () => {
+        const requestedUrls = [];
+        const issueDraftId = '20260428103000-demo-vol-004';
+        const context = loadFrontendContext({
+            pathname: `/admin/issue-drafts/${issueDraftId}/preview-page`,
+            fetchImpl: async (url) => {
+                requestedUrls.push(url);
+                if (url === '/api/site-config') {
+                    return createResponse({
+                        publishedDir: '/contents/published',
+                        draftDir: '/contents/draft',
+                        sharedDir: '/contents/shared',
+                        assetsDir: '/contents/assets'
+                    });
+                }
+                if (url === `/api/admin/issue-drafts/${issueDraftId}/preview-volume`) {
+                    return createResponse([{ vol: '004', date: '', views: 0, preview: true }]);
+                }
+                if (url === `/api/admin/issue-drafts/${issueDraftId}/preview-contributions/004`) {
+                    return createResponse(['release-automation']);
+                }
+                throw new Error(`Unexpected request: ${url}`);
+            }
+        });
+
+        await context.loadSitePaths();
+        const volumes = await context.fetchVolumes(true);
+        const folders = await context.getContributionFolders('004');
+
+        assert.deepEqual(volumes.map(item => item.vol), ['004']);
+        assert.deepEqual(folders, ['release-automation']);
+        assert.ok(requestedUrls.includes(`/api/admin/issue-drafts/${issueDraftId}/preview-volume`));
+        assert.ok(!requestedUrls.includes('/api/volumes'));
+    });
+
     test('archive load-more controls do not use inline JavaScript handlers', () => {
         assert.doesNotMatch(INDEX_HTML, /onclick="loadMoreVolumes/);
+    });
+
+    test('reader page exposes submission as a direct route entry', () => {
+        assert.match(INDEX_HTML, /href="\/submit"/);
+        assert.equal((INDEX_HTML.match(/href="\/submit"/g) || []).length, 1);
+        assert.doesNotMatch(INDEX_HTML, /onclick="openSubmitModal\(\)"/);
+        assert.doesNotMatch(INDEX_HTML, /id="submit-modal"/);
+    });
+
+    test('submitter page keeps publication targeting in the editor workflow', () => {
+        assert.doesNotMatch(SUBMIT_HTML, /id="submit-vol"/);
+        assert.doesNotMatch(SUBMIT_HTML, /id="submit-folder"/);
+        assert.doesNotMatch(SUBMIT_HTML, /id="submit-editor"/);
+        assert.match(SUBMIT_HTML, /id="submit-dropzone"/);
+        assert.match(SUBMIT_HTML, /id="revision-dropzone"/);
+    });
+
+    test('admin page exposes direct workflow modules and issue-centered management', () => {
+        [
+            'submissions',
+            'manuscripts',
+            'reviews',
+            'issues',
+            'authors',
+            'users',
+            'audit'
+        ].forEach(view => assert.match(ADMIN_HTML, new RegExp(`data-view="${view}"`)));
+
+        assert.doesNotMatch(ADMIN_HTML, /data-view="governance"/);
+        assert.doesNotMatch(ADMIN_HTML, /data-governance-panel=/);
+
+        [
+            'admin-issue-list',
+            'issue-draft-list',
+            'issue-available-manuscript-list',
+            'published-list',
+            'unpublished-list',
+            'published-history-list'
+        ].forEach(id => assert.match(ADMIN_HTML, new RegExp(`id="${id}"`)));
+
+        assert.match(ADMIN_HTML, /id="view-issues"/);
+    });
+
+    test('admin page keeps stable controls for submission, manuscript and review flows', () => {
+        assert.match(ADMIN_HTML, /data-view="manuscripts"/);
+        assert.doesNotMatch(ADMIN_HTML, /data-view="drafts"/);
+        assert.doesNotMatch(ADMIN_HTML, /data-view="publish"/);
+        assert.match(ADMIN_HTML, /name="accept-author-mode"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="submission-comment-visibility"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="manuscript-review-visibility"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="issue-review-visibility"/);
+
+        [
+            'submission-list',
+            'submission-summary',
+            'manuscript-list',
+            'review-manuscript-list',
+            'review-issue-list',
+            'manuscript-editor',
+            'manuscript-preview',
+            'manuscript-review-history',
+            'issue-radar',
+            'issue-preview',
+            'issue-review-history',
+            'author-list',
+            'published-list',
+            'volume-list',
+            'user-list',
+            'audit-list'
+        ].forEach(id => assert.match(ADMIN_HTML, new RegExp(`id="${id}"`)));
     });
 
     test('article batch rendering isolates individual markdown failures', async () => {
@@ -232,5 +339,52 @@ describe('Frontend contract', () => {
         const grid = context.__elements.get('contributions-grid');
         assert.equal(grid.children.length, 1);
         assert.match(grid.children[0].html, /Good Article/);
+    });
+
+    test('shared preview renderer does not duplicate frontmatter title by default', async () => {
+        const previewSource = fs
+            .readFileSync(path.join(PROJECT_ROOT, 'admin', 'js', 'preview.js'), 'utf8')
+            .replace(/export function /g, 'function ');
+        const context = {
+            document: {
+                createElement() {
+                    let html = '';
+                    return {
+                        set innerHTML(value) {
+                            html = String(value);
+                        },
+                        get innerHTML() {
+                            return html;
+                        },
+                        content: {
+                            querySelectorAll() {
+                                return [];
+                            }
+                        }
+                    };
+                }
+            },
+            marked: { parse: markdown => markdown },
+            jsyaml: {
+                load() {
+                    return { title: 'Frontmatter Title', description: 'Frontmatter Description' };
+                }
+            },
+            globalThis: null
+        };
+        context.globalThis = context;
+        vm.createContext(context);
+        vm.runInContext(previewSource, context);
+
+        const container = {
+            innerHTML: '',
+            querySelectorAll() {
+                return [];
+            }
+        };
+        context.renderPreview(container, '---\ntitle: Frontmatter Title\ndescription: Frontmatter Description\n---\n# Body Title\n\nBody');
+
+        assert.doesNotMatch(container.innerHTML, /^# Frontmatter Title/);
+        assert.match(container.innerHTML, /# Body Title/);
     });
 });

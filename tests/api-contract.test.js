@@ -5,6 +5,21 @@ const path = require('node:path');
 
 const { createContentsSandbox, createServerHarness, readJson } = require('./helpers/server-harness');
 
+async function findContributionSample(harness) {
+    const volumes = await readJson(await harness.request('/api/volumes'));
+    for (const volume of volumes) {
+        const contributions = await readJson(await harness.request(`/api/contributions/${volume.vol}`));
+        if (Array.isArray(contributions) && contributions.length > 0) {
+            return {
+                vol: volume.vol,
+                contribution: contributions[0],
+                articleId: `${volume.vol}-${contributions[0]}`
+            };
+        }
+    }
+    return null;
+}
+
 describe('API contract', () => {
     let harness;
     let sampleVolume;
@@ -17,13 +32,11 @@ describe('API contract', () => {
         const volumesResponse = await harness.request('/api/volumes');
         const volumes = await readJson(volumesResponse);
         assert.ok(Array.isArray(volumes) && volumes.length > 0, 'expected at least one published volume');
-        sampleVolume = volumes[0].vol;
-
-        const contributionsResponse = await harness.request(`/api/contributions/${sampleVolume}`);
-        const contributions = await readJson(contributionsResponse);
-        assert.ok(Array.isArray(contributions) && contributions.length > 0, 'expected at least one contribution');
-        sampleContribution = contributions[0];
-        sampleArticleId = `${sampleVolume}-${sampleContribution}`;
+        const sample = await findContributionSample(harness);
+        assert.ok(sample, 'expected at least one contribution');
+        sampleVolume = sample.vol;
+        sampleContribution = sample.contribution;
+        sampleArticleId = sample.articleId;
     });
 
     after(async () => {
@@ -56,6 +69,16 @@ describe('API contract', () => {
         assert.ok(Object.keys(body.badges).length > 0);
     });
 
+    test('keeps operator-facing static resources uncached', async () => {
+        const adminScript = await harness.request('/admin/js/drafts.js');
+        assert.equal(adminScript.status, 200);
+        assert.match(adminScript.headers.get('cache-control') || '', /no-cache/);
+
+        const submitScript = await harness.request('/submit/js/submit.js');
+        assert.equal(submitScript.status, 200);
+        assert.match(submitScript.headers.get('cache-control') || '', /no-cache/);
+    });
+
     test('returns author map and individual author lookup', async () => {
         const authorsResponse = await harness.request('/api/authors');
         assert.equal(authorsResponse.status, 200);
@@ -71,6 +94,20 @@ describe('API contract', () => {
         const author = await readJson(authorResponse);
         assert.equal(author.id, authorId);
         assert.equal(typeof author.name, 'string');
+    });
+
+    test('searches submission authors by Chinese name, pinyin and initials', async () => {
+        const chineseResponse = await harness.request('/api/submission-authors?q=%E8%83%A1%E5%AE%87');
+        assert.equal(chineseResponse.status, 200);
+        const chineseBody = await readJson(chineseResponse);
+        assert.ok(chineseBody.authors.some(author => author.id === 'huyusong'));
+
+        const initialsResponse = await harness.request('/api/submission-authors?q=hys');
+        assert.equal(initialsResponse.status, 200);
+        const initialsBody = await readJson(initialsResponse);
+        const matched = initialsBody.authors.find(author => author.id === 'huyusong');
+        assert.ok(matched);
+        assert.equal(matched.initials, 'hys');
     });
 
     test('returns 404 for missing author', async () => {
@@ -165,17 +202,15 @@ describe('API contract', () => {
         const isolatedHarness = await createServerHarness();
 
         try {
-            const volumes = await readJson(await isolatedHarness.request('/api/volumes'));
-            const vol = volumes[0].vol;
-            const contributions = await readJson(await isolatedHarness.request(`/api/contributions/${vol}`));
-            const articleId = `${vol}-${contributions[0]}`;
+            const sample = await findContributionSample(isolatedHarness);
+            assert.ok(sample);
 
             const beforeStats = await readJson(await isolatedHarness.request('/api/stats'));
 
-            const viewResponse = await isolatedHarness.request(`/api/views/${vol}`, { method: 'POST' });
+            const viewResponse = await isolatedHarness.request(`/api/views/${sample.vol}`, { method: 'POST' });
             assert.equal(viewResponse.status, 200);
 
-            const likeResponse = await isolatedHarness.request(`/api/likes/${articleId}`, { method: 'POST' });
+            const likeResponse = await isolatedHarness.request(`/api/likes/${sample.articleId}`, { method: 'POST' });
             assert.equal(likeResponse.status, 200);
             const likeBody = await readJson(likeResponse);
             assert.equal(likeBody.userLiked, true);
@@ -258,19 +293,17 @@ describe('API contract', () => {
         const isolatedHarness = await createServerHarness();
 
         try {
-            const volumes = await readJson(await isolatedHarness.request('/api/volumes'));
-            const vol = volumes[0].vol;
-            const contributions = await readJson(await isolatedHarness.request(`/api/contributions/${vol}`));
-            const articleId = `${vol}-${contributions[0]}`;
+            const sample = await findContributionSample(isolatedHarness);
+            assert.ok(sample);
 
-            const firstLike = await readJson(await isolatedHarness.request(`/api/likes/${articleId}`, {
+            const firstLike = await readJson(await isolatedHarness.request(`/api/likes/${sample.articleId}`, {
                 method: 'POST',
                 headers: { 'x-forwarded-for': '1.1.1.1' }
             }));
             assert.equal(firstLike.userLiked, true);
             assert.equal(firstLike.likes, 1);
 
-            const secondLike = await readJson(await isolatedHarness.request(`/api/likes/${articleId}`, {
+            const secondLike = await readJson(await isolatedHarness.request(`/api/likes/${sample.articleId}`, {
                 method: 'POST',
                 headers: { 'x-forwarded-for': '2.2.2.2' }
             }));

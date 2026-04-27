@@ -51,6 +51,131 @@ export function listDrafts(filters = {}) {
     return request(`/api/admin/drafts${params.toString() ? `?${params}` : ''}`);
 }
 
+export function listSubmissions(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+    });
+    return request(`/api/admin/submissions${params.toString() ? `?${params}` : ''}`);
+}
+
+export function getSubmission(submissionId) {
+    return request(`/api/admin/submissions/${encodeURIComponent(submissionId)}`);
+}
+
+export function acceptSubmission(submissionId, authorResolution) {
+    return request(`/api/admin/submissions/${encodeURIComponent(submissionId)}/accept`, {
+        method: 'POST',
+        body: { authorResolution }
+    });
+}
+
+export function requestSubmissionChanges(submissionId, comment = '', visibility = 'internal') {
+    return request(`/api/admin/submissions/${encodeURIComponent(submissionId)}/request-changes`, {
+        method: 'POST',
+        body: { comment, visibility }
+    });
+}
+
+export function rejectSubmission(submissionId, comment = '', visibility = 'internal') {
+    return request(`/api/admin/submissions/${encodeURIComponent(submissionId)}/reject`, {
+        method: 'POST',
+        body: { comment, visibility }
+    });
+}
+
+export function issueSubmissionStatusLink(submissionId) {
+    return request(`/api/admin/submissions/${encodeURIComponent(submissionId)}/status-link`, {
+        method: 'POST'
+    });
+}
+
+export function listManuscripts(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+    });
+    return request(`/api/admin/manuscripts${params.toString() ? `?${params}` : ''}`);
+}
+
+export function getManuscript(manuscriptId) {
+    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}`);
+}
+
+export function updateManuscript(manuscriptId, payload) {
+    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}`, {
+        method: 'PUT',
+        body: payload
+    });
+}
+
+export function reviewManuscript(manuscriptId, action, comment = '', visibility = 'internal') {
+    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}/review`, {
+        method: 'POST',
+        body: { action, comment, visibility }
+    });
+}
+
+export function listIssueDrafts(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+    });
+    return request(`/api/admin/issue-drafts${params.toString() ? `?${params}` : ''}`);
+}
+
+export function listIssues() {
+    return request('/api/admin/issues');
+}
+
+export function getIssueDraft(issueDraftId) {
+    return request(`/api/admin/issue-drafts/${encodeURIComponent(issueDraftId)}`);
+}
+
+export function createIssueDraft(payload) {
+    return request('/api/admin/issue-drafts', {
+        method: 'POST',
+        body: payload
+    });
+}
+
+export function updateIssueDraft(issueDraftId, payload) {
+    return request(`/api/admin/issue-drafts/${encodeURIComponent(issueDraftId)}`, {
+        method: 'PUT',
+        body: payload
+    });
+}
+
+export function addIssueDraftManuscript(issueDraftId, manuscriptId, folderName = '') {
+    return request(`/api/admin/issue-drafts/${encodeURIComponent(issueDraftId)}/manuscripts`, {
+        method: 'POST',
+        body: { manuscriptId, folderName }
+    });
+}
+
+export function removeIssueDraftManuscript(issueDraftId, manuscriptId) {
+    return request(`/api/admin/issue-drafts/${encodeURIComponent(issueDraftId)}/manuscripts/${encodeURIComponent(manuscriptId)}`, {
+        method: 'DELETE'
+    });
+}
+
+export function reviewIssueDraft(issueDraftId, action, comment = '', visibility = 'internal') {
+    return request(`/api/admin/issue-drafts/${encodeURIComponent(issueDraftId)}/review`, {
+        method: 'POST',
+        body: { action, comment, visibility }
+    });
+}
+
+export function previewIssueDraft(issueDraftId) {
+    return request(`/api/admin/issue-drafts/${encodeURIComponent(issueDraftId)}/preview`);
+}
+
+export function publishIssueDraft(issueDraftId) {
+    return request(`/api/admin/issue-drafts/${encodeURIComponent(issueDraftId)}/publish`, {
+        method: 'POST'
+    });
+}
+
 export function getDraft(draftId) {
     return request(`/api/admin/drafts/${encodeURIComponent(draftId)}`);
 }

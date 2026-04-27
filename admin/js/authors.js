@@ -55,15 +55,15 @@ function renderAuthors(authors, onSelect) {
         item.className = 'compact-item';
         item.innerHTML = `
             <strong>${author.name || author.id}</strong>
-            <small>${author.id}${author.team ? ` · ${author.team}` : ''}${Number.isInteger(author.usageCount) ? ` · ${author.usageCount} articles` : ''}</small>
-            ${author.duplicateHints?.length ? `<small>Possible duplicate: ${author.duplicateHints.join(', ')}</small>` : ''}
+            <small>${author.id}${author.team ? ` · ${author.team}` : ''}${Number.isInteger(author.usageCount) ? ` · ${author.usageCount} 篇文章` : ''}</small>
+            ${author.duplicateHints?.length ? `<small>疑似重复：${author.duplicateHints.join(', ')}</small>` : ''}
         `;
         item.addEventListener('click', () => onSelect(author));
         list.appendChild(item);
     });
 
     if (authors.length === 0) {
-        list.innerHTML = '<div class="compact-item"><small>No authors</small></div>';
+        list.innerHTML = '<div class="compact-item"><small>暂无作者</small></div>';
     }
 }
 
@@ -76,7 +76,7 @@ export function bindAuthorPanel({ getPermissions }) {
         authors = data.authors || [];
         renderAuthors(authors, author => {
             fillAuthorForm(author);
-            setStatus(`Selected ${author.id}`);
+            setStatus(`已选择 ${author.id}`);
         });
         return authors;
     }
@@ -85,7 +85,7 @@ export function bindAuthorPanel({ getPermissions }) {
         try {
             const avatarFile = await fileToBase64Payload($('author-avatar').files[0]);
             const result = await createAuthor(readAuthorForm(), avatarFile);
-            setStatus(`Created ${result.author.id}`, 'ok');
+            setStatus(`已新建 ${result.author.id}`, 'ok');
             await refreshAuthors();
         } catch (error) {
             setStatus(error.message, 'error');
@@ -97,7 +97,7 @@ export function bindAuthorPanel({ getPermissions }) {
             const author = readAuthorForm();
             const avatarFile = await fileToBase64Payload($('author-avatar').files[0]);
             const result = await updateAuthor(author.id, author, avatarFile);
-            setStatus(`Updated ${result.author.id}`, 'ok');
+            setStatus(`已更新 ${result.author.id}`, 'ok');
             await refreshAuthors();
         } catch (error) {
             setStatus(error.message, 'error');
@@ -107,7 +107,7 @@ export function bindAuthorPanel({ getPermissions }) {
     $('merge-author-button').addEventListener('click', async () => {
         try {
             const result = await mergeAuthors($('merge-source-author').value.trim(), $('merge-target-author').value.trim());
-            setStatus(`Merged ${result.sourceId} into ${result.targetId}`, 'ok');
+            setStatus(`已将 ${result.sourceId} 合并到 ${result.targetId}`, 'ok');
             $('merge-source-author').value = '';
             await refreshAuthors();
         } catch (error) {

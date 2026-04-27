@@ -47,6 +47,10 @@ const ADMIN_USERS_FILE = path.join(ADMIN_DIR, 'users.json');
 const ADMIN_DRAFTS_DIR = path.join(ADMIN_DIR, 'drafts');
 const ADMIN_REVIEWS_DIR = path.join(ADMIN_DIR, 'reviews');
 const ADMIN_REVISIONS_DIR = path.join(ADMIN_DIR, 'revisions');
+const ADMIN_SUBMISSIONS_DIR = path.join(ADMIN_DIR, 'submissions');
+const ADMIN_MANUSCRIPTS_DIR = path.join(ADMIN_DIR, 'manuscripts');
+const ADMIN_MANUSCRIPT_REVIEWS_DIR = path.join(ADMIN_DIR, 'manuscript-reviews');
+const ADMIN_ISSUE_DRAFTS_DIR = path.join(ADMIN_DIR, 'issue-drafts');
 const ADMIN_UNPUBLISHED_DIR = path.join(ADMIN_DIR, 'unpublished');
 const ADMIN_PUBLISHED_HISTORY_DIR = path.join(ADMIN_DIR, 'published-history');
 const ADMIN_AUDIT_LOG_FILE = path.join(ADMIN_DIR, 'audit-log.json');
@@ -84,7 +88,9 @@ const ADMIN_ROLES = ['tech_reviewer', 'editor', 'chief_editor'];
 const ADMIN_SESSIONS = new Map();
 const ADMIN_COOKIE_NAME = 'tech_radar_admin_session';
 const ADMIN_DRAFT_STATUSES = ['editing', 'review_requested', 'changes_requested', 'approved', 'published', 'rejected'];
-const SUBMISSION_STATUSES = ['submitted', 'in_editing', 'in_technical_review', 'changes_requested', 'approved', 'published', 'rejected'];
+const SUBMISSION_STATUSES = ['submitted', 'in_editor_review', 'changes_requested', 'accepted', 'rejected', 'published'];
+const MANUSCRIPT_STATUSES = ['drafting', 'manuscript_review_requested', 'changes_requested', 'available', 'scheduled', 'published', 'archived'];
+const ISSUE_DRAFT_STATUSES = ['editing', 'issue_review_requested', 'changes_requested', 'approved', 'published', 'archived'];
 const REVIEW_VISIBILITIES = ['public', 'internal'];
 
 
@@ -490,6 +496,10 @@ async function ensureAdminDir() {
     await fsPromises.mkdir(ADMIN_DRAFTS_DIR, { recursive: true });
     await fsPromises.mkdir(ADMIN_REVIEWS_DIR, { recursive: true });
     await fsPromises.mkdir(ADMIN_REVISIONS_DIR, { recursive: true });
+    await fsPromises.mkdir(ADMIN_SUBMISSIONS_DIR, { recursive: true });
+    await fsPromises.mkdir(ADMIN_MANUSCRIPTS_DIR, { recursive: true });
+    await fsPromises.mkdir(ADMIN_MANUSCRIPT_REVIEWS_DIR, { recursive: true });
+    await fsPromises.mkdir(ADMIN_ISSUE_DRAFTS_DIR, { recursive: true });
     await fsPromises.mkdir(ADMIN_UNPUBLISHED_DIR, { recursive: true });
     await fsPromises.mkdir(ADMIN_PUBLISHED_HISTORY_DIR, { recursive: true });
 
@@ -512,6 +522,62 @@ async function ensureAdminDir() {
 
     if (!fs.existsSync(ADMIN_AUDIT_LOG_FILE)) {
         await writeJsonFile(ADMIN_AUDIT_LOG_FILE, []);
+    }
+}
+
+function legacyDraftStatusToManuscriptStatus(status) {
+    const map = {
+        approved: 'available',
+        review_requested: 'manuscript_review_requested',
+        changes_requested: 'changes_requested',
+        editing: 'manuscript_review_requested',
+        published: 'published',
+        rejected: 'archived'
+    };
+    return map[status] || 'drafting';
+}
+
+async function migrateLegacyDraftsToManuscripts() {
+    if (!fs.existsSync(ADMIN_DRAFTS_DIR)) return;
+    const entries = await fsPromises.readdir(ADMIN_DRAFTS_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const legacyDir = getDraftDir(entry.name);
+        const legacyMeta = await readJsonFile(path.join(legacyDir, 'meta.json'), null);
+        if (!legacyMeta) continue;
+        const manuscriptId = legacyMeta.migratedManuscriptId || legacyMeta.draftId || entry.name;
+        const manuscriptDir = getManuscriptDir(manuscriptId);
+        if (fs.existsSync(manuscriptDir)) continue;
+        await fsPromises.mkdir(manuscriptDir, { recursive: true });
+        const files = await collectFiles(legacyDir, { skip: relative => relative === 'meta.json' });
+        for (const file of files) {
+            const source = path.join(legacyDir, file.path);
+            const target = assertInside(manuscriptDir, path.join(manuscriptDir, file.path));
+            await fsPromises.mkdir(path.dirname(target), { recursive: true });
+            await fsPromises.copyFile(source, target);
+        }
+        const now = new Date().toISOString();
+        const manuscriptMeta = {
+            manuscriptId,
+            legacyDraftId: legacyMeta.draftId || entry.name,
+            sourceSubmissionId: '',
+            status: legacyDraftStatusToManuscriptStatus(legacyMeta.status),
+            assignee: legacyMeta.assignee || '',
+            reviewers: [],
+            scheduledIssueDraftId: '',
+            publishedArticleId: legacyMeta.publishedArticleId || '',
+            createdBy: legacyMeta.createdBy || 'migration',
+            updatedBy: legacyMeta.updatedBy || 'migration',
+            createdAt: legacyMeta.createdAt || now,
+            updatedAt: legacyMeta.updatedAt || now
+        };
+        await writeJsonFile(path.join(manuscriptDir, 'meta.json'), manuscriptMeta);
+        const legacyReviewPath = path.join(ADMIN_REVIEWS_DIR, `${entry.name}.json`);
+        const manuscriptReviewPath = path.join(ADMIN_MANUSCRIPT_REVIEWS_DIR, `${manuscriptId}.json`);
+        if (fs.existsSync(legacyReviewPath) && !fs.existsSync(manuscriptReviewPath)) {
+            const review = await readJsonFile(legacyReviewPath, { history: [] });
+            await writeJsonFile(manuscriptReviewPath, { manuscriptId, history: review.history || [] });
+        }
     }
 }
 
@@ -656,6 +722,9 @@ function adminPermissions(role) {
         canEditDraft: role === 'editor' || role === 'chief_editor',
         canRequestReview: role === 'editor' || role === 'chief_editor',
         canReview: role === 'tech_reviewer' || role === 'chief_editor',
+        canReviewManuscript: role === 'editor' || role === 'tech_reviewer' || role === 'chief_editor',
+        canReviewIssueDraft: role === 'tech_reviewer' || role === 'chief_editor',
+        canManageIssueDrafts: role === 'editor' || role === 'chief_editor',
         canPublish: role === 'chief_editor',
         canDeleteDraft: role === 'chief_editor',
         canListAuthors: role === 'editor' || role === 'chief_editor',
@@ -667,7 +736,7 @@ function adminPermissions(role) {
         canAssignDraft: role === 'editor' || role === 'chief_editor',
         canIssueStatusLink: role === 'editor' || role === 'chief_editor',
         canEditPublished: role === 'editor' || role === 'chief_editor',
-        canUnpublish: role === 'chief_editor',
+        canUnpublish: role === 'editor' || role === 'chief_editor',
         canViewPublishedHistory: role === 'chief_editor',
         canRollbackPublished: role === 'chief_editor',
         canViewAuditLog: role === 'chief_editor'
@@ -809,6 +878,87 @@ function validateSubmitter(submitter, metadata) {
     return errors;
 }
 
+function normalizeIdentityValue(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^@+/, '')
+        .replace(/[\s._-]+/g, '');
+}
+
+function normalizeAuthorAliases(author) {
+    if (Array.isArray(author.aliases)) {
+        return author.aliases.filter(Boolean).map(String);
+    }
+    if (typeof author.aliases === 'string') {
+        return author.aliases.split(',').map(item => item.trim()).filter(Boolean);
+    }
+    return [];
+}
+
+function scoreAuthorForQuery(author, rawQuery) {
+    const query = normalizeIdentityValue(rawQuery);
+    if (!query) return null;
+
+    const identityFields = [
+        ['姓名', author.name],
+        ['作者 ID', author.id],
+        ['拼音', author.pinyin],
+        ['首字母', author.initials],
+        ...normalizeAuthorAliases(author).map(alias => ['别名', alias])
+    ];
+    const contextFields = [
+        ['团队', author.team],
+        ['角色', author.role]
+    ];
+
+    let best = null;
+    for (const [label, value] of identityFields) {
+        const normalized = normalizeIdentityValue(value);
+        if (!normalized) continue;
+        let score = 0;
+        if (normalized === query) score = 100;
+        else if (normalized.startsWith(query)) score = 82;
+        else if (normalized.includes(query)) score = 64;
+        if (score > (best?.score || 0)) {
+            best = { score, match: `${label}匹配` };
+        }
+    }
+
+    for (const [label, value] of contextFields) {
+        const normalized = normalizeIdentityValue(value);
+        if (!normalized) continue;
+        const score = normalized.includes(query) ? 36 : 0;
+        if (score > (best?.score || 0)) {
+            best = { score, match: `${label}匹配` };
+        }
+    }
+
+    return best;
+}
+
+function searchSubmissionAuthors(authors, query, limit = 20) {
+    if (!query) {
+        return authors.slice(0, limit).map(author => ({ author, score: 0, match: '' }));
+    }
+
+    return authors
+        .map(author => ({ author, ...scoreAuthorForQuery(author, query) }))
+        .filter(result => Number.isFinite(result.score) && result.score > 0)
+        .sort((a, b) => b.score - a.score || String(a.author.id).localeCompare(String(b.author.id)))
+        .slice(0, limit);
+}
+
+function resolveSubmitterAuthorId(submitter, authors) {
+    if (submitter.authorId) return submitter.authorId;
+    const matches = searchSubmissionAuthors(authors, submitter.name, 3);
+    const [first, second] = matches;
+    if (first && first.score >= 95 && (!second || second.score < 95)) {
+        return first.author.id;
+    }
+    return '';
+}
+
 function isPublicReviewEntry(entry) {
     return normalizeReviewVisibility(entry.visibility, 'internal') === 'public';
 }
@@ -816,20 +966,20 @@ function isPublicReviewEntry(entry) {
 function publicSubmissionDetail(detail, token = '') {
     const reviewHistory = (detail.review?.history || []).filter(isPublicReviewEntry);
     return {
-        submissionId: detail.meta.draftId,
-        status: detail.meta.submissionStatus || submissionStatusForDraft(detail.meta.status),
-        draftStatus: detail.meta.status,
+        submissionId: detail.meta.submissionId,
+        status: detail.meta.status,
         revision: detail.meta.revision || 1,
         submittedAt: detail.meta.submittedAt,
         updatedAt: detail.meta.updatedAt,
         publishedArticleId: detail.meta.publishedArticleId || '',
+        manuscriptId: detail.meta.manuscriptId || '',
         submitter: detail.meta.submitter || null,
         indexContent: detail.indexContent,
         files: detail.files.map(file => ({
             ...file,
             assetUrl: file.path === 'index.md'
                 ? null
-                : `/api/submissions/${encodeURIComponent(detail.meta.draftId)}/assets/${file.path}?token=${encodeURIComponent(token)}`
+                : `/api/submissions/${encodeURIComponent(detail.meta.submissionId)}/assets/${file.path}?token=${encodeURIComponent(token)}`
         })),
         review: {
             history: reviewHistory.map(entry => ({
@@ -843,9 +993,9 @@ function publicSubmissionDetail(detail, token = '') {
     };
 }
 
-async function requireSubmissionDetail(draftId, token) {
-    const detail = await readDraftDetail(draftId);
-    if (!detail || detail.meta.source !== 'submission') {
+async function requireSubmissionDetail(submissionId, token) {
+    const detail = await readSubmissionDetail(submissionId);
+    if (!detail) {
         return { status: 404, body: { error: 'Submission not found' } };
     }
     if (!token || !verifyAccessToken(token, detail.meta.submitterTokenHash)) {
@@ -858,6 +1008,42 @@ function defaultRadarContent(vol) {
     const now = new Date();
     const date = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`;
     return `---\nvol: "${vol}"\ndate: "${date}"\neditors: []\n---\n\n## Trending\n\n`;
+}
+
+function findPayloadIndexFile(files = []) {
+    return files.find(file => {
+        try {
+            return safeRelativePath(file.path) === 'index.md';
+        } catch {
+            return false;
+        }
+    });
+}
+
+function payloadFileToString(file) {
+    if (!file) return '';
+    if (file.type === 'base64') {
+        return Buffer.from(String(file.content || ''), 'base64').toString('utf8');
+    }
+    return String(file.content || '');
+}
+
+function extractFirstHeading(markdownBody) {
+    const match = String(markdownBody || '').match(/^#\s+(.+)$/m);
+    return match ? match[1].trim() : '';
+}
+
+function buildSubmissionDraftId(document, submitter) {
+    const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+    const baseSlug = sanitizeSlug(
+        document.metadata.title || extractFirstHeading(document.body) || submitter.name || 'submission',
+        'submission'
+    );
+    let draftId = `${timestamp}-${baseSlug}`;
+    if (fs.existsSync(getSubmissionDir(draftId)) || fs.existsSync(getDraftDir(draftId))) {
+        draftId = `${draftId}-${crypto.randomBytes(3).toString('hex')}`;
+    }
+    return draftId;
 }
 
 function validateRadarContent(vol, radarContent) {
@@ -921,6 +1107,18 @@ async function createOrUpdateVolume(vol, radarContent, options = {}) {
 
 function getDraftDir(draftId) {
     return assertInside(ADMIN_DRAFTS_DIR, path.join(ADMIN_DRAFTS_DIR, draftId));
+}
+
+function getSubmissionDir(submissionId) {
+    return assertInside(ADMIN_SUBMISSIONS_DIR, path.join(ADMIN_SUBMISSIONS_DIR, submissionId));
+}
+
+function getManuscriptDir(manuscriptId) {
+    return assertInside(ADMIN_MANUSCRIPTS_DIR, path.join(ADMIN_MANUSCRIPTS_DIR, manuscriptId));
+}
+
+function getIssueDraftDir(issueDraftId) {
+    return assertInside(ADMIN_ISSUE_DRAFTS_DIR, path.join(ADMIN_ISSUE_DRAFTS_DIR, issueDraftId));
 }
 
 async function collectFiles(rootDir, options = {}) {
@@ -1094,6 +1292,264 @@ async function listAdminDrafts(filters = {}) {
     });
 }
 
+function submissionMatchesFilters(meta, filters = {}) {
+    if (filters.status && meta.status !== filters.status) return false;
+    if (filters.assignee && String(meta.assignee || '') !== filters.assignee) return false;
+    if (filters.q) {
+        const haystack = [
+            meta.submissionId,
+            meta.status,
+            meta.assignee,
+            meta.submitter?.name,
+            meta.submitter?.team,
+            meta.submitter?.contact
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(filters.q.toLowerCase())) return false;
+    }
+    return true;
+}
+
+function manuscriptMatchesFilters(meta, filters = {}) {
+    if (filters.status && meta.status !== filters.status) return false;
+    if (filters.assignee && String(meta.assignee || '') !== filters.assignee) return false;
+    if (filters.q) {
+        const haystack = [
+            meta.manuscriptId,
+            meta.status,
+            meta.assignee,
+            meta.sourceSubmissionId,
+            meta.scheduledIssueDraftId,
+            meta.publishedArticleId,
+            meta.title,
+            meta.description,
+            Array.isArray(meta.authorIds) ? meta.authorIds.join(' ') : ''
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(filters.q.toLowerCase())) return false;
+    }
+    return true;
+}
+
+function summarizeManuscriptDetail(detail) {
+    const document = parseMarkdownDocument(detail?.indexContent || '');
+    const authorIds = Array.isArray(document.metadata.author_ids)
+        ? document.metadata.author_ids
+        : (document.metadata.author_id ? [document.metadata.author_id] : []);
+    return {
+        ...(detail?.meta || {}),
+        title: document.metadata.title || extractFirstHeading(document.body) || '',
+        description: document.metadata.description || '',
+        authorIds
+    };
+}
+
+function issueDraftMatchesFilters(meta, filters = {}) {
+    if (filters.status && meta.status !== filters.status) return false;
+    if (filters.vol && meta.vol !== filters.vol) return false;
+    if (filters.q) {
+        const haystack = [
+            meta.issueDraftId,
+            meta.status,
+            meta.vol,
+            meta.title,
+            meta.manuscripts?.map(item => item.manuscriptId).join(' ')
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(filters.q.toLowerCase())) return false;
+    }
+    return true;
+}
+
+async function readSubmissionDetail(submissionId) {
+    const submissionDir = getSubmissionDir(submissionId);
+    const metaPath = path.join(submissionDir, 'meta.json');
+    const indexPath = path.join(submissionDir, 'index.md');
+    if (!fs.existsSync(metaPath)) return null;
+    const meta = await readJsonFile(metaPath, null);
+    const indexContent = fs.existsSync(indexPath) ? await fsPromises.readFile(indexPath, 'utf8') : '';
+    const files = await collectFiles(submissionDir, {
+        skip: relative => relative === 'meta.json' || relative.startsWith('revisions/')
+    });
+    const revisionsDir = path.join(submissionDir, 'revisions');
+    const revisions = fs.existsSync(revisionsDir)
+        ? (await collectFiles(revisionsDir)).filter(file => /^revision-\d+\.md$/.test(file.path))
+        : [];
+    return {
+        meta,
+        indexContent,
+        files: files.map(file => ({
+            ...file,
+            assetUrl: file.path === 'index.md' ? null : `/api/admin/submissions/${encodeURIComponent(submissionId)}/assets/${file.path}`
+        })),
+        review: { history: Array.isArray(meta?.history) ? meta.history : [] },
+        revisions
+    };
+}
+
+async function listAdminSubmissions(filters = {}) {
+    if (!fs.existsSync(ADMIN_SUBMISSIONS_DIR)) return [];
+    const entries = await fsPromises.readdir(ADMIN_SUBMISSIONS_DIR, { withFileTypes: true });
+    const submissions = [];
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const detail = await readSubmissionDetail(entry.name);
+        if (detail?.meta && submissionMatchesFilters(detail.meta, filters)) submissions.push(detail.meta);
+    }
+    return submissions.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+async function updateSubmissionMeta(submissionId, patch, operator = { username: 'system' }) {
+    const submissionDir = getSubmissionDir(submissionId);
+    const metaPath = path.join(submissionDir, 'meta.json');
+    const meta = await readJsonFile(metaPath, null);
+    if (!meta) return null;
+    const updated = {
+        ...meta,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+        updatedBy: operator.username
+    };
+    await writeJsonFile(metaPath, updated);
+    return updated;
+}
+
+async function appendSubmissionHistory(submissionId, entry) {
+    const detail = await readSubmissionDetail(submissionId);
+    if (!detail) return null;
+    const history = Array.isArray(detail.meta.history) ? detail.meta.history : [];
+    history.push({
+        ...entry,
+        visibility: normalizeReviewVisibility(entry.visibility, 'internal'),
+        at: new Date().toISOString()
+    });
+    return updateSubmissionMeta(submissionId, { history }, { username: entry.actor || 'system' });
+}
+
+async function saveSubmissionRevisionV2(submissionId, revision, indexContent) {
+    if (!revision || Number(revision) < 1) return;
+    const revisionDir = assertInside(getSubmissionDir(submissionId), path.join(getSubmissionDir(submissionId), 'revisions'));
+    await fsPromises.mkdir(revisionDir, { recursive: true });
+    await fsPromises.writeFile(path.join(revisionDir, `revision-${revision}.md`), String(indexContent || ''), 'utf8');
+}
+
+async function readManuscriptDetail(manuscriptId) {
+    const manuscriptDir = getManuscriptDir(manuscriptId);
+    const metaPath = path.join(manuscriptDir, 'meta.json');
+    const indexPath = path.join(manuscriptDir, 'index.md');
+    if (!fs.existsSync(metaPath)) return null;
+    const meta = await readJsonFile(metaPath, null);
+    const indexContent = fs.existsSync(indexPath) ? await fsPromises.readFile(indexPath, 'utf8') : '';
+    const files = await collectFiles(manuscriptDir, {
+        skip: relative => relative === 'meta.json'
+    });
+    const review = await readJsonFile(path.join(ADMIN_MANUSCRIPT_REVIEWS_DIR, `${manuscriptId}.json`), {
+        manuscriptId,
+        history: []
+    });
+    return {
+        meta,
+        indexContent,
+        files: files.map(file => ({
+            ...file,
+            assetUrl: file.path === 'index.md' ? null : `/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}/assets/${file.path}`
+        })),
+        review
+    };
+}
+
+async function listAdminManuscripts(filters = {}) {
+    if (!fs.existsSync(ADMIN_MANUSCRIPTS_DIR)) return [];
+    const entries = await fsPromises.readdir(ADMIN_MANUSCRIPTS_DIR, { withFileTypes: true });
+    const manuscripts = [];
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const detail = await readManuscriptDetail(entry.name);
+        if (!detail?.meta) continue;
+        const summary = summarizeManuscriptDetail(detail);
+        if (manuscriptMatchesFilters(summary, filters)) manuscripts.push(summary);
+    }
+    return manuscripts.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+async function updateManuscriptMeta(manuscriptId, patch, operator) {
+    const manuscriptDir = getManuscriptDir(manuscriptId);
+    const metaPath = path.join(manuscriptDir, 'meta.json');
+    const meta = await readJsonFile(metaPath, null);
+    if (!meta) return null;
+    const updated = {
+        ...meta,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+        updatedBy: operator.username
+    };
+    await writeJsonFile(metaPath, updated);
+    return updated;
+}
+
+async function appendManuscriptReview(manuscriptId, entry) {
+    const reviewPath = path.join(ADMIN_MANUSCRIPT_REVIEWS_DIR, `${manuscriptId}.json`);
+    const review = await readJsonFile(reviewPath, { manuscriptId, history: [] });
+    review.history = Array.isArray(review.history) ? review.history : [];
+    review.history.push({
+        ...entry,
+        visibility: normalizeReviewVisibility(entry.visibility, 'internal'),
+        at: new Date().toISOString()
+    });
+    await writeJsonFile(reviewPath, review);
+    return review;
+}
+
+async function readIssueDraft(issueDraftId) {
+    const issueDraftDir = getIssueDraftDir(issueDraftId);
+    const metaPath = path.join(issueDraftDir, 'meta.json');
+    if (!fs.existsSync(metaPath)) return null;
+    const meta = await readJsonFile(metaPath, null);
+    const review = await readJsonFile(path.join(issueDraftDir, 'issue-review.json'), {
+        issueDraftId,
+        history: []
+    });
+    return { meta, review };
+}
+
+async function listAdminIssueDrafts(filters = {}) {
+    if (!fs.existsSync(ADMIN_ISSUE_DRAFTS_DIR)) return [];
+    const entries = await fsPromises.readdir(ADMIN_ISSUE_DRAFTS_DIR, { withFileTypes: true });
+    const issueDrafts = [];
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const detail = await readIssueDraft(entry.name);
+        if (detail?.meta && issueDraftMatchesFilters(detail.meta, filters)) issueDrafts.push(detail.meta);
+    }
+    return issueDrafts.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+async function updateIssueDraftMeta(issueDraftId, patch, operator) {
+    const issueDraftDir = getIssueDraftDir(issueDraftId);
+    const metaPath = path.join(issueDraftDir, 'meta.json');
+    const meta = await readJsonFile(metaPath, null);
+    if (!meta) return null;
+    const updated = {
+        ...meta,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+        updatedBy: operator.username
+    };
+    await writeJsonFile(metaPath, updated);
+    return updated;
+}
+
+async function appendIssueDraftReview(issueDraftId, entry) {
+    const issueDraftDir = getIssueDraftDir(issueDraftId);
+    const reviewPath = path.join(issueDraftDir, 'issue-review.json');
+    const review = await readJsonFile(reviewPath, { issueDraftId, history: [] });
+    review.history = Array.isArray(review.history) ? review.history : [];
+    review.history.push({
+        ...entry,
+        visibility: normalizeReviewVisibility(entry.visibility, 'internal'),
+        at: new Date().toISOString()
+    });
+    await writeJsonFile(reviewPath, review);
+    return review;
+}
+
 function validateDraftMetadata(metadata, options = {}) {
     const errors = [];
     if (typeof metadata.title !== 'string' || metadata.title.trim().length === 0) {
@@ -1228,6 +1684,15 @@ async function deleteManagedFiles(rootDir, files = []) {
         }
     }
     return deleted;
+}
+
+async function clearDraftContentFiles(draftDir) {
+    const entries = await fsPromises.readdir(draftDir, { withFileTypes: true });
+    for (const entry of entries) {
+        if (entry.name === 'meta.json') continue;
+        if (entry.name === 'revisions') continue;
+        await fsPromises.rm(path.join(draftDir, entry.name), { recursive: true, force: true });
+    }
 }
 
 function normalizeAdminAuthorInput(input, existingId) {
@@ -1379,6 +1844,8 @@ async function mergeAuthors(sourceId, targetId, operator) {
 
     const changedPublished = await rewriteAuthorReferencesInRoot(PUBLISHED_DIR, source, target);
     const changedDrafts = await rewriteAuthorReferencesInRoot(ADMIN_DRAFTS_DIR, source, target);
+    const changedSubmissions = await rewriteAuthorReferencesInRoot(ADMIN_SUBMISSIONS_DIR, source, target);
+    const changedManuscripts = await rewriteAuthorReferencesInRoot(ADMIN_MANUSCRIPTS_DIR, source, target);
     const changedUnpublished = await rewriteAuthorReferencesInRoot(ADMIN_UNPUBLISHED_DIR, source, target);
     await writeAuthorsArray(authors.filter(author => author.id !== source));
 
@@ -1397,6 +1864,8 @@ async function mergeAuthors(sourceId, targetId, operator) {
         targetAuthorId: target,
         changedPublished,
         changedDrafts,
+        changedSubmissions,
+        changedManuscripts,
         changedUnpublished
     });
     cache.invalidate('authors');
@@ -1404,7 +1873,7 @@ async function mergeAuthors(sourceId, targetId, operator) {
     cache.invalidatePattern('search:');
     return {
         status: 200,
-        body: { sourceId: source, targetId: target, changedPublished, changedDrafts, changedUnpublished }
+        body: { sourceId: source, targetId: target, changedPublished, changedDrafts, changedSubmissions, changedManuscripts, changedUnpublished }
     };
 }
 
@@ -1447,6 +1916,564 @@ async function validatePublishedAuthorReferences(metadata) {
             throw new Error(`Unknown author: ${authorId}`);
         }
     }
+}
+
+function buildManuscriptId(document, fallback = 'manuscript') {
+    const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+    const baseSlug = sanitizeSlug(document.metadata.title || extractFirstHeading(document.body) || fallback, 'manuscript');
+    let manuscriptId = `${timestamp}-${baseSlug}`;
+    if (fs.existsSync(getManuscriptDir(manuscriptId))) {
+        manuscriptId = `${manuscriptId}-${crypto.randomBytes(3).toString('hex')}`;
+    }
+    return manuscriptId;
+}
+
+function buildIssueDraftId(vol, title = '') {
+    const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+    const baseSlug = sanitizeSlug(title || `vol-${vol}`, 'issue-draft');
+    let issueDraftId = `${timestamp}-${baseSlug}`;
+    if (fs.existsSync(getIssueDraftDir(issueDraftId))) {
+        issueDraftId = `${issueDraftId}-${crypto.randomBytes(3).toString('hex')}`;
+    }
+    return issueDraftId;
+}
+
+async function resolveManuscriptAuthorMetadata(metadata, resolution) {
+    if (!metadata.author) {
+        await validatePublishedAuthorReferences(metadata);
+        return metadata;
+    }
+    return resolveTemporaryAuthor(metadata, resolution);
+}
+
+async function createManuscriptFromSubmission(submissionId, operator, authorResolution = {}) {
+    const submission = await readSubmissionDetail(submissionId);
+    if (!submission) {
+        return { status: 404, body: { error: 'Submission not found' } };
+    }
+    if (!['submitted', 'in_editor_review', 'changes_requested'].includes(submission.meta.status)) {
+        return { status: 400, body: { error: 'Submission cannot be accepted from this status' } };
+    }
+
+    const submissionDir = getSubmissionDir(submissionId);
+    const indexPath = path.join(submissionDir, 'index.md');
+    if (!fs.existsSync(indexPath)) {
+        return { status: 400, body: { error: 'Submission is missing index.md' } };
+    }
+
+    const document = parseMarkdownDocument(await fsPromises.readFile(indexPath, 'utf8'));
+    let metadata;
+    try {
+        metadata = await resolveManuscriptAuthorMetadata(document.metadata, authorResolution);
+        const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: false });
+        if (validationErrors.length > 0) {
+            return { status: 400, body: { error: 'Manuscript frontmatter is invalid', details: validationErrors } };
+        }
+        await validatePublishedAuthorReferences(metadata);
+    } catch (error) {
+        return { status: 400, body: { error: error.message } };
+    }
+
+    const manuscriptId = buildManuscriptId(document, submission.meta.submitter?.name || submissionId);
+    const manuscriptDir = getManuscriptDir(manuscriptId);
+    await fsPromises.mkdir(manuscriptDir, { recursive: true });
+    const files = await collectFiles(submissionDir, {
+        skip: relative => relative === 'meta.json' || relative.startsWith('revisions/')
+    });
+    for (const file of files) {
+        const source = path.join(submissionDir, file.path);
+        const target = assertInside(manuscriptDir, path.join(manuscriptDir, file.path));
+        await fsPromises.mkdir(path.dirname(target), { recursive: true });
+        if (file.path === 'index.md') {
+            await fsPromises.writeFile(target, stringifyMarkdownDocument(metadata, document.body), 'utf8');
+        } else {
+            await fsPromises.copyFile(source, target);
+        }
+    }
+
+    const now = new Date().toISOString();
+    const meta = {
+        manuscriptId,
+        sourceSubmissionId: submissionId,
+        status: 'manuscript_review_requested',
+        assignee: '',
+        reviewers: [],
+        scheduledIssueDraftId: '',
+        publishedArticleId: '',
+        createdBy: operator.username,
+        updatedBy: operator.username,
+        createdAt: now,
+        updatedAt: now
+    };
+    await writeJsonFile(path.join(manuscriptDir, 'meta.json'), meta);
+    await writeJsonFile(path.join(ADMIN_MANUSCRIPT_REVIEWS_DIR, `${manuscriptId}.json`), { manuscriptId, history: [] });
+    if (authorResolution?.mode === 'create' && metadata.author_id) {
+        await appendAuditLog({
+            action: 'create_author',
+            actor: operator.username,
+            authorId: metadata.author_id,
+            source: 'accept_submission',
+            submissionId
+        });
+    }
+    await updateSubmissionMeta(submissionId, {
+        status: 'accepted',
+        manuscriptId
+    }, operator);
+    await appendSubmissionHistory(submissionId, {
+        action: 'accepted',
+        actor: operator.username,
+        role: operator.role,
+        comment: 'Accepted into manuscript pool',
+        visibility: 'public'
+    });
+    await appendAuditLog({
+        action: 'accept_submission',
+        actor: operator.username,
+        submissionId,
+        manuscriptId
+    });
+
+    return { status: 201, body: await readManuscriptDetail(manuscriptId) };
+}
+
+async function updateManuscriptContent(manuscriptId, payload = {}, operator) {
+    const detail = await readManuscriptDetail(manuscriptId);
+    if (!detail) return { status: 404, body: { error: 'Manuscript not found' } };
+    if (['scheduled', 'published'].includes(detail.meta.status)) {
+        return { status: 400, body: { error: 'Scheduled or published manuscripts are locked' } };
+    }
+    const manuscriptDir = getManuscriptDir(manuscriptId);
+    try {
+        if (typeof payload.indexContent === 'string') {
+            const { metadata } = parseMarkdownDocument(payload.indexContent);
+            const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: false });
+            if (validationErrors.length > 0) {
+                return { status: 400, body: { error: 'Manuscript frontmatter is invalid', details: validationErrors } };
+            }
+            await validatePublishedAuthorReferences(metadata);
+            await fsPromises.writeFile(path.join(manuscriptDir, 'index.md'), payload.indexContent, 'utf8');
+        }
+        if (Array.isArray(payload.files) && payload.files.length > 0) {
+            await writeDraftFiles(manuscriptDir, payload.files);
+        }
+        if (Array.isArray(payload.deleteFiles) && payload.deleteFiles.length > 0) {
+            await deleteManagedFiles(manuscriptDir, payload.deleteFiles);
+        }
+        const nextStatus = detail.meta.status === 'available' ? 'manuscript_review_requested' : detail.meta.status;
+        await updateManuscriptMeta(manuscriptId, {
+            status: nextStatus,
+            assignee: payload.assignee !== undefined ? sanitizeSlug(payload.assignee, '') : detail.meta.assignee
+        }, operator);
+        await appendAuditLog({
+            action: 'update_manuscript',
+            actor: operator.username,
+            manuscriptId
+        });
+        return { status: 200, body: await readManuscriptDetail(manuscriptId) };
+    } catch (error) {
+        return { status: 400, body: { error: error.message } };
+    }
+}
+
+async function reviewManuscript(manuscriptId, payload = {}, operator) {
+    const detail = await readManuscriptDetail(manuscriptId);
+    if (!detail) return { status: 404, body: { error: 'Manuscript not found' } };
+    if (!['manuscript_review_requested', 'changes_requested', 'drafting'].includes(detail.meta.status)) {
+        return { status: 400, body: { error: 'Manuscript cannot be reviewed from this status' } };
+    }
+    if (!['approve', 'request_changes'].includes(payload.action)) {
+        return { status: 400, body: { error: 'Unsupported review action' } };
+    }
+
+    const status = payload.action === 'approve' ? 'available' : 'changes_requested';
+    const reviewers = Array.from(new Set([...(detail.meta.reviewers || []), operator.username]));
+    await updateManuscriptMeta(manuscriptId, { status, reviewers }, operator);
+    await appendManuscriptReview(manuscriptId, {
+        action: payload.action,
+        actor: operator.username,
+        role: operator.role,
+        comment: payload.comment || '',
+        visibility: normalizeReviewVisibility(payload.visibility, 'internal')
+    });
+    await appendAuditLog({
+        action: `manuscript_review_${payload.action}`,
+        actor: operator.username,
+        manuscriptId
+    });
+    return { status: 200, body: await readManuscriptDetail(manuscriptId) };
+}
+
+async function createIssueDraft(payload = {}, operator) {
+    const vol = normalizeVolumeId(payload.vol);
+    if (!vol) return { status: 400, body: { error: 'vol is required' } };
+    const issueDraftId = buildIssueDraftId(vol, payload.title);
+    const issueDraftDir = getIssueDraftDir(issueDraftId);
+    await fsPromises.mkdir(issueDraftDir, { recursive: true });
+    const now = new Date().toISOString();
+    const meta = {
+        issueDraftId,
+        vol,
+        title: payload.title || `Vol ${vol}`,
+        radarContent: payload.radarContent || defaultRadarContent(vol),
+        status: 'editing',
+        manuscripts: [],
+        reviewers: [],
+        publishedAt: '',
+        createdBy: operator.username,
+        updatedBy: operator.username,
+        createdAt: now,
+        updatedAt: now
+    };
+    try {
+        validateRadarContent(vol, meta.radarContent);
+    } catch (error) {
+        await fsPromises.rm(issueDraftDir, { recursive: true, force: true });
+        return { status: 400, body: { error: error.message } };
+    }
+    await writeJsonFile(path.join(issueDraftDir, 'meta.json'), meta);
+    await writeJsonFile(path.join(issueDraftDir, 'issue-review.json'), { issueDraftId, history: [] });
+    await appendAuditLog({
+        action: 'create_issue_draft',
+        actor: operator.username,
+        issueDraftId,
+        vol
+    });
+    return { status: 201, body: await readIssueDraft(issueDraftId) };
+}
+
+async function updateIssueDraft(issueDraftId, payload = {}, operator) {
+    const detail = await readIssueDraft(issueDraftId);
+    if (!detail) return { status: 404, body: { error: 'Issue draft not found' } };
+    if (detail.meta.status === 'published') {
+        return { status: 400, body: { error: 'Published issue drafts cannot be edited' } };
+    }
+    const patch = {};
+    if (payload.vol !== undefined) {
+        const vol = normalizeVolumeId(payload.vol);
+        if (!vol) return { status: 400, body: { error: 'Invalid volume id' } };
+        patch.vol = vol;
+    }
+    if (payload.title !== undefined) patch.title = String(payload.title || '');
+    if (payload.radarContent !== undefined) {
+        try {
+            validateRadarContent(patch.vol || detail.meta.vol, payload.radarContent);
+        } catch (error) {
+            return { status: 400, body: { error: error.message } };
+        }
+        patch.radarContent = payload.radarContent;
+    }
+    if (Array.isArray(payload.manuscripts)) {
+        const existingIds = new Set((detail.meta.manuscripts || []).map(item => item.manuscriptId));
+        const nextIds = new Set(payload.manuscripts.map(item => item.manuscriptId));
+        for (const item of payload.manuscripts) {
+            if (!existingIds.has(item.manuscriptId)) {
+                return { status: 400, body: { error: 'Use add manuscript API before ordering new manuscripts' } };
+            }
+        }
+        patch.manuscripts = payload.manuscripts.map((item, index) => ({
+            manuscriptId: item.manuscriptId,
+            folderName: sanitizeSlug(item.folderName, item.manuscriptId),
+            order: Number.isInteger(item.order) ? item.order : index
+        }));
+        for (const item of detail.meta.manuscripts || []) {
+            if (!nextIds.has(item.manuscriptId)) {
+                await updateManuscriptMeta(item.manuscriptId, { status: 'available', scheduledIssueDraftId: '' }, operator);
+            }
+        }
+    }
+    if (['issue_review_requested', 'approved'].includes(detail.meta.status)) {
+        patch.status = 'editing';
+    }
+    await updateIssueDraftMeta(issueDraftId, patch, operator);
+    await appendAuditLog({
+        action: 'update_issue_draft',
+        actor: operator.username,
+        issueDraftId
+    });
+    return { status: 200, body: await readIssueDraft(issueDraftId) };
+}
+
+async function addManuscriptToIssueDraft(issueDraftId, manuscriptId, payload = {}, operator) {
+    if (!manuscriptId) {
+        return { status: 400, body: { error: 'manuscriptId is required' } };
+    }
+    const issue = await readIssueDraft(issueDraftId);
+    if (!issue) return { status: 404, body: { error: 'Issue draft not found' } };
+    if (issue.meta.status === 'published') {
+        return { status: 400, body: { error: 'Published issue drafts cannot be edited' } };
+    }
+    const manuscript = await readManuscriptDetail(manuscriptId);
+    if (!manuscript) return { status: 404, body: { error: 'Manuscript not found' } };
+    if (manuscript.meta.status !== 'available') {
+        return { status: 400, body: { error: 'Only available manuscripts can be added to an issue draft' } };
+    }
+    const document = parseMarkdownDocument(manuscript.indexContent || '');
+    const folderName = sanitizeSlug(payload.folderName || document.metadata.title || manuscriptId, manuscriptId);
+    const current = issue.meta.manuscripts || [];
+    if (current.some(item => item.manuscriptId === manuscriptId)) {
+        return { status: 409, body: { error: 'Manuscript is already in this issue draft' } };
+    }
+    if (current.some(item => item.folderName === folderName)) {
+        return { status: 409, body: { error: 'Folder name is already used in this issue draft' } };
+    }
+    const manuscripts = [...current, { manuscriptId, folderName, order: current.length }];
+    await updateIssueDraftMeta(issueDraftId, {
+        manuscripts,
+        status: ['issue_review_requested', 'approved'].includes(issue.meta.status) ? 'editing' : issue.meta.status
+    }, operator);
+    await updateManuscriptMeta(manuscriptId, { status: 'scheduled', scheduledIssueDraftId: issueDraftId }, operator);
+    await appendAuditLog({
+        action: 'schedule_manuscript',
+        actor: operator.username,
+        issueDraftId,
+        manuscriptId
+    });
+    return { status: 200, body: await readIssueDraft(issueDraftId) };
+}
+
+async function removeManuscriptFromIssueDraft(issueDraftId, manuscriptId, operator) {
+    const issue = await readIssueDraft(issueDraftId);
+    if (!issue) return { status: 404, body: { error: 'Issue draft not found' } };
+    if (issue.meta.status === 'published') {
+        return { status: 400, body: { error: 'Published issue drafts cannot be edited' } };
+    }
+    const current = issue.meta.manuscripts || [];
+    const manuscripts = current.filter(item => item.manuscriptId !== manuscriptId)
+        .map((item, index) => ({ ...item, order: index }));
+    if (manuscripts.length === current.length) {
+        return { status: 404, body: { error: 'Manuscript is not in this issue draft' } };
+    }
+    await updateIssueDraftMeta(issueDraftId, {
+        manuscripts,
+        status: ['issue_review_requested', 'approved'].includes(issue.meta.status) ? 'editing' : issue.meta.status
+    }, operator);
+    const manuscript = await readManuscriptDetail(manuscriptId);
+    if (manuscript && manuscript.meta.status === 'scheduled' && manuscript.meta.scheduledIssueDraftId === issueDraftId) {
+        await updateManuscriptMeta(manuscriptId, { status: 'available', scheduledIssueDraftId: '' }, operator);
+    }
+    await appendAuditLog({
+        action: 'unschedule_manuscript',
+        actor: operator.username,
+        issueDraftId,
+        manuscriptId
+    });
+    return { status: 200, body: await readIssueDraft(issueDraftId) };
+}
+
+async function reviewIssueDraft(issueDraftId, payload = {}, operator) {
+    const detail = await readIssueDraft(issueDraftId);
+    if (!detail) return { status: 404, body: { error: 'Issue draft not found' } };
+    if (!['request_review', 'approve', 'request_changes'].includes(payload.action)) {
+        return { status: 400, body: { error: 'Unsupported review action' } };
+    }
+    if (payload.action === 'request_review') {
+        if (!['editing', 'changes_requested'].includes(detail.meta.status)) {
+            return { status: 400, body: { error: 'Issue draft cannot be submitted for review from this status' } };
+        }
+        if (!Array.isArray(detail.meta.manuscripts) || detail.meta.manuscripts.length === 0) {
+            return { status: 400, body: { error: 'Issue draft must contain at least one manuscript' } };
+        }
+    } else if (detail.meta.status !== 'issue_review_requested') {
+        return { status: 400, body: { error: 'Only issue_review_requested drafts can be reviewed' } };
+    }
+    const statusMap = {
+        request_review: 'issue_review_requested',
+        approve: 'approved',
+        request_changes: 'changes_requested'
+    };
+    const reviewers = payload.action === 'approve'
+        ? Array.from(new Set([...(detail.meta.reviewers || []), operator.username]))
+        : (detail.meta.reviewers || []);
+    await updateIssueDraftMeta(issueDraftId, { status: statusMap[payload.action], reviewers }, operator);
+    await appendIssueDraftReview(issueDraftId, {
+        action: payload.action,
+        actor: operator.username,
+        role: operator.role,
+        comment: payload.comment || '',
+        visibility: normalizeReviewVisibility(payload.visibility, 'internal')
+    });
+    await appendAuditLog({
+        action: `issue_draft_${payload.action}`,
+        actor: operator.username,
+        issueDraftId
+    });
+    return { status: 200, body: await readIssueDraft(issueDraftId) };
+}
+
+async function buildIssueDraftPreview(issueDraftId) {
+    const issue = await readIssueDraft(issueDraftId);
+    if (!issue) return { status: 404, body: { error: 'Issue draft not found' } };
+    const manuscripts = [];
+    for (const item of [...(issue.meta.manuscripts || [])].sort((a, b) => (a.order || 0) - (b.order || 0))) {
+        const manuscript = await readManuscriptDetail(item.manuscriptId);
+        if (!manuscript) continue;
+        const document = parseMarkdownDocument(manuscript.indexContent || '');
+        manuscripts.push({
+            ...item,
+            metadata: document.metadata,
+            indexContent: manuscript.indexContent,
+            files: manuscript.files
+        });
+    }
+    return { status: 200, body: { ...issue, manuscripts } };
+}
+
+function getIssueDraftPreviewVolume(issue) {
+    const vol = normalizeVolumeId(issue.meta.vol);
+    const radar = parseMarkdownDocument(issue.meta.radarContent || '');
+    return {
+        vol,
+        date: radar.metadata.date || issue.meta.date || '',
+        title: issue.meta.title || radar.metadata.title || '',
+        views: 0,
+        preview: true
+    };
+}
+
+function findIssueDraftPreviewManuscript(preview, folderName) {
+    return preview.manuscripts.find(item => sanitizeSlug(item.folderName, item.manuscriptId) === folderName);
+}
+
+function assertIssueDraftPreviewVolume(issue, vol) {
+    const normalizedVol = normalizeVolumeId(vol);
+    return normalizedVol && normalizedVol === normalizeVolumeId(issue.meta.vol);
+}
+
+async function publishIssueDraft(issueDraftId, operator) {
+    const preview = await buildIssueDraftPreview(issueDraftId);
+    if (preview.status !== 200) return preview;
+    const issue = preview.body;
+    if (issue.meta.status !== 'approved') {
+        return { status: 400, body: { error: 'Only approved issue drafts can be published' } };
+    }
+    const vol = normalizeVolumeId(issue.meta.vol);
+    if (!vol) return { status: 400, body: { error: 'Invalid issue draft volume' } };
+    if (!issue.manuscripts.length) {
+        return { status: 400, body: { error: 'Issue draft must contain at least one manuscript' } };
+    }
+
+    const volumeDir = assertInside(PUBLISHED_DIR, path.join(PUBLISHED_DIR, `vol-${vol}`));
+    const contributionsDir = path.join(volumeDir, 'contributions');
+    const targets = [];
+    for (const item of issue.manuscripts) {
+        const folderName = sanitizeSlug(item.folderName, item.manuscriptId);
+        const targetDir = assertInside(contributionsDir, path.join(contributionsDir, folderName));
+        if (fs.existsSync(targetDir)) {
+            return { status: 409, body: { error: `Published target already exists: ${folderName}` } };
+        }
+        const manuscriptDir = getManuscriptDir(item.manuscriptId);
+        if (!fs.existsSync(path.join(manuscriptDir, 'index.md'))) {
+            return { status: 400, body: { error: `Manuscript is missing index.md: ${item.manuscriptId}` } };
+        }
+        const manuscript = await readManuscriptDetail(item.manuscriptId);
+        if (
+            !manuscript
+            || manuscript.meta.status !== 'scheduled'
+            || manuscript.meta.scheduledIssueDraftId !== issueDraftId
+        ) {
+            return { status: 400, body: { error: `Manuscript is not scheduled for this issue draft: ${item.manuscriptId}` } };
+        }
+        const document = parseMarkdownDocument(await fsPromises.readFile(path.join(manuscriptDir, 'index.md'), 'utf8'));
+        const validationErrors = validateDraftMetadata(document.metadata, { allowTemporaryAuthor: false });
+        if (validationErrors.length > 0) {
+            return { status: 400, body: { error: `Manuscript is not publishable: ${item.manuscriptId}`, details: validationErrors } };
+        }
+        try {
+            await validatePublishedAuthorReferences(document.metadata);
+        } catch (error) {
+            return { status: 400, body: { error: error.message } };
+        }
+        const missingAssets = validateMarkdownAssetReferences(document.body, manuscriptDir);
+        if (missingAssets.length > 0) {
+            return { status: 400, body: { error: `Manuscript references missing assets: ${item.manuscriptId}`, details: missingAssets } };
+        }
+        targets.push({ item, manuscriptDir, targetDir });
+    }
+
+    const radarPath = path.join(volumeDir, 'radar.md');
+    const radarBackup = fs.existsSync(radarPath)
+        ? await fsPromises.readFile(radarPath, 'utf8')
+        : null;
+    const createdDirs = [];
+    try {
+        await fsPromises.mkdir(contributionsDir, { recursive: true });
+        await fsPromises.writeFile(radarPath, issue.meta.radarContent || defaultRadarContent(vol), 'utf8');
+        for (const target of targets) {
+            await fsPromises.mkdir(target.targetDir, { recursive: true });
+            createdDirs.push(target.targetDir);
+            const files = await collectFiles(target.manuscriptDir, { skip: relative => relative === 'meta.json' });
+            for (const file of files) {
+                const source = path.join(target.manuscriptDir, file.path);
+                const destination = assertInside(target.targetDir, path.join(target.targetDir, file.path));
+                await fsPromises.mkdir(path.dirname(destination), { recursive: true });
+                await fsPromises.copyFile(source, destination);
+            }
+        }
+        await generateArchiveJson(false);
+        const lintResult = await runContentLint();
+        if (!lintResult.ok) {
+            throw Object.assign(new Error('Content check failed'), { lintResult });
+        }
+    } catch (error) {
+        for (const dir of createdDirs) {
+            await fsPromises.rm(dir, { recursive: true, force: true });
+        }
+        if (radarBackup === null) {
+            await fsPromises.rm(radarPath, { force: true });
+        } else {
+            await fsPromises.mkdir(path.dirname(radarPath), { recursive: true });
+            await fsPromises.writeFile(radarPath, radarBackup, 'utf8');
+        }
+        await generateArchiveJson(false);
+        if (error.lintResult) {
+            return { status: 400, body: { error: 'Content check failed', stdout: error.lintResult.stdout, stderr: error.lintResult.stderr } };
+        }
+        return { status: 400, body: { error: error.message } };
+    }
+
+    const publishedArticles = [];
+    for (const target of targets) {
+        const articleId = `${vol}-${target.item.folderName}`;
+        publishedArticles.push(articleId);
+        await updateManuscriptMeta(target.item.manuscriptId, {
+            status: 'published',
+            publishedArticleId: articleId
+        }, operator);
+        const manuscript = await readManuscriptDetail(target.item.manuscriptId);
+        if (manuscript?.meta?.sourceSubmissionId) {
+            await updateSubmissionMeta(manuscript.meta.sourceSubmissionId, {
+                status: 'published',
+                publishedArticleId: articleId
+            }, operator);
+        }
+    }
+    await updateIssueDraftMeta(issueDraftId, {
+        status: 'published',
+        publishedAt: new Date().toISOString(),
+        publishedArticles
+    }, operator);
+    await appendIssueDraftReview(issueDraftId, {
+        action: 'published',
+        actor: operator.username,
+        role: operator.role,
+        comment: `Published ${publishedArticles.join(', ')}`,
+        visibility: 'internal'
+    });
+    await appendAuditLog({
+        action: 'publish_issue_draft',
+        actor: operator.username,
+        issueDraftId,
+        vol,
+        articleIds: publishedArticles
+    });
+    cache.invalidatePattern('volumes');
+    cache.invalidatePattern('contributions');
+    cache.invalidatePattern('search:');
+    cache.invalidate('stats');
+    cache.invalidate('authors');
+    notifyHotReload('admin-publish-issue-draft', volumeDir);
+    return { status: 200, body: { issueDraftId, vol, articleIds: publishedArticles } };
 }
 
 function validateMarkdownAssetReferences(markdown, baseDir) {
@@ -1557,12 +2584,93 @@ async function listUnpublishedArticles() {
         const { metadata } = parseMarkdownDocument(article.indexContent || '');
         articles.push({
             articleId,
+            vol: parseArticleId(articleId)?.vol || '',
+            folderName: parseArticleId(articleId)?.folderName || '',
             title: metadata.title || articleId,
             description: metadata.description || '',
             files: article.files.length
         });
     }
     return articles.sort((a, b) => b.articleId.localeCompare(a.articleId));
+}
+
+function issueManagementStatus(issueDrafts, publishedArticles, unpublishedArticles) {
+    if (issueDrafts.some(issue => issue.status === 'approved')) return 'approved';
+    if (issueDrafts.some(issue => issue.status === 'issue_review_requested')) return 'issue_review_requested';
+    if (issueDrafts.some(issue => ['editing', 'changes_requested'].includes(issue.status))) return 'editing';
+    if (publishedArticles.length > 0) return 'published';
+    if (unpublishedArticles.length > 0) return 'archived';
+    return 'empty';
+}
+
+async function listAdminIssues() {
+    const [volumes, issueDrafts, publishedArticles, unpublishedArticles] = await Promise.all([
+        listAdminVolumes(),
+        listAdminIssueDrafts(),
+        listPublishedArticles(),
+        listUnpublishedArticles()
+    ]);
+    const byVol = new Map();
+
+    function ensureIssue(vol) {
+        const normalizedVol = normalizeVolumeId(vol);
+        if (!normalizedVol) return null;
+        if (!byVol.has(normalizedVol)) {
+            byVol.set(normalizedVol, {
+                vol: normalizedVol,
+                title: `Vol ${normalizedVol}`,
+                status: 'empty',
+                radarContent: '',
+                issueDrafts: [],
+                publishedArticles: [],
+                unpublishedArticles: [],
+                counts: {
+                    drafts: 0,
+                    published: 0,
+                    unpublished: 0
+                }
+            });
+        }
+        return byVol.get(normalizedVol);
+    }
+
+    for (const volume of volumes) {
+        const issue = ensureIssue(volume.vol);
+        if (!issue) continue;
+        issue.radarContent = volume.radarContent || '';
+        issue.counts.published = Number(volume.contributions || 0);
+    }
+
+    for (const draft of issueDrafts) {
+        const issue = ensureIssue(draft.vol);
+        if (!issue) continue;
+        issue.issueDrafts.push(draft);
+        issue.counts.drafts = issue.issueDrafts.length;
+        issue.title = draft.title || issue.title;
+    }
+
+    for (const article of publishedArticles) {
+        const issue = ensureIssue(article.vol);
+        if (!issue) continue;
+        issue.publishedArticles.push(article);
+        issue.counts.published = issue.publishedArticles.length;
+    }
+
+    for (const article of unpublishedArticles) {
+        const issue = ensureIssue(article.vol);
+        if (!issue) continue;
+        issue.unpublishedArticles.push(article);
+        issue.counts.unpublished = issue.unpublishedArticles.length;
+    }
+
+    for (const issue of byVol.values()) {
+        issue.issueDrafts.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+        issue.publishedArticles.sort((a, b) => String(a.folderName || '').localeCompare(String(b.folderName || '')));
+        issue.unpublishedArticles.sort((a, b) => String(a.folderName || '').localeCompare(String(b.folderName || '')));
+        issue.status = issueManagementStatus(issue.issueDrafts, issue.publishedArticles, issue.unpublishedArticles);
+    }
+
+    return [...byVol.values()].sort((a, b) => b.vol.localeCompare(a.vol));
 }
 
 function getPublishedHistoryRoot(articleId) {
@@ -2125,9 +3233,18 @@ app.get('/admin/', (req, res) => {
     sendAdminHtml(res);
 });
 
+app.get('/admin/issue-drafts/:issueDraftId/preview-page', requireAdmin, asyncRoute(async (req, res) => {
+    const issue = await readIssueDraft(req.params.issueDraftId);
+    if (!issue) {
+        return res.status(404).send('Issue draft not found');
+    }
+    sendIndexHtml(res);
+}));
+
 app.use('/admin', express.static(path.join(__dirname, 'admin'), {
-    maxAge: '5m',
-    etag: true
+    maxAge: 0,
+    etag: true,
+    setHeaders: res => res.setHeader('Cache-Control', 'no-cache, must-revalidate')
 }));
 
 function sendSubmitHtml(res) {
@@ -2144,8 +3261,9 @@ app.get('/submit/', (req, res) => {
 });
 
 app.use('/submit', express.static(path.join(__dirname, 'submit'), {
-    maxAge: '5m',
-    etag: true
+    maxAge: 0,
+    etag: true,
+    setHeaders: res => res.setHeader('Cache-Control', 'no-cache, must-revalidate')
 }));
 
 // ==================== API ROUTES ====================
@@ -2157,88 +3275,95 @@ function asyncRoute(handler) {
 }
 
 app.get('/api/submission-authors', rateLimitMiddleware('read'), asyncRoute(async (req, res) => {
-    const query = String(req.query.q || '').trim().toLowerCase();
+    const query = String(req.query.q || '').trim();
     const authors = await readAuthorsArray();
-    const filtered = query.length === 0
-        ? authors.slice(0, 20)
-        : authors.filter(author => {
-            return [author.id, author.name, author.team, author.role]
-                .some(value => String(value || '').toLowerCase().includes(query));
-        }).slice(0, 20);
+    const results = searchSubmissionAuthors(authors, query, 20);
 
     res.json({
-        authors: filtered.map(author => ({
+        authors: results.map(({ author, score, match }) => ({
             id: author.id,
             name: author.name,
             team: author.team || '',
             role: author.role || '',
-            avatar: author.avatar || ''
+            avatar: author.avatar || '',
+            aliases: normalizeAuthorAliases(author),
+            pinyin: author.pinyin || '',
+            initials: author.initials || '',
+            score,
+            match
         }))
     });
 }));
 
 app.post('/api/submissions', rateLimitMiddleware('write'), asyncRoute(async (req, res) => {
-    const { targetVol, folderName, files } = req.body || {};
+    const { files } = req.body || {};
     const submitter = normalizeSubmitter(req.body?.submitter || {});
-    const safeFolderName = sanitizeSlug(folderName, '');
-    const vol = normalizeVolumeId(targetVol);
 
-    if (!vol || !safeFolderName || !Array.isArray(files) || files.length === 0) {
-        return res.status(400).json({ error: 'targetVol, folderName and files are required' });
+    if (!Array.isArray(files) || files.length === 0) {
+        return res.status(400).json({ error: 'files are required' });
     }
 
-    const draftId = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${safeFolderName}`;
-    const draftDir = getDraftDir(draftId);
-    if (fs.existsSync(draftDir)) {
+    const indexPayload = findPayloadIndexFile(files);
+    if (!indexPayload) {
+        return res.status(400).json({ error: 'index.md is required' });
+    }
+    const document = parseMarkdownDocument(payloadFileToString(indexPayload));
+    const submissionId = buildSubmissionDraftId(document, submitter);
+    const submissionDir = getSubmissionDir(submissionId);
+    if (fs.existsSync(submissionDir)) {
         return res.status(409).json({ error: 'Submission already exists' });
     }
 
-    await fsPromises.mkdir(draftDir, { recursive: true });
-    const hasIndex = await writeDraftFiles(draftDir, files);
+    await fsPromises.mkdir(submissionDir, { recursive: true });
+    const hasIndex = await writeDraftFiles(submissionDir, files);
     if (!hasIndex) {
-        await fsPromises.rm(draftDir, { recursive: true, force: true });
+        await fsPromises.rm(submissionDir, { recursive: true, force: true });
         return res.status(400).json({ error: 'index.md is required' });
     }
 
-    const indexPath = path.join(draftDir, 'index.md');
-    const document = parseMarkdownDocument(await fsPromises.readFile(indexPath, 'utf8'));
-    if (!document.metadata.author_id && !document.metadata.author_ids && !document.metadata.author) {
+    const indexPath = path.join(submissionDir, 'index.md');
+    const writtenDocument = parseMarkdownDocument(await fsPromises.readFile(indexPath, 'utf8'));
+    const authors = await readAuthorsArray();
+    const resolvedAuthorId = resolveSubmitterAuthorId(submitter, authors);
+    if (resolvedAuthorId) {
+        submitter.authorId = resolvedAuthorId;
+    }
+    if (!writtenDocument.metadata.author_id && !writtenDocument.metadata.author_ids && !writtenDocument.metadata.author) {
         if (submitter.authorId) {
-            document.metadata.author_id = submitter.authorId;
+            writtenDocument.metadata.author_id = submitter.authorId;
         } else {
-            document.metadata.author = {
+            writtenDocument.metadata.author = {
                 name: submitter.name,
                 team: submitter.team,
                 role: submitter.role,
                 avatar: ''
             };
         }
-        await fsPromises.writeFile(indexPath, stringifyMarkdownDocument(document.metadata, document.body), 'utf8');
+        await fsPromises.writeFile(indexPath, stringifyMarkdownDocument(writtenDocument.metadata, writtenDocument.body), 'utf8');
     }
 
-    const submitterErrors = validateSubmitter(submitter, document.metadata);
-    const validationErrors = validateDraftMetadata(document.metadata, { allowTemporaryAuthor: true });
+    const submitterErrors = validateSubmitter(submitter, writtenDocument.metadata);
+    const validationErrors = validateDraftMetadata(writtenDocument.metadata, { allowTemporaryAuthor: true });
     if (submitterErrors.length > 0 || validationErrors.length > 0) {
-        await fsPromises.rm(draftDir, { recursive: true, force: true });
+        await fsPromises.rm(submissionDir, { recursive: true, force: true });
         return res.status(400).json({
             error: 'Submission frontmatter is invalid',
             details: [...submitterErrors, ...validationErrors]
         });
     }
 
-    if (document.metadata.author_id) {
-        const authors = await readAuthorsArray();
-        if (!authors.some(author => author.id === document.metadata.author_id)) {
-            await fsPromises.rm(draftDir, { recursive: true, force: true });
+    if (writtenDocument.metadata.author_id) {
+        if (!authors.some(author => author.id === writtenDocument.metadata.author_id)) {
+            await fsPromises.rm(submissionDir, { recursive: true, force: true });
             return res.status(400).json({ error: 'Selected author does not exist' });
         }
-        submitter.authorId = document.metadata.author_id;
+        submitter.authorId = writtenDocument.metadata.author_id;
     }
-    if (document.metadata.author_id || document.metadata.author_ids) {
+    if (writtenDocument.metadata.author_id || writtenDocument.metadata.author_ids) {
         try {
-            await validatePublishedAuthorReferences(document.metadata);
+            await validatePublishedAuthorReferences(writtenDocument.metadata);
         } catch (error) {
-            await fsPromises.rm(draftDir, { recursive: true, force: true });
+            await fsPromises.rm(submissionDir, { recursive: true, force: true });
             return res.status(400).json({ error: error.message });
         }
     }
@@ -2246,36 +3371,41 @@ app.post('/api/submissions', rateLimitMiddleware('write'), asyncRoute(async (req
     const token = createAccessToken();
     const now = new Date().toISOString();
     const meta = {
-        draftId,
-        source: 'submission',
-        status: 'editing',
-        submissionStatus: 'submitted',
-        targetVol: vol,
-        folderName: safeFolderName,
+        submissionId,
+        status: 'submitted',
         submitter,
         submitterTokenHash: hashAccessToken(token),
         submittedAt: now,
         revision: 1,
+        manuscriptId: '',
+        publishedArticleId: '',
         lastSubmitterReadAt: '',
+        history: [],
         createdBy: 'submitter',
         updatedBy: 'submitter',
         createdAt: now,
         updatedAt: now
     };
-    await writeJsonFile(path.join(draftDir, 'meta.json'), meta);
-    await writeJsonFile(path.join(ADMIN_REVIEWS_DIR, `${draftId}.json`), { draftId, history: [] });
-    await saveSubmissionRevision(draftId, 1, await fsPromises.readFile(indexPath, 'utf8'));
+    await writeJsonFile(path.join(submissionDir, 'meta.json'), meta);
+    await saveSubmissionRevisionV2(submissionId, 1, await fsPromises.readFile(indexPath, 'utf8'));
+    await appendSubmissionHistory(submissionId, {
+        action: 'create_submission',
+        actor: 'submitter',
+        role: 'submitter-token',
+        comment: `Revision 1`,
+        visibility: 'internal'
+    });
     await appendAuditLog({
         action: 'create_submission',
         actor: 'submitter',
-        draftId,
+        submissionId,
         revision: 1
     });
 
     res.status(201).json({
-        submissionId: draftId,
+        submissionId,
         accessToken: token,
-        statusUrl: `/submit?id=${encodeURIComponent(draftId)}&token=${encodeURIComponent(token)}`
+        statusUrl: `/submit?id=${encodeURIComponent(submissionId)}&token=${encodeURIComponent(token)}`
     });
 }));
 
@@ -2285,9 +3415,9 @@ app.get('/api/submissions/:submissionId/assets/*', rateLimitMiddleware('read'), 
         return res.status(result.status).json(result.body);
     }
 
-    const draftDir = getDraftDir(req.params.submissionId);
+    const submissionDir = getSubmissionDir(req.params.submissionId);
     const assetRelative = safeRelativePath(req.params[0] || '');
-    const assetPath = assertInside(draftDir, path.join(draftDir, assetRelative));
+    const assetPath = assertInside(submissionDir, path.join(submissionDir, assetRelative));
     if (assetRelative === 'meta.json' || !fs.existsSync(assetPath)) {
         return res.status(404).json({ error: 'Asset not found' });
     }
@@ -2300,10 +3430,10 @@ app.get('/api/submissions/:submissionId', rateLimitMiddleware('read'), asyncRout
     if (!result.detail) {
         return res.status(result.status).json(result.body);
     }
-    await updateDraftMeta(req.params.submissionId, {
+    await updateSubmissionMeta(req.params.submissionId, {
         lastSubmitterReadAt: new Date().toISOString()
     }, { username: 'submitter' });
-    res.json(publicSubmissionDetail(await readDraftDetail(req.params.submissionId), req.query.token));
+    res.json(publicSubmissionDetail(await readSubmissionDetail(req.params.submissionId), req.query.token));
 }));
 
 app.put('/api/submissions/:submissionId', rateLimitMiddleware('write'), asyncRoute(async (req, res) => {
@@ -2312,33 +3442,42 @@ app.put('/api/submissions/:submissionId', rateLimitMiddleware('write'), asyncRou
         return res.status(result.status).json(result.body);
     }
     const detail = result.detail;
-    if (detail.meta.submissionStatus !== 'changes_requested') {
+    if (detail.meta.status !== 'changes_requested') {
         return res.status(400).json({ error: 'Submission cannot be revised from this status' });
     }
 
-    const { files, indexContent: payloadIndexContent, deleteFiles } = req.body || {};
+    const { files, indexContent: payloadIndexContent, deleteFiles, replaceFiles } = req.body || {};
+    if (replaceFiles && (!Array.isArray(files) || files.length === 0)) {
+        return res.status(400).json({ error: 'files are required when replacing a revision' });
+    }
+    if (replaceFiles && !findPayloadIndexFile(files)) {
+        return res.status(400).json({ error: 'index.md is required' });
+    }
     if (typeof payloadIndexContent !== 'string' && (!Array.isArray(files) || files.length === 0) && (!Array.isArray(deleteFiles) || deleteFiles.length === 0)) {
         return res.status(400).json({ error: 'indexContent, files or deleteFiles are required' });
     }
-    const draftDir = getDraftDir(req.params.submissionId);
+    const submissionDir = getSubmissionDir(req.params.submissionId);
+    if (replaceFiles) {
+        await clearDraftContentFiles(submissionDir);
+    }
     if (Array.isArray(deleteFiles) && deleteFiles.length > 0) {
         try {
-            await deleteManagedFiles(draftDir, deleteFiles);
+            await deleteManagedFiles(submissionDir, deleteFiles);
         } catch (error) {
             return res.status(400).json({ error: error.message });
         }
     }
     if (Array.isArray(files) && files.length > 0) {
-        await writeDraftFiles(draftDir, files);
+        await writeDraftFiles(submissionDir, files);
     }
     if (typeof payloadIndexContent === 'string') {
-        await fsPromises.writeFile(path.join(draftDir, 'index.md'), payloadIndexContent, 'utf8');
+        await fsPromises.writeFile(path.join(submissionDir, 'index.md'), payloadIndexContent, 'utf8');
     }
-    if (!fs.existsSync(path.join(draftDir, 'index.md'))) {
+    if (!fs.existsSync(path.join(submissionDir, 'index.md'))) {
         return res.status(400).json({ error: 'index.md is required' });
     }
 
-    const currentIndexContent = await fsPromises.readFile(path.join(draftDir, 'index.md'), 'utf8');
+    const currentIndexContent = await fsPromises.readFile(path.join(submissionDir, 'index.md'), 'utf8');
     const { metadata } = parseMarkdownDocument(currentIndexContent);
     const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: true });
     if (validationErrors.length > 0) {
@@ -2353,14 +3492,13 @@ app.put('/api/submissions/:submissionId', rateLimitMiddleware('write'), asyncRou
     }
 
     const revision = (detail.meta.revision || 1) + 1;
-    await saveSubmissionRevision(req.params.submissionId, revision, currentIndexContent);
-    await updateDraftMeta(req.params.submissionId, {
-        status: 'editing',
-        submissionStatus: 'submitted',
+    await saveSubmissionRevisionV2(req.params.submissionId, revision, currentIndexContent);
+    await updateSubmissionMeta(req.params.submissionId, {
+        status: 'submitted',
         revision,
         updatedBy: 'submitter'
     }, { username: 'submitter' });
-    await appendReviewHistory(req.params.submissionId, {
+    await appendSubmissionHistory(req.params.submissionId, {
         action: 'submitter_revision',
         actor: 'submitter',
         role: 'submitter-token',
@@ -2370,11 +3508,11 @@ app.put('/api/submissions/:submissionId', rateLimitMiddleware('write'), asyncRou
     await appendAuditLog({
         action: 'revise_submission',
         actor: 'submitter',
-        draftId: req.params.submissionId,
+        submissionId: req.params.submissionId,
         revision
     });
 
-    res.json(publicSubmissionDetail(await readDraftDetail(req.params.submissionId), req.query.token));
+    res.json(publicSubmissionDetail(await readSubmissionDetail(req.params.submissionId), req.query.token));
 }));
 
 app.post('/api/admin/login', rateLimitMiddleware('write'), asyncRoute(async (req, res) => {
@@ -2408,6 +3546,316 @@ app.get('/api/admin/me', requireAdmin, (req, res) => {
         permissions: adminPermissions(req.adminUser.role)
     });
 });
+
+app.get('/api/admin/submissions', requireAdmin, asyncRoute(async (req, res) => {
+    res.json({
+        submissions: await listAdminSubmissions({
+            status: req.query.status,
+            assignee: req.query.assignee,
+            q: req.query.q
+        })
+    });
+}));
+
+app.get('/api/admin/submissions/:submissionId/assets/*', requireAdmin, asyncRoute(async (req, res) => {
+    const submissionDir = getSubmissionDir(req.params.submissionId);
+    const assetRelative = safeRelativePath(req.params[0] || '');
+    const assetPath = assertInside(submissionDir, path.join(submissionDir, assetRelative));
+    if (assetRelative === 'meta.json' || assetRelative.startsWith('revisions/') || !fs.existsSync(assetPath)) {
+        return res.status(404).json({ error: 'Asset not found' });
+    }
+    res.sendFile(assetPath);
+}));
+
+app.get('/api/admin/submissions/:submissionId', requireAdmin, asyncRoute(async (req, res) => {
+    const detail = await readSubmissionDetail(req.params.submissionId);
+    if (!detail) return res.status(404).json({ error: 'Submission not found' });
+    res.json(detail);
+}));
+
+app.post(
+    '/api/admin/submissions/:submissionId/accept',
+    requireAdmin,
+    requireAdminPermission('canEditDraft'),
+    asyncRoute(async (req, res) => {
+        const result = await createManuscriptFromSubmission(req.params.submissionId, req.adminUser, req.body?.authorResolution || {});
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.post(
+    '/api/admin/submissions/:submissionId/request-changes',
+    requireAdmin,
+    requireAdminPermission('canEditDraft'),
+    asyncRoute(async (req, res) => {
+        const detail = await readSubmissionDetail(req.params.submissionId);
+        if (!detail) return res.status(404).json({ error: 'Submission not found' });
+        if (!['submitted', 'in_editor_review'].includes(detail.meta.status)) {
+            return res.status(400).json({ error: 'Submission cannot be returned from this status' });
+        }
+        await updateSubmissionMeta(req.params.submissionId, { status: 'changes_requested' }, req.adminUser);
+        await appendSubmissionHistory(req.params.submissionId, {
+            action: 'request_changes',
+            actor: req.adminUser.username,
+            role: req.adminUser.role,
+            comment: req.body?.comment || '',
+            visibility: normalizeReviewVisibility(req.body?.visibility, 'internal')
+        });
+        await appendAuditLog({
+            action: 'request_submission_changes',
+            actor: req.adminUser.username,
+            submissionId: req.params.submissionId
+        });
+        res.json(await readSubmissionDetail(req.params.submissionId));
+    })
+);
+
+app.post(
+    '/api/admin/submissions/:submissionId/reject',
+    requireAdmin,
+    requireAdminPermission('canRejectDraft'),
+    asyncRoute(async (req, res) => {
+        const detail = await readSubmissionDetail(req.params.submissionId);
+        if (!detail) return res.status(404).json({ error: 'Submission not found' });
+        if (detail.meta.status === 'accepted' || detail.meta.status === 'published') {
+            return res.status(400).json({ error: 'Accepted submissions cannot be rejected' });
+        }
+        await updateSubmissionMeta(req.params.submissionId, { status: 'rejected' }, req.adminUser);
+        await appendSubmissionHistory(req.params.submissionId, {
+            action: 'rejected',
+            actor: req.adminUser.username,
+            role: req.adminUser.role,
+            comment: req.body?.comment || '',
+            visibility: normalizeReviewVisibility(req.body?.visibility, 'internal')
+        });
+        await appendAuditLog({
+            action: 'reject_submission',
+            actor: req.adminUser.username,
+            submissionId: req.params.submissionId
+        });
+        res.json(await readSubmissionDetail(req.params.submissionId));
+    })
+);
+
+app.post(
+    '/api/admin/submissions/:submissionId/status-link',
+    requireAdmin,
+    requireAdminPermission('canIssueStatusLink'),
+    asyncRoute(async (req, res) => {
+        const detail = await readSubmissionDetail(req.params.submissionId);
+        if (!detail) return res.status(404).json({ error: 'Submission not found' });
+        const token = createAccessToken();
+        await updateSubmissionMeta(req.params.submissionId, {
+            submitterTokenHash: hashAccessToken(token),
+            lastStatusLinkIssuedAt: new Date().toISOString(),
+            lastStatusLinkIssuedBy: req.adminUser.username
+        }, req.adminUser);
+        await appendAuditLog({
+            action: 'issue_submission_status_link',
+            actor: req.adminUser.username,
+            submissionId: req.params.submissionId
+        });
+        res.json({
+            submissionId: req.params.submissionId,
+            accessToken: token,
+            statusUrl: `/submit?id=${encodeURIComponent(req.params.submissionId)}&token=${encodeURIComponent(token)}`
+        });
+    })
+);
+
+app.get('/api/admin/manuscripts', requireAdmin, asyncRoute(async (req, res) => {
+    res.json({
+        manuscripts: await listAdminManuscripts({
+            status: req.query.status,
+            assignee: req.query.assignee,
+            q: req.query.q
+        })
+    });
+}));
+
+app.get('/api/admin/manuscripts/:manuscriptId/assets/*', requireAdmin, asyncRoute(async (req, res) => {
+    const manuscriptDir = getManuscriptDir(req.params.manuscriptId);
+    const assetRelative = safeRelativePath(req.params[0] || '');
+    const assetPath = assertInside(manuscriptDir, path.join(manuscriptDir, assetRelative));
+    if (assetRelative === 'meta.json' || !fs.existsSync(assetPath)) {
+        return res.status(404).json({ error: 'Asset not found' });
+    }
+    res.sendFile(assetPath);
+}));
+
+app.get('/api/admin/manuscripts/:manuscriptId', requireAdmin, asyncRoute(async (req, res) => {
+    const detail = await readManuscriptDetail(req.params.manuscriptId);
+    if (!detail) return res.status(404).json({ error: 'Manuscript not found' });
+    res.json(detail);
+}));
+
+app.put(
+    '/api/admin/manuscripts/:manuscriptId',
+    requireAdmin,
+    requireAdminPermission('canEditDraft'),
+    asyncRoute(async (req, res) => {
+        const result = await updateManuscriptContent(req.params.manuscriptId, req.body || {}, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.post(
+    '/api/admin/manuscripts/:manuscriptId/review',
+    requireAdmin,
+    requireAdminPermission('canReviewManuscript'),
+    asyncRoute(async (req, res) => {
+        const result = await reviewManuscript(req.params.manuscriptId, req.body || {}, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.get('/api/admin/issue-drafts', requireAdmin, asyncRoute(async (req, res) => {
+    res.json({
+        issueDrafts: await listAdminIssueDrafts({
+            status: req.query.status,
+            vol: req.query.vol,
+            q: req.query.q
+        })
+    });
+}));
+
+app.post(
+    '/api/admin/issue-drafts',
+    requireAdmin,
+    requireAdminPermission('canManageIssueDrafts'),
+    asyncRoute(async (req, res) => {
+        const result = await createIssueDraft(req.body || {}, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.get('/api/admin/issue-drafts/:issueDraftId', requireAdmin, asyncRoute(async (req, res) => {
+    const detail = await readIssueDraft(req.params.issueDraftId);
+    if (!detail) return res.status(404).json({ error: 'Issue draft not found' });
+    res.json(detail);
+}));
+
+app.put(
+    '/api/admin/issue-drafts/:issueDraftId',
+    requireAdmin,
+    requireAdminPermission('canManageIssueDrafts'),
+    asyncRoute(async (req, res) => {
+        const result = await updateIssueDraft(req.params.issueDraftId, req.body || {}, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.post(
+    '/api/admin/issue-drafts/:issueDraftId/manuscripts',
+    requireAdmin,
+    requireAdminPermission('canManageIssueDrafts'),
+    asyncRoute(async (req, res) => {
+        const result = await addManuscriptToIssueDraft(
+            req.params.issueDraftId,
+            req.body?.manuscriptId,
+            req.body || {},
+            req.adminUser
+        );
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.delete(
+    '/api/admin/issue-drafts/:issueDraftId/manuscripts/:manuscriptId',
+    requireAdmin,
+    requireAdminPermission('canManageIssueDrafts'),
+    asyncRoute(async (req, res) => {
+        const result = await removeManuscriptFromIssueDraft(req.params.issueDraftId, req.params.manuscriptId, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.post(
+    '/api/admin/issue-drafts/:issueDraftId/review',
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+        const permissions = adminPermissions(req.adminUser.role);
+        const action = req.body?.action;
+        if (action === 'request_review' && !permissions.canManageIssueDrafts) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        if (action !== 'request_review' && !permissions.canReviewIssueDraft) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        const result = await reviewIssueDraft(req.params.issueDraftId, req.body || {}, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
+
+app.get('/api/admin/issue-drafts/:issueDraftId/preview', requireAdmin, asyncRoute(async (req, res) => {
+    const result = await buildIssueDraftPreview(req.params.issueDraftId);
+    res.status(result.status).json(result.body);
+}));
+
+app.get('/api/admin/issue-drafts/:issueDraftId/preview-volume', requireAdmin, asyncRoute(async (req, res) => {
+    const result = await buildIssueDraftPreview(req.params.issueDraftId);
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+    res.json([getIssueDraftPreviewVolume(result.body)]);
+}));
+
+app.get('/api/admin/issue-drafts/:issueDraftId/preview-contributions/:vol', requireAdmin, asyncRoute(async (req, res) => {
+    const result = await buildIssueDraftPreview(req.params.issueDraftId);
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+    if (!assertIssueDraftPreviewVolume(result.body, req.params.vol)) {
+        return res.status(404).json({ error: 'Issue draft volume not found' });
+    }
+    res.json(result.body.manuscripts.map(item => sanitizeSlug(item.folderName, item.manuscriptId)));
+}));
+
+app.get('/api/admin/issue-drafts/:issueDraftId/preview-content/vol-:vol/radar.md', requireAdmin, asyncRoute(async (req, res) => {
+    const result = await buildIssueDraftPreview(req.params.issueDraftId);
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+    if (!assertIssueDraftPreviewVolume(result.body, req.params.vol)) {
+        return res.status(404).send('Issue draft volume not found');
+    }
+    const volume = getIssueDraftPreviewVolume(result.body);
+    const fallbackRadar = `---\nvol: "${volume.vol}"\ndate: "${volume.date}"\n---\n\n# ${volume.title || `Vol ${volume.vol}`}\n`;
+    res.type('text/markdown').send(result.body.meta.radarContent || fallbackRadar);
+}));
+
+app.get('/api/admin/issue-drafts/:issueDraftId/preview-content/vol-:vol/contributions/:folder/index.md', requireAdmin, asyncRoute(async (req, res) => {
+    const result = await buildIssueDraftPreview(req.params.issueDraftId);
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+    if (!assertIssueDraftPreviewVolume(result.body, req.params.vol)) {
+        return res.status(404).send('Issue draft volume not found');
+    }
+    const manuscript = findIssueDraftPreviewManuscript(result.body, req.params.folder);
+    if (!manuscript) return res.status(404).send('Manuscript not found in issue draft');
+    res.type('text/markdown').send(manuscript.indexContent || '');
+}));
+
+app.get('/api/admin/issue-drafts/:issueDraftId/preview-content/vol-:vol/contributions/:folder/*', requireAdmin, asyncRoute(async (req, res) => {
+    const result = await buildIssueDraftPreview(req.params.issueDraftId);
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+    if (!assertIssueDraftPreviewVolume(result.body, req.params.vol)) {
+        return res.status(404).json({ error: 'Issue draft volume not found' });
+    }
+    const manuscript = findIssueDraftPreviewManuscript(result.body, req.params.folder);
+    if (!manuscript) return res.status(404).json({ error: 'Manuscript not found in issue draft' });
+
+    const manuscriptDir = getManuscriptDir(manuscript.manuscriptId);
+    const assetRelative = safeRelativePath(req.params[0] || '');
+    const assetPath = assertInside(manuscriptDir, path.join(manuscriptDir, assetRelative));
+    if (assetRelative === 'index.md' || assetRelative === 'meta.json' || !fs.existsSync(assetPath)) {
+        return res.status(404).json({ error: 'Asset not found' });
+    }
+    res.sendFile(assetPath);
+}));
+
+app.post(
+    '/api/admin/issue-drafts/:issueDraftId/publish',
+    requireAdmin,
+    requireAdminPermission('canPublish'),
+    asyncRoute(async (req, res) => {
+        const result = await publishIssueDraft(req.params.issueDraftId, req.adminUser);
+        res.status(result.status).json(result.body);
+    })
+);
 
 app.get('/api/admin/drafts', requireAdmin, asyncRoute(async (req, res) => {
     res.json({
@@ -2764,8 +4212,7 @@ app.post(
     requireAdmin,
     requireAdminPermission('canPublish'),
     asyncRoute(async (req, res) => {
-        const result = await buildPublishCheck(req.params.draftId, req.body?.authorResolution);
-        res.status(result.status).json(result.body);
+        res.status(410).json({ error: 'Direct draft publishing is retired; publish an approved issue draft instead' });
     })
 );
 
@@ -2774,8 +4221,7 @@ app.post(
     requireAdmin,
     requireAdminPermission('canPublish'),
     asyncRoute(async (req, res) => {
-        const result = await publishDraft(req.params.draftId, req.adminUser, req.body?.authorResolution);
-        res.status(result.status).json(result.body);
+        res.status(410).json({ error: 'Direct draft publishing is retired; publish an approved issue draft instead' });
     })
 );
 
@@ -2858,6 +4304,14 @@ app.get(
     asyncRoute(async (req, res) => {
         const auditLog = await readJsonFile(ADMIN_AUDIT_LOG_FILE, []);
         res.json({ entries: auditLog.slice().reverse().slice(0, 500) });
+    })
+);
+
+app.get(
+    '/api/admin/issues',
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+        res.json({ issues: await listAdminIssues() });
     })
 );
 
@@ -3850,6 +5304,7 @@ async function startServer() {
     // Load data files into memory
     await loadDataFiles();
     await ensureAdminDir();
+    await migrateLegacyDraftsToManuscripts();
 
     // Generate archive.json
     await generateArchiveJson(false);

@@ -1,61 +1,127 @@
 import {
-    acceptDraft,
-    assignDraft,
-    checkPublish,
+    acceptSubmission,
+    addIssueDraftManuscript,
     createAdminUser,
+    createIssueDraft,
     createVolume,
-    deleteDraft,
     disableAdminUser,
     enableAdminUser,
-    getDraft,
+    getIssueDraft,
+    getManuscript,
     getPublished,
-    importDraft,
+    getSubmission,
+    issueSubmissionStatusLink,
     listAdminUsers,
     listAuditLog,
-    listDrafts,
+    listIssues,
+    listIssueDrafts,
+    listManuscripts,
     listPublished,
     listPublishedHistory,
+    listSubmissions,
     listUnpublished,
     listVolumes,
-    publishDraft,
-    requestReview,
-    rejectDraft,
-    issueStatusLink,
-    rollbackPublished,
-    reviewDraft,
-    runLint,
-    updateAdminUser,
-    updateDraft,
-    updatePublished,
-    unpublishArticle,
+    publishIssueDraft,
+    rejectSubmission,
+    removeIssueDraftManuscript,
+    requestSubmissionChanges,
     restoreArticle,
+    reviewIssueDraft,
+    reviewManuscript,
+    rollbackPublished,
+    runLint,
+    unpublishArticle,
+    updateAdminUser,
+    updateIssueDraft,
+    updateManuscript,
+    updatePublished,
     updateVolumeRadar
 } from './api.js';
 import { bindAuth, restoreSession } from './auth.js';
-import { bindAuthorPanel, fileToBase64Payload } from './authors.js';
+import { bindAuthorPanel } from './authors.js';
 import { applyPermissionState, ROLE_LABELS } from './permissions.js';
-import {
-    buildDraftAssetResolver,
-    buildLocalAssetResolver,
-    parseFrontmatter,
-    renderPreview
-} from './preview.js';
+import { buildDraftAssetResolver, renderPreview } from './preview.js';
 
 const state = {
     user: null,
     permissions: {},
-    drafts: [],
-    selectedDraft: null,
+    submissions: [],
+    manuscripts: [],
+    issueDrafts: [],
+    issues: [],
+    selectedSubmission: null,
+    selectedManuscript: null,
+    selectedIssueDraft: null,
+    selectedIssueVol: '',
+    selectedIssueManuscriptId: '',
+    selectedIssueAvailableManuscriptId: '',
+    selectedManuscriptFiles: [],
     published: [],
     selectedPublished: null,
     unpublished: [],
     selectedUnpublished: null,
-    selectedPublishedSnapshotId: '',
-    selectedImportFiles: [],
-    selectedDraftFiles: [],
     selectedPublishedFiles: [],
+    selectedPublishedSnapshotId: '',
     authorPanel: null,
     previewTimer: null
+};
+
+const MANUSCRIPT_STATUS_LABELS = {
+    drafting: '编辑中',
+    manuscript_review_requested: '待稿件审核',
+    changes_requested: '已退回',
+    available: '可入选',
+    scheduled: '已编入草稿',
+    published: '已发布',
+    archived: '已归档'
+};
+
+const ISSUE_STATUS_LABELS = {
+    editing: '编辑中',
+    issue_review_requested: '待整期审核',
+    changes_requested: '已退回',
+    approved: '已审核',
+    published: '已发布',
+    archived: '已归档'
+};
+
+const ISSUE_MANAGEMENT_STATUS_LABELS = {
+    editing: '草稿中',
+    issue_review_requested: '待整期审核',
+    approved: '已审核待发布',
+    published: '已发布',
+    archived: '已归档',
+    empty: '未编排'
+};
+
+const SUBMISSION_STATUS_LABELS = {
+    submitted: '待编辑初审',
+    in_editor_review: '编辑处理中',
+    changes_requested: '待返修',
+    accepted: '已接收入池',
+    rejected: '已拒稿',
+    published: '已发布'
+};
+
+const VIEW_TITLES = {
+    submissions: ['投稿初审', '处理新投稿、返修与接收入池'],
+    manuscripts: ['稿件池', '编辑单篇稿件并完成单篇审核'],
+    reviews: ['审核任务', '集中查看待审核稿件与期刊'],
+    issues: ['期刊管理', '按卷期编排、预览、发布和维护文章'],
+    authors: ['作者管理', '作者入库、修改、头像与合并'],
+    users: ['人员权限', '维护后台用户和角色'],
+    audit: ['操作日志', '查看关键后台操作记录']
+};
+
+const ACTION_LABELS = {
+    create_submission: '创建投稿',
+    submitter_revision: '投稿者返修',
+    accepted: '已接收',
+    rejected: '已拒稿',
+    request_changes: '退回修改',
+    approve: '审核通过',
+    request_review: '提交审核',
+    published: '已发布'
 };
 
 function $(id) {
@@ -71,38 +137,32 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+function labelFrom(labels, value) {
+    return labels[value] || value || '-';
+}
+
 function setStatus(id, message, type = '') {
     const element = $(id);
+    if (!element) return;
     element.textContent = message;
     element.classList.toggle('is-error', type === 'error');
     element.classList.toggle('is-ok', type === 'ok');
 }
 
-function selectedDraftId() {
-    return state.selectedDraft?.meta?.draftId;
-}
-
-function normalizeFileSelection(fileList) {
-    const files = Array.from(fileList || []);
-    const rawPaths = files.map(file => file.webkitRelativePath || file.name);
-    const indexPath = rawPaths.find(item => item === 'index.md' || item.endsWith('/index.md'));
-    const rootPrefix = indexPath && indexPath !== 'index.md'
-        ? indexPath.slice(0, -'index.md'.length)
-        : '';
-
-    return files.map((file, index) => {
-        const rawPath = rawPaths[index];
-        const relativePath = rootPrefix && rawPath.startsWith(rootPrefix)
-            ? rawPath.slice(rootPrefix.length)
-            : rawPath.split('/').pop();
-        return {
-            file,
-            name: file.name,
-            relativePath,
-            size: file.size,
-            objectUrl: URL.createObjectURL(file)
-        };
-    }).sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+function renderFileList(container, files = []) {
+    container.innerHTML = '';
+    files.forEach(file => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.innerHTML = `
+            <strong>${escapeHtml(file.path || file.relativePath)}</strong>
+            <small>${Number(file.size || 0).toLocaleString()} 字节</small>
+        `;
+        container.appendChild(item);
+    });
+    if (!files.length) {
+        container.innerHTML = '<div class="file-item"><small>暂无文件</small></div>';
+    }
 }
 
 function isTextFile(path) {
@@ -119,563 +179,759 @@ function arrayBufferToBase64(buffer) {
     return btoa(binary);
 }
 
+function normalizeFileSelection(fileList) {
+    const files = Array.from(fileList || []);
+    const rawPaths = files.map(file => file.webkitRelativePath || file.name);
+    const indexPath = rawPaths.find(item => item === 'index.md' || item.endsWith('/index.md'));
+    const rootPrefix = indexPath && indexPath !== 'index.md'
+        ? indexPath.slice(0, -'index.md'.length)
+        : '';
+    return files.map((file, index) => {
+        const rawPath = rawPaths[index];
+        return {
+            file,
+            relativePath: rootPrefix && rawPath.startsWith(rootPrefix)
+                ? rawPath.slice(rootPrefix.length)
+                : rawPath.split('/').pop(),
+            size: file.size
+        };
+    });
+}
+
 async function toAdminFilePayload(item) {
     if (isTextFile(item.relativePath)) {
-        return {
-            path: item.relativePath,
-            type: 'text',
-            content: await item.file.text()
-        };
+        return { path: item.relativePath, type: 'text', content: await item.file.text() };
     }
-
-    return {
-        path: item.relativePath,
-        type: 'base64',
-        content: arrayBufferToBase64(await item.file.arrayBuffer())
-    };
+    return { path: item.relativePath, type: 'base64', content: arrayBufferToBase64(await item.file.arrayBuffer()) };
 }
 
 function parsePathList(value) {
-    return String(value || '')
-        .split(',')
-        .map(item => item.trim())
-        .filter(Boolean);
+    return String(value || '').split(',').map(item => item.trim()).filter(Boolean);
 }
 
-async function readSelectedIndexContent() {
-    const index = state.selectedImportFiles.find(file => file.relativePath === 'index.md');
-    return index ? index.file.text() : '';
-}
-
-function renderFileList(container, files) {
-    container.innerHTML = '';
-    files.forEach(file => {
-        const item = document.createElement('div');
-        item.className = 'file-item';
-        item.innerHTML = `
-            <strong>${escapeHtml(file.path || file.relativePath)}</strong>
-            <small>${Number(file.size || 0).toLocaleString()} bytes</small>
-        `;
-        container.appendChild(item);
-    });
-
-    if (files.length === 0) {
-        container.innerHTML = '<div class="file-item"><small>No files</small></div>';
-    }
-}
-
-function renderDashboard() {
-    const counts = state.drafts.reduce((acc, draft) => {
-        acc[draft.status] = (acc[draft.status] || 0) + 1;
-        return acc;
-    }, {});
-
-    $('metric-editing').textContent = counts.editing || 0;
-    $('metric-review').textContent = counts.review_requested || 0;
-    $('metric-approved').textContent = counts.approved || 0;
-    $('metric-published').textContent = counts.published || 0;
-
-    const recent = state.drafts.slice(0, 6);
-    const recentContainer = $('dashboard-drafts');
-    recentContainer.innerHTML = '';
-    recent.forEach(draft => recentContainer.appendChild(createDraftItem(draft)));
-    if (recent.length === 0) {
-        recentContainer.innerHTML = '<div class="compact-item"><small>No drafts</small></div>';
-    }
-
-    $('dashboard-snapshot').innerHTML = [
-        ['New submissions', state.drafts.filter(draft => draft.source === 'submission' && draft.submissionStatus === 'submitted').length],
-        ['Ready for review', counts.review_requested || 0],
-        ['Ready to publish', counts.approved || 0],
-        ['Returned', counts.changes_requested || 0]
-    ].map(([label, value]) => `
-        <div class="compact-item">
-            <strong>${escapeHtml(value)}</strong>
-            <small>${escapeHtml(label)}</small>
-        </div>
-    `).join('');
-}
-
-function createDraftItem(draft) {
+function compactItem({ active, pill, title, subtitle, onClick }) {
     const item = document.createElement('button');
     item.type = 'button';
-    item.className = `compact-item${selectedDraftId() === draft.draftId ? ' active' : ''}`;
+    item.className = `compact-item${active ? ' active' : ''}`;
     item.innerHTML = `
-        <span class="status-pill">${escapeHtml(draft.status)}</span>
-        <strong>${escapeHtml(draft.folderName || draft.draftId)}</strong>
-        <small>${escapeHtml(draft.targetVol || '-')}${draft.source ? ` · ${escapeHtml(draft.source)}` : ''}${draft.submissionStatus ? ` · ${escapeHtml(draft.submissionStatus)}` : ''}${draft.assignee ? ` · @${escapeHtml(draft.assignee)}` : ''}${draft.revision ? ` · r${escapeHtml(draft.revision)}` : ''}${draft.updatedAt ? ` · ${escapeHtml(draft.updatedAt)}` : ''}</small>
+        ${pill ? `<span class="status-pill">${escapeHtml(pill)}</span>` : ''}
+        <strong>${escapeHtml(title)}</strong>
+        <small>${escapeHtml(subtitle || '')}</small>
     `;
-    item.addEventListener('click', () => selectDraft(draft.draftId));
+    if (typeof onClick === 'function') {
+        item.addEventListener('click', onClick);
+    }
     return item;
 }
 
-function renderDraftList() {
-    const list = $('draft-list');
-    list.innerHTML = '';
-    state.drafts.forEach(draft => list.appendChild(createDraftItem(draft)));
+function selectedSubmissionId() {
+    return state.selectedSubmission?.meta?.submissionId;
+}
 
-    if (state.drafts.length === 0) {
-        list.innerHTML = '<div class="compact-item"><small>No drafts</small></div>';
-    }
+function selectedManuscriptId() {
+    return state.selectedManuscript?.meta?.manuscriptId;
+}
 
-    renderDashboard();
-    renderSubmissionList();
+function selectedIssueDraftId() {
+    return state.selectedIssueDraft?.meta?.issueDraftId;
+}
+
+function selectedAdminIssue() {
+    return state.issues.find(issue => issue.vol === state.selectedIssueVol) || null;
+}
+
+function renderMetrics() {
+    $('metric-submissions').textContent = state.submissions.filter(item => item.status === 'submitted').length;
+    $('metric-manuscript-review').textContent = state.manuscripts.filter(item => item.status === 'manuscript_review_requested').length;
+    $('metric-available').textContent = state.manuscripts.filter(item => item.status === 'available').length;
+    $('metric-issue-drafts').textContent = state.issueDrafts.filter(item => item.status !== 'published').length;
 }
 
 function renderSubmissionList() {
     const list = $('submission-list');
+    list.innerHTML = '';
+    state.submissions.forEach(submission => {
+        list.appendChild(compactItem({
+            active: selectedSubmissionId() === submission.submissionId,
+            pill: labelFrom(SUBMISSION_STATUS_LABELS, submission.status),
+            title: submission.submitter?.name || submission.submissionId,
+            subtitle: `${submission.submissionId}${submission.submitter?.contact ? ` · ${submission.submitter.contact}` : ''}`,
+            onClick: () => selectSubmission(submission.submissionId)
+        }));
+    });
+    if (!state.submissions.length) list.innerHTML = '<div class="compact-item"><small>暂无投稿</small></div>';
+}
+
+function renderManuscriptList() {
+    const list = $('manuscript-list');
+    list.innerHTML = '';
+    state.manuscripts.forEach(manuscript => {
+        list.appendChild(compactItem({
+            active: selectedManuscriptId() === manuscript.manuscriptId,
+            pill: labelFrom(MANUSCRIPT_STATUS_LABELS, manuscript.status),
+            title: manuscript.title || manuscript.manuscriptId,
+            subtitle: `${manuscript.reviewers?.length ? `审稿人 ${manuscript.reviewers.join(', ')}` : '未审稿'}${manuscript.scheduledIssueDraftId ? ` · ${manuscript.scheduledIssueDraftId}` : ''}`,
+            onClick: () => selectManuscript(manuscript.manuscriptId)
+        }));
+    });
+    if (!state.manuscripts.length) list.innerHTML = '<div class="compact-item"><small>暂无稿件</small></div>';
+}
+
+function renderReviewTaskLists() {
+    const manuscriptList = $('review-manuscript-list');
+    const issueList = $('review-issue-list');
+    if (!manuscriptList || !issueList) return;
+
+    manuscriptList.innerHTML = '';
+    const reviewManuscripts = state.manuscripts.filter(manuscript => manuscript.status === 'manuscript_review_requested');
+    reviewManuscripts.forEach(manuscript => {
+        manuscriptList.appendChild(compactItem({
+            active: selectedManuscriptId() === manuscript.manuscriptId,
+            pill: labelFrom(MANUSCRIPT_STATUS_LABELS, manuscript.status),
+            title: manuscript.title || manuscript.manuscriptId,
+            subtitle: manuscript.assignee || '未分配',
+            onClick: async () => {
+                await selectManuscript(manuscript.manuscriptId);
+                selectView('manuscripts');
+            }
+        }));
+    });
+    if (!reviewManuscripts.length) manuscriptList.innerHTML = '<div class="compact-item"><small>暂无待审稿件</small></div>';
+
+    issueList.innerHTML = '';
+    const reviewIssues = state.issueDrafts.filter(issue => issue.status === 'issue_review_requested');
+    reviewIssues.forEach(issue => {
+        issueList.appendChild(compactItem({
+            active: selectedIssueDraftId() === issue.issueDraftId,
+            pill: labelFrom(ISSUE_STATUS_LABELS, issue.status),
+            title: issue.title || `vol-${issue.vol}`,
+            subtitle: `vol-${issue.vol} · ${(issue.manuscripts || []).length} 篇稿件`,
+            onClick: async () => {
+                state.selectedIssueVol = issue.vol;
+                await selectIssueDraft(issue.issueDraftId);
+                selectView('issues');
+            }
+        }));
+    });
+    if (!reviewIssues.length) issueList.innerHTML = '<div class="compact-item"><small>暂无待审期刊</small></div>';
+}
+
+function renderAdminIssueList() {
+    const list = $('admin-issue-list');
     if (!list) return;
     list.innerHTML = '';
-    const filters = currentSubmissionFilters();
-    const submissions = state.drafts.filter(draft => {
-        if (draft.source !== 'submission') return false;
-        if (filters.status && draft.status !== filters.status) return false;
-        if (filters.submissionStatus && draft.submissionStatus !== filters.submissionStatus) return false;
-        if (filters.assignee && draft.assignee !== filters.assignee) return false;
-        if (filters.q) {
-            const haystack = [
-                draft.draftId,
-                draft.folderName,
-                draft.submitter?.name,
-                draft.submitter?.team,
-                draft.submitter?.contact
-            ].join(' ').toLowerCase();
-            if (!haystack.includes(filters.q.toLowerCase())) return false;
-        }
-        return true;
+    state.issues.forEach(issue => {
+        list.appendChild(compactItem({
+            active: state.selectedIssueVol === issue.vol,
+            pill: labelFrom(ISSUE_MANAGEMENT_STATUS_LABELS, issue.status),
+            title: `vol-${issue.vol}`,
+            subtitle: `${issue.counts.drafts} 个草稿 · ${issue.counts.published} 篇已发布 · ${issue.counts.unpublished} 篇已下线`,
+            onClick: () => selectAdminIssue(issue.vol)
+        }));
     });
-    submissions.forEach(draft => list.appendChild(createDraftItem(draft)));
-    if (submissions.length === 0) {
-        list.innerHTML = '<div class="compact-item"><small>No submissions</small></div>';
-    }
+    if (!state.issues.length) list.innerHTML = '<div class="compact-item"><small>暂无期刊</small></div>';
 }
 
-function renderSelectedDraft() {
-    const detail = state.selectedDraft;
-    const canEdit = state.permissions.canEditDraft && detail?.meta?.status !== 'published';
-    $('draft-target-vol').value = detail?.meta?.targetVol || '';
-    $('draft-folder-name').value = detail?.meta?.folderName || '';
-    $('draft-assignee').value = detail?.meta?.assignee || '';
-    $('draft-editor').value = detail?.indexContent || '';
-    $('draft-editor').disabled = !canEdit;
-    $('draft-target-vol').disabled = !canEdit;
-    $('draft-folder-name').disabled = !canEdit;
-    $('draft-assignee').disabled = !canEdit;
-    $('draft-delete-files').disabled = !canEdit;
-    $('draft-files-input').disabled = !canEdit;
-    renderFileList($('draft-files'), detail?.files || []);
+function renderIssueDraftList() {
+    const list = $('issue-draft-list');
+    list.innerHTML = '';
+    const issueDrafts = state.selectedIssueVol
+        ? state.issueDrafts.filter(issue => issue.vol === state.selectedIssueVol)
+        : state.issueDrafts;
+    issueDrafts.forEach(issue => {
+        list.appendChild(compactItem({
+            active: selectedIssueDraftId() === issue.issueDraftId,
+            pill: labelFrom(ISSUE_STATUS_LABELS, issue.status),
+            title: issue.title || issue.issueDraftId,
+            subtitle: `vol-${issue.vol} · ${(issue.manuscripts || []).length} 篇稿件`,
+            onClick: () => selectIssueDraft(issue.issueDraftId)
+        }));
+    });
+    if (!issueDrafts.length) list.innerHTML = '<div class="compact-item"><small>暂无期刊草稿</small></div>';
+}
 
-    if (detail) {
-        renderPreview($('draft-preview'), detail.indexContent, buildDraftAssetResolver(detail.files));
-    } else {
-        $('draft-preview').innerHTML = '';
-    }
+function manuscriptDefaultFolder(manuscript) {
+    const idSlug = String(manuscript?.manuscriptId || '')
+        .replace(/^\d{14}-/, '')
+        .replace(/[^a-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return idSlug || 'manuscript';
+}
 
-    renderReviewHistory();
+function selectAvailableManuscriptForIssue(manuscript) {
+    state.selectedIssueAvailableManuscriptId = manuscript.manuscriptId || '';
+    $('issue-add-manuscript-id').value = manuscript.manuscriptId || '';
+    $('issue-add-folder').value = manuscriptDefaultFolder(manuscript);
+    renderAllLists();
     syncActionState();
+    setStatus('issue-status', '已选择可加入稿件');
 }
 
-function renderReviewHistory() {
-    const history = state.selectedDraft?.review?.history || [];
-    const container = $('review-history');
+function renderIssueAvailableManuscriptList() {
+    const list = $('issue-available-manuscript-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!selectedIssueDraftId() || state.selectedIssueDraft?.meta?.status === 'published') {
+        list.innerHTML = '<div class="compact-item"><small>先选择可编辑期刊草稿</small></div>';
+        return;
+    }
+    const scheduledIds = new Set((state.selectedIssueDraft?.meta?.manuscripts || []).map(item => item.manuscriptId));
+    const available = state.manuscripts.filter(manuscript => manuscript.status === 'available' && !scheduledIds.has(manuscript.manuscriptId));
+    available.forEach(manuscript => {
+        list.appendChild(compactItem({
+            active: $('issue-add-manuscript-id')?.value === manuscript.manuscriptId,
+            pill: '可加入',
+            title: manuscript.title || manuscript.manuscriptId,
+            subtitle: `${manuscriptDefaultFolder(manuscript)} · ${manuscript.authorIds?.join(', ') || '未标作者'}`,
+            onClick: () => selectAvailableManuscriptForIssue(manuscript)
+        }));
+    });
+    if (!available.length) {
+        list.innerHTML = '<div class="compact-item"><small>暂无可加入稿件</small></div>';
+    }
+}
+
+function renderReviewHistory(container, entries = []) {
     container.innerHTML = '';
-    history.slice().reverse().forEach(entry => {
+    entries.slice().reverse().forEach(entry => {
         const item = document.createElement('div');
         item.className = 'compact-item';
         item.innerHTML = `
-            <strong>${escapeHtml(entry.action)}</strong>
-            <small>${escapeHtml(entry.actor || '-')}${entry.visibility ? ` · ${escapeHtml(entry.visibility)}` : ''}${entry.at ? ` · ${escapeHtml(entry.at)}` : ''}</small>
+            <strong>${escapeHtml(labelFrom(ACTION_LABELS, entry.action))}</strong>
+            <small>${escapeHtml(entry.actor || '-')}${entry.at ? ` · ${escapeHtml(entry.at)}` : ''}</small>
             ${entry.comment ? `<small>${escapeHtml(entry.comment)}</small>` : ''}
         `;
         container.appendChild(item);
     });
+    if (!entries.length) container.innerHTML = '<div class="compact-item"><small>暂无记录</small></div>';
+}
 
-    if (state.selectedDraft?.revisionSummary) {
-        const summary = state.selectedDraft.revisionSummary;
-        const item = document.createElement('div');
-        item.className = 'compact-item';
-        item.innerHTML = `
-            <strong>Revision diff ${escapeHtml(summary.fromRevision)} -> ${escapeHtml(summary.toRevision)}</strong>
-            <small>+${escapeHtml(summary.addedLines)} / -${escapeHtml(summary.removedLines)} lines</small>
-        `;
-        container.prepend(item);
-    }
+function acceptAuthorMode() {
+    return document.querySelector('input[name="accept-author-mode"]:checked')?.value || 'existing';
+}
 
-    if (history.length === 0 && !state.selectedDraft?.revisionSummary) {
-        container.innerHTML = '<div class="compact-item"><small>No review history</small></div>';
+function setAcceptAuthorMode(mode) {
+    const input = document.querySelector(`input[name="accept-author-mode"][value="${mode}"]`);
+    if (input) input.checked = true;
+    syncAcceptAuthorMode();
+}
+
+function syncAcceptAuthorMode({ clearHidden = false } = {}) {
+    const mode = acceptAuthorMode();
+    $('accept-existing-panel').classList.toggle('hidden', mode !== 'existing');
+    $('accept-new-panel').classList.toggle('hidden', mode !== 'create');
+    if (!clearHidden) return;
+    if (mode === 'existing') {
+        $('accept-new-id').value = '';
+        $('accept-new-name').value = '';
+        $('accept-new-team').value = '';
+        $('accept-new-role').value = '';
+    } else {
+        $('accept-existing-author').value = '';
     }
 }
 
+function renderAcceptAuthorOptions() {
+    const options = $('accept-author-options');
+    if (!options) return;
+    const authors = state.authorPanel?.getAuthors?.() || [];
+    options.innerHTML = authors.map(author => `
+        <option value="${escapeHtml(author.id)}">${escapeHtml(author.name || author.id)}</option>
+    `).join('');
+}
+
+function clearAcceptAuthorFields() {
+    $('accept-existing-author').value = '';
+    $('accept-new-id').value = '';
+    $('accept-new-name').value = '';
+    $('accept-new-team').value = '';
+    $('accept-new-role').value = '';
+}
+
+function renderSubmissionSummary(detail) {
+    const submitter = detail?.meta?.submitter || {};
+    const chips = detail ? [
+        ['状态', labelFrom(SUBMISSION_STATUS_LABELS, detail.meta?.status)],
+        ['投稿者', submitter.name || '-'],
+        ['团队', submitter.team || '-'],
+        ['版本', `第 ${detail.meta?.revision || 1} 版`]
+    ] : [];
+    $('submission-summary').innerHTML = chips.map(([label, value]) => `
+        <div class="summary-chip">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+        </div>
+    `).join('');
+}
+
+function prefillAcceptAuthorFields(detail) {
+    clearAcceptAuthorFields();
+    if (!detail) {
+        setAcceptAuthorMode('existing');
+        return;
+    }
+    const submitter = detail.meta?.submitter || {};
+    if (submitter.authorId) {
+        $('accept-existing-author').value = submitter.authorId;
+        setAcceptAuthorMode('existing');
+        return;
+    }
+    $('accept-new-name').value = submitter.name || '';
+    $('accept-new-team').value = submitter.team || '';
+    $('accept-new-role').value = submitter.role || '';
+    setAcceptAuthorMode('create');
+}
+
+function renderSubmissionDetail() {
+    const detail = state.selectedSubmission;
+    $('submission-preview').innerHTML = '';
+    $('submission-files').innerHTML = '';
+    $('issued-status-link').textContent = '';
+    renderSubmissionSummary(detail);
+    if (!detail) {
+        clearAcceptAuthorFields();
+        syncActionState();
+        return;
+    }
+    prefillAcceptAuthorFields(detail);
+    renderAcceptAuthorOptions();
+    renderPreview($('submission-preview'), detail.indexContent || '', buildDraftAssetResolver(detail.files || []));
+    renderFileList($('submission-files'), detail.files || []);
+    syncActionState();
+}
+
+function renderManuscriptDetail() {
+    const detail = state.selectedManuscript;
+    $('manuscript-editor').value = detail?.indexContent || '';
+    $('manuscript-assignee').value = detail?.meta?.assignee || '';
+    $('manuscript-preview').innerHTML = '';
+    if (detail) {
+        renderPreview($('manuscript-preview'), detail.indexContent || '', buildDraftAssetResolver(detail.files || []));
+    }
+    renderFileList($('manuscript-files'), detail?.files || []);
+    renderReviewHistory($('manuscript-review-history'), detail?.review?.history || []);
+    syncActionState();
+}
+
+function renderIssueDraftDetail() {
+    const issue = state.selectedIssueDraft;
+    $('issue-vol').value = issue?.meta?.vol || '';
+    $('issue-title').value = issue?.meta?.title || '';
+    $('issue-radar').value = issue?.meta?.radarContent || '';
+    renderReviewHistory($('issue-review-history'), issue?.review?.history || []);
+    renderIssueManuscriptList(issue?.meta?.manuscripts || []);
+    syncActionState();
+}
+
+function renderIssueManuscriptList(items = []) {
+    const list = $('issue-manuscript-list');
+    list.innerHTML = '';
+    items.sort((a, b) => (a.order || 0) - (b.order || 0)).forEach(item => {
+        const manuscript = state.manuscripts.find(candidate => candidate.manuscriptId === item.manuscriptId);
+        list.appendChild(compactItem({
+            active: state.selectedIssueManuscriptId === item.manuscriptId,
+            pill: item.folderName,
+            title: manuscript?.title || item.manuscriptId,
+            subtitle: `${item.manuscriptId} · order ${item.order || 0}`,
+            onClick: () => {
+                state.selectedIssueManuscriptId = item.manuscriptId;
+                renderIssueManuscriptList(items);
+            }
+        }));
+    });
+    if (!items.length) list.innerHTML = '<div class="compact-item"><small>暂无入选稿件</small></div>';
+}
+
+function renderAllLists() {
+    renderMetrics();
+    renderSubmissionList();
+    renderManuscriptList();
+    renderReviewTaskLists();
+    renderAdminIssueList();
+    renderIssueDraftList();
+    renderIssueAvailableManuscriptList();
+    renderPublishedList();
+    renderUnpublishedList();
+}
+
 function syncActionState() {
-    const status = state.selectedDraft?.meta?.status;
-    const hasDraft = Boolean(state.selectedDraft);
-    $('save-draft-button').disabled = !hasDraft || !state.permissions.canEditDraft || status === 'published';
-    $('request-review-button').disabled = !hasDraft || !state.permissions.canRequestReview || !['editing', 'changes_requested'].includes(status);
-    $('approve-button').disabled = !hasDraft || !state.permissions.canReview || status !== 'review_requested';
-    $('changes-button').disabled = !hasDraft || !state.permissions.canReview || status !== 'review_requested';
-    $('publish-button').disabled = !hasDraft || !state.permissions.canPublish || status !== 'approved';
-    $('delete-draft-button').disabled = !hasDraft || !state.permissions.canDeleteDraft || status === 'published';
-    $('accept-submission-button').disabled = !hasDraft || !state.permissions.canEditDraft || state.selectedDraft?.meta?.source !== 'submission' || !['editing', 'rejected'].includes(status);
-    $('reject-submission-button').disabled = !hasDraft || !state.permissions.canRejectDraft || status === 'published';
-    $('assign-submission-button').disabled = !hasDraft || !state.permissions.canAssignDraft;
-    $('issue-status-link-button').disabled = !hasDraft || !state.permissions.canIssueStatusLink || state.selectedDraft?.meta?.source !== 'submission';
-    $('publish-check-button').disabled = !hasDraft || !state.permissions.canPublish;
+    const submissionStatus = state.selectedSubmission?.meta?.status;
+    const manuscriptStatus = state.selectedManuscript?.meta?.status;
+    const issueStatus = state.selectedIssueDraft?.meta?.status;
+    $('accept-submission-button').disabled = !selectedSubmissionId() || !state.permissions.canEditDraft || !['submitted', 'in_editor_review', 'changes_requested'].includes(submissionStatus);
+    $('return-submission-button').disabled = !selectedSubmissionId() || !state.permissions.canEditDraft || !['submitted', 'in_editor_review'].includes(submissionStatus);
+    $('reject-submission-button').disabled = !selectedSubmissionId() || !state.permissions.canRejectDraft || ['accepted', 'published'].includes(submissionStatus);
+    $('issue-status-link-button').disabled = !selectedSubmissionId() || !state.permissions.canIssueStatusLink;
+    $('save-manuscript-button').disabled = !selectedManuscriptId() || !state.permissions.canEditDraft || ['scheduled', 'published'].includes(manuscriptStatus);
+    $('approve-manuscript-button').disabled = !selectedManuscriptId() || !state.permissions.canReviewManuscript || !['drafting', 'manuscript_review_requested', 'changes_requested'].includes(manuscriptStatus);
+    $('changes-manuscript-button').disabled = !selectedManuscriptId() || !state.permissions.canReviewManuscript || !['drafting', 'manuscript_review_requested'].includes(manuscriptStatus);
+    $('create-issue-draft-button').disabled = !state.permissions.canManageIssueDrafts;
+    $('save-issue-draft-button').disabled = !selectedIssueDraftId() || !state.permissions.canManageIssueDrafts || issueStatus === 'published';
+    $('add-manuscript-to-issue-button').disabled = !selectedIssueDraftId() || !state.permissions.canManageIssueDrafts || issueStatus === 'published';
+    $('remove-manuscript-from-issue-button').disabled = !selectedIssueDraftId() || !state.selectedIssueManuscriptId || !state.permissions.canManageIssueDrafts || issueStatus === 'published';
+    $('request-issue-review-button').disabled = !selectedIssueDraftId() || !state.permissions.canManageIssueDrafts || !['editing', 'changes_requested'].includes(issueStatus);
+    $('approve-issue-button').disabled = !selectedIssueDraftId() || !state.permissions.canReviewIssueDraft || issueStatus !== 'issue_review_requested';
+    $('changes-issue-button').disabled = !selectedIssueDraftId() || !state.permissions.canReviewIssueDraft || issueStatus !== 'issue_review_requested';
+    $('publish-issue-button').disabled = !selectedIssueDraftId() || !state.permissions.canPublish || issueStatus !== 'approved';
     $('rollback-button').disabled = !state.selectedPublished || !state.selectedPublishedSnapshotId || !state.permissions.canRollbackPublished;
     $('restore-button').disabled = !state.selectedUnpublished || !state.permissions.canUnpublish;
     $('unpublish-button').disabled = !state.selectedPublished || !state.permissions.canUnpublish;
     $('save-published-button').disabled = !state.selectedPublished || !state.permissions.canEditPublished;
 }
 
-async function refreshDrafts() {
-    const data = await listDrafts();
-    state.drafts = data.drafts || [];
-    renderDraftList();
+async function refreshWorkbench() {
+    const [submissions, manuscripts, issueDrafts, issues] = await Promise.all([
+        listSubmissions(),
+        listManuscripts(),
+        listIssueDrafts(),
+        listIssues()
+    ]);
+    state.submissions = submissions.submissions || [];
+    state.manuscripts = manuscripts.manuscripts || [];
+    state.issueDrafts = issueDrafts.issueDrafts || [];
+    state.issues = issues.issues || [];
+    state.published = state.issues.flatMap(issue => issue.publishedArticles || []);
+    state.unpublished = state.issues.flatMap(issue => issue.unpublishedArticles || []);
+    if (state.selectedIssueVol && !state.issues.some(issue => issue.vol === state.selectedIssueVol)) {
+        state.selectedIssueVol = '';
+    }
+    renderAllLists();
     syncActionState();
 }
 
-function currentSubmissionFilters() {
-    return {
-        status: $('queue-status-filter')?.value.trim() || '',
-        submissionStatus: $('queue-submission-status-filter')?.value.trim() || '',
-        assignee: $('queue-assignee-filter')?.value.trim() || '',
-        q: $('queue-search-filter')?.value.trim() || ''
-    };
+async function selectSubmission(submissionId) {
+    state.selectedSubmission = await getSubmission(submissionId);
+    renderAllLists();
+    renderSubmissionDetail();
 }
 
-async function selectDraft(draftId) {
-    state.selectedDraft = await getDraft(draftId);
-    renderDraftList();
-    renderSelectedDraft();
+async function selectManuscript(manuscriptId) {
+    state.selectedManuscript = await getManuscript(manuscriptId);
+    renderAllLists();
+    renderManuscriptDetail();
 }
 
-function selectView(viewName) {
-    document.querySelectorAll('.view').forEach(view => {
-        view.classList.toggle('active', view.id === `view-${viewName}`);
-    });
-    document.querySelectorAll('.admin-nav button').forEach(button => {
-        button.classList.toggle('active', button.dataset.view === viewName);
-    });
+async function selectIssueDraft(issueDraftId) {
+    state.selectedIssueDraft = await getIssueDraft(issueDraftId);
+    state.selectedIssueVol = state.selectedIssueDraft?.meta?.vol || state.selectedIssueVol;
+    state.selectedIssueManuscriptId = '';
+    state.selectedIssueAvailableManuscriptId = '';
+    $('issue-add-manuscript-id').value = '';
+    $('issue-add-folder').value = '';
+    renderAllLists();
+    renderIssueDraftDetail();
+}
 
-    const titles = {
-        dashboard: ['Dashboard', 'Content operations workspace'],
-        submissions: ['Submissions', 'Submitter queue and status'],
-        drafts: ['Drafts', 'Import, edit and preview submissions'],
-        review: ['Review', 'Technical review queue'],
-        publish: ['Publish', 'Approved draft promotion'],
-        authors: ['Authors', 'Official author library'],
-        published: ['Published', 'Live content governance'],
-        volumes: ['Volumes', 'Published volume metadata'],
-        users: ['Users', 'Admin operator access'],
-        audit: ['Audit', 'Operational event log'],
-        lint: ['Checks', 'Content contract validation']
-    };
-    const [title, subtitle] = titles[viewName] || titles.dashboard;
-    $('view-title').textContent = title;
-    $('view-subtitle').textContent = subtitle;
-
-    if (viewName === 'authors') {
-        state.authorPanel?.refreshAuthors().catch(error => setStatus('author-status', error.message, 'error'));
+function selectAdminIssue(vol) {
+    state.selectedIssueVol = vol;
+    const issue = selectedAdminIssue();
+    $('volume-id').value = issue?.vol || '';
+    $('volume-radar').value = issue?.radarContent || '';
+    if (!state.selectedIssueDraft || state.selectedIssueDraft.meta?.vol !== vol) {
+        state.selectedIssueDraft = null;
+        state.selectedIssueManuscriptId = '';
+        state.selectedIssueAvailableManuscriptId = '';
+        renderIssueDraftDetail();
     }
-    if (viewName === 'volumes') {
-        refreshVolumes().catch(error => setStatus('volume-status', error.message, 'error'));
-    }
-    if (viewName === 'users') {
-        refreshAdminUsers().catch(error => setStatus('user-status', error.message, 'error'));
-    }
-    if (viewName === 'published') {
-        refreshPublished().catch(error => setStatus('published-status', error.message, 'error'));
-    }
-    if (viewName === 'audit') {
-        refreshAuditLog().catch(error => {});
-    }
+    $('issue-vol').value = issue?.vol || '';
+    $('issue-title').value = issue?.title || '';
+    $('issue-radar').value = issue?.radarContent || '';
+    state.selectedPublished = null;
+    state.selectedUnpublished = null;
+    state.selectedPublishedSnapshotId = '';
+    $('published-editor').value = '';
+    $('published-files').innerHTML = '';
+    $('published-history-list').innerHTML = '';
+    renderAllLists();
+    syncActionState();
 }
 
-function bindNavigation() {
-    document.querySelectorAll('.admin-nav button').forEach(button => {
-        button.addEventListener('click', () => selectView(button.dataset.view));
-    });
-    $('refresh-button').addEventListener('click', async () => {
-        await refreshDrafts();
-        if (selectedDraftId()) await selectDraft(selectedDraftId());
-        await state.authorPanel?.refreshAuthors();
-        await refreshVolumes();
-        await refreshAdminUsers();
-        await refreshPublished();
-        await refreshAuditLog();
-    });
-}
-
-function bindImportFlow() {
-    $('import-files').addEventListener('change', () => {
-        state.selectedImportFiles = normalizeFileSelection($('import-files').files);
-        renderFileList($('import-file-list'), state.selectedImportFiles);
-        setStatus('import-status', `${state.selectedImportFiles.length} files selected`);
-    });
-
-    $('import-preview-button').addEventListener('click', async () => {
-        const indexContent = await readSelectedIndexContent();
-        if (!indexContent) {
-            setStatus('import-status', 'index.md is required', 'error');
-            return;
-        }
-        renderPreview($('draft-preview'), indexContent, buildLocalAssetResolver(state.selectedImportFiles));
-        $('draft-editor').value = indexContent;
-        setStatus('import-status', 'Preview refreshed', 'ok');
-    });
-
-    $('import-submit-button').addEventListener('click', async () => {
-        try {
-            const files = await Promise.all(state.selectedImportFiles.map(toAdminFilePayload));
-            const detail = await importDraft({
-                targetVol: $('import-vol').value.trim(),
-                folderName: $('import-folder').value.trim(),
-                files
-            });
-            setStatus('import-status', `Saved ${detail.meta.draftId}`, 'ok');
-            await refreshDrafts();
-            state.selectedDraft = detail;
-            renderSelectedDraft();
-            renderDraftList();
-        } catch (error) {
-            setStatus('import-status', error.message, 'error');
-        }
-    });
-}
-
-function bindDraftEditor() {
-    $('draft-files-input').addEventListener('change', () => {
-        state.selectedDraftFiles = normalizeFileSelection($('draft-files-input').files);
-        setStatus('import-status', `${state.selectedDraftFiles.length} draft resource files selected`);
-    });
-
-    $('draft-editor').addEventListener('input', () => {
-        clearTimeout(state.previewTimer);
-        state.previewTimer = setTimeout(() => {
-            renderPreview(
-                $('draft-preview'),
-                $('draft-editor').value,
-                buildDraftAssetResolver(state.selectedDraft?.files || [])
-            );
-        }, 160);
-    });
-
-    $('save-draft-button').addEventListener('click', async () => {
-        try {
-            if (!selectedDraftId()) return;
-            const files = await Promise.all(state.selectedDraftFiles.map(toAdminFilePayload));
-            state.selectedDraft = await updateDraft(selectedDraftId(), {
-                indexContent: $('draft-editor').value,
-                targetVol: $('draft-target-vol').value.trim(),
-                folderName: $('draft-folder-name').value.trim(),
-                assignee: $('draft-assignee').value.trim(),
-                files,
-                deleteFiles: parsePathList($('draft-delete-files').value)
-            });
-            state.selectedDraftFiles = [];
-            $('draft-files-input').value = '';
-            $('draft-delete-files').value = '';
-            setStatus('import-status', `Saved ${selectedDraftId()}`, 'ok');
-            await refreshDrafts();
-            renderSelectedDraft();
-        } catch (error) {
-            setStatus('import-status', error.message, 'error');
-        }
-    });
-
-    $('request-review-button').addEventListener('click', async () => {
-        try {
-            if (!selectedDraftId()) return;
-            state.selectedDraft = await requestReview(selectedDraftId());
-            await refreshDrafts();
-            renderSelectedDraft();
-        } catch (error) {
-            setStatus('import-status', error.message, 'error');
-        }
-    });
-
-    $('delete-draft-button').addEventListener('click', async () => {
-        try {
-            if (!selectedDraftId()) return;
-            await deleteDraft(selectedDraftId());
-            state.selectedDraft = null;
-            await refreshDrafts();
-            renderSelectedDraft();
-            setStatus('import-status', 'Draft deleted', 'ok');
-        } catch (error) {
-            setStatus('import-status', error.message, 'error');
-        }
-    });
-}
-
-function bindSubmissionFlow() {
-    ['queue-status-filter', 'queue-submission-status-filter', 'queue-assignee-filter', 'queue-search-filter'].forEach(id => {
-        $(id).addEventListener('input', renderSubmissionList);
-    });
-
-    $('accept-submission-button').addEventListener('click', async () => {
-        try {
-            if (!selectedDraftId()) return;
-            state.selectedDraft = await acceptDraft(
-                selectedDraftId(),
-                $('submission-action-comment').value.trim(),
-                $('submission-comment-visibility').value
-            );
-            $('submission-action-comment').value = '';
-            await refreshDrafts();
-            renderSelectedDraft();
-            setStatus('submission-action-status', 'Submission accepted', 'ok');
-        } catch (error) {
-            setStatus('submission-action-status', error.message, 'error');
-        }
-    });
-
-    $('reject-submission-button').addEventListener('click', async () => {
-        try {
-            if (!selectedDraftId()) return;
-            state.selectedDraft = await rejectDraft(
-                selectedDraftId(),
-                $('submission-action-comment').value.trim(),
-                $('submission-comment-visibility').value
-            );
-            $('submission-action-comment').value = '';
-            await refreshDrafts();
-            renderSelectedDraft();
-            setStatus('submission-action-status', 'Submission rejected', 'ok');
-        } catch (error) {
-            setStatus('submission-action-status', error.message, 'error');
-        }
-    });
-
-    $('assign-submission-button').addEventListener('click', async () => {
-        try {
-            if (!selectedDraftId()) return;
-            state.selectedDraft = await assignDraft(selectedDraftId(), $('submission-assignee').value.trim());
-            await refreshDrafts();
-            renderSelectedDraft();
-            setStatus('submission-action-status', 'Assignee updated', 'ok');
-        } catch (error) {
-            setStatus('submission-action-status', error.message, 'error');
-        }
-    });
-
-    $('issue-status-link-button').addEventListener('click', async () => {
-        try {
-            if (!selectedDraftId()) return;
-            const result = await issueStatusLink(selectedDraftId());
-            $('issued-status-link').textContent = new URL(result.statusUrl, window.location.origin).toString();
-            setStatus('submission-action-status', 'Status link issued', 'ok');
-        } catch (error) {
-            setStatus('submission-action-status', error.message, 'error');
-        }
-    });
-}
-
-function bindReviewFlow() {
-    async function submit(action) {
-        try {
-            if (!selectedDraftId()) return;
-            state.selectedDraft = await reviewDraft(
-                selectedDraftId(),
-                action,
-                $('review-comment').value.trim(),
-                $('review-comment-visibility').value
-            );
-            $('review-comment').value = '';
-            await refreshDrafts();
-            renderSelectedDraft();
-        } catch (error) {
-            setStatus('publish-status', error.message, 'error');
-        }
-    }
-
-    $('approve-button').addEventListener('click', () => submit('approve'));
-    $('changes-button').addEventListener('click', () => submit('request_changes'));
-}
-
-function buildAuthorResolution() {
-    const metadata = parseFrontmatter($('draft-editor').value || state.selectedDraft?.indexContent || '').metadata;
-    if (!metadata.author) return null;
-
-    const existing = $('publish-existing-author').value.trim();
-    const newId = $('publish-new-id').value.trim();
-    const newName = $('publish-new-name').value.trim();
-
-    if (existing && (newId || newName)) {
-        throw new Error('Choose one author resolution mode');
-    }
-
-    if (existing) {
+function buildAcceptAuthorResolution() {
+    if (acceptAuthorMode() === 'existing') {
+        const existing = $('accept-existing-author').value.trim();
+        if (!existing) throw new Error('请选择或输入已有作者 ID');
         return { mode: 'existing', authorId: existing };
     }
 
+    const newId = $('accept-new-id').value.trim();
+    const newName = $('accept-new-name').value.trim();
+    if (!newId || !newName) {
+        throw new Error('请填写新作者 ID 和姓名');
+    }
     return {
         mode: 'create',
         author: {
             id: newId,
-            name: newName || metadata.author.name,
-            team: $('publish-new-team').value.trim() || metadata.author.team || '',
-            role: $('publish-new-role').value.trim() || metadata.author.role || '',
-            avatar: metadata.author.avatar || ''
+            name: newName,
+            team: $('accept-new-team').value.trim(),
+            role: $('accept-new-role').value.trim(),
+            avatar: ''
         }
     };
 }
 
-function renderPublishCheck(result) {
-    const container = $('publish-checks');
-    container.innerHTML = (result.checks || []).map(check => `
-        <div class="compact-item">
-            <strong>${check.ok ? 'OK' : 'BLOCKED'} · ${escapeHtml(check.id)}</strong>
-            <small>${escapeHtml(check.message)}</small>
-            ${check.details !== undefined ? `<small>${escapeHtml(Array.isArray(check.details) ? check.details.join(', ') : check.details)}</small>` : ''}
-        </div>
-    `).join('');
-}
-
-function bindPublishFlow() {
-    $('publish-check-button').addEventListener('click', async () => {
-        try {
-            if (!selectedDraftId()) return;
-            const result = await checkPublish(selectedDraftId(), buildAuthorResolution());
-            renderPublishCheck(result);
-            setStatus('publish-status', result.ok ? `Ready to publish ${result.articleId}` : 'Publish check blocked', result.ok ? 'ok' : 'error');
-        } catch (error) {
-            setStatus('publish-status', error.message, 'error');
+function bindSubmissionFlow() {
+    document.querySelectorAll('input[name="accept-author-mode"]').forEach(input => {
+        input.addEventListener('change', () => syncAcceptAuthorMode({ clearHidden: true }));
+    });
+    $('accept-existing-author').addEventListener('input', () => {
+        const author = (state.authorPanel?.getAuthors?.() || []).find(item => item.id === $('accept-existing-author').value.trim());
+        if (author) {
+            setStatus('submission-action-status', `${author.name || author.id} · ${author.team || author.id}`);
         }
     });
-
-    $('publish-button').addEventListener('click', async () => {
+    $('accept-new-name').addEventListener('input', () => {
+        if (!$('accept-new-id').value.trim()) {
+            $('accept-new-id').value = 'new_author';
+        }
+    });
+    $('accept-submission-button').addEventListener('click', async () => {
         try {
-            if (!selectedDraftId()) return;
-            const avatarFile = await fileToBase64Payload($('author-avatar').files[0]);
-            const authorResolution = buildAuthorResolution();
-            if (authorResolution?.mode === 'create' && avatarFile) {
-                authorResolution.avatarFile = avatarFile;
-            }
-            const check = await checkPublish(selectedDraftId(), authorResolution);
-            renderPublishCheck(check);
-            if (!check.ok) {
-                setStatus('publish-status', 'Publish check blocked', 'error');
+            if (!selectedSubmissionId()) return;
+            const result = await acceptSubmission(selectedSubmissionId(), buildAcceptAuthorResolution());
+            state.selectedManuscript = result;
+            setStatus('submission-action-status', '已接收入稿件池', 'ok');
+            await refreshWorkbench();
+            await state.authorPanel?.refreshAuthors();
+            renderAcceptAuthorOptions();
+            await selectSubmission(selectedSubmissionId());
+            renderManuscriptDetail();
+        } catch (error) {
+            setStatus('submission-action-status', error.message, 'error');
+        }
+    });
+    $('return-submission-button').addEventListener('click', async () => {
+        try {
+            if (!selectedSubmissionId()) return;
+            state.selectedSubmission = await requestSubmissionChanges(
+                selectedSubmissionId(),
+                $('submission-action-comment').value.trim(),
+                'internal'
+            );
+            setStatus('submission-action-status', '已退回投稿者返修', 'ok');
+            await refreshWorkbench();
+            renderSubmissionDetail();
+        } catch (error) {
+            setStatus('submission-action-status', error.message, 'error');
+        }
+    });
+    $('reject-submission-button').addEventListener('click', async () => {
+        try {
+            if (!selectedSubmissionId()) return;
+            state.selectedSubmission = await rejectSubmission(
+                selectedSubmissionId(),
+                $('submission-action-comment').value.trim(),
+                'internal'
+            );
+            setStatus('submission-action-status', '投稿已拒绝', 'ok');
+            await refreshWorkbench();
+            renderSubmissionDetail();
+        } catch (error) {
+            setStatus('submission-action-status', error.message, 'error');
+        }
+    });
+    $('issue-status-link-button').addEventListener('click', async () => {
+        try {
+            if (!selectedSubmissionId()) return;
+            const result = await issueSubmissionStatusLink(selectedSubmissionId());
+            $('issued-status-link').textContent = new URL(result.statusUrl, window.location.origin).toString();
+            setStatus('submission-action-status', '状态链接已补发', 'ok');
+        } catch (error) {
+            setStatus('submission-action-status', error.message, 'error');
+        }
+    });
+}
+
+function bindManuscriptFlow() {
+    $('manuscript-files-input').addEventListener('change', () => {
+        state.selectedManuscriptFiles = normalizeFileSelection($('manuscript-files-input').files);
+        setStatus('manuscript-status', `已选择 ${state.selectedManuscriptFiles.length} 个资源文件`);
+    });
+    $('manuscript-editor').addEventListener('input', () => {
+        clearTimeout(state.previewTimer);
+        state.previewTimer = setTimeout(() => {
+            renderPreview($('manuscript-preview'), $('manuscript-editor').value, buildDraftAssetResolver(state.selectedManuscript?.files || []));
+        }, 160);
+    });
+    $('save-manuscript-button').addEventListener('click', async () => {
+        try {
+            if (!selectedManuscriptId()) return;
+            const files = await Promise.all(state.selectedManuscriptFiles.map(toAdminFilePayload));
+            state.selectedManuscript = await updateManuscript(selectedManuscriptId(), {
+                indexContent: $('manuscript-editor').value,
+                assignee: $('manuscript-assignee').value.trim(),
+                files,
+                deleteFiles: parsePathList($('manuscript-delete-files').value)
+            });
+            state.selectedManuscriptFiles = [];
+            $('manuscript-files-input').value = '';
+            $('manuscript-delete-files').value = '';
+            setStatus('manuscript-status', '稿件已保存', 'ok');
+            await refreshWorkbench();
+            renderManuscriptDetail();
+        } catch (error) {
+            setStatus('manuscript-status', error.message, 'error');
+        }
+    });
+    async function submitReview(action) {
+        try {
+            if (!selectedManuscriptId()) return;
+            state.selectedManuscript = await reviewManuscript(
+                selectedManuscriptId(),
+                action,
+                $('manuscript-review-comment').value.trim(),
+                'internal'
+            );
+            $('manuscript-review-comment').value = '';
+            setStatus('manuscript-status', action === 'approve' ? '稿件已通过' : '稿件已退回', 'ok');
+            await refreshWorkbench();
+            renderManuscriptDetail();
+        } catch (error) {
+            setStatus('manuscript-status', error.message, 'error');
+        }
+    }
+    $('approve-manuscript-button').addEventListener('click', () => submitReview('approve'));
+    $('changes-manuscript-button').addEventListener('click', () => submitReview('request_changes'));
+}
+
+function bindIssueDraftFlow() {
+    $('create-issue-draft-button').addEventListener('click', async () => {
+        try {
+            const result = await createIssueDraft({
+                vol: $('issue-vol').value.trim(),
+                title: $('issue-title').value.trim(),
+                radarContent: $('issue-radar').value
+            });
+            state.selectedIssueDraft = result;
+            setStatus('issue-status', '期刊草稿已创建', 'ok');
+            await refreshWorkbench();
+            renderIssueDraftDetail();
+        } catch (error) {
+            setStatus('issue-status', error.message, 'error');
+        }
+    });
+    $('save-issue-draft-button').addEventListener('click', async () => {
+        try {
+            if (!selectedIssueDraftId()) return;
+            state.selectedIssueDraft = await updateIssueDraft(selectedIssueDraftId(), {
+                vol: $('issue-vol').value.trim(),
+                title: $('issue-title').value.trim(),
+                radarContent: $('issue-radar').value,
+                manuscripts: state.selectedIssueDraft.meta.manuscripts || []
+            });
+            setStatus('issue-status', '期刊草稿已保存', 'ok');
+            await refreshWorkbench();
+            renderIssueDraftDetail();
+        } catch (error) {
+            setStatus('issue-status', error.message, 'error');
+        }
+    });
+    $('add-manuscript-to-issue-button').addEventListener('click', async () => {
+        try {
+            if (!selectedIssueDraftId()) return;
+            const manuscriptId = $('issue-add-manuscript-id').value.trim();
+            if (!manuscriptId) {
+                setStatus('issue-status', '请选择可加入稿件', 'error');
                 return;
             }
-            const result = await publishDraft(selectedDraftId(), authorResolution);
-            setStatus('publish-status', `Published ${result.articleId}`, 'ok');
-            await refreshDrafts();
-            await selectDraft(selectedDraftId());
+            state.selectedIssueDraft = await addIssueDraftManuscript(selectedIssueDraftId(), manuscriptId, $('issue-add-folder').value.trim());
+            setStatus('issue-status', '稿件已加入期刊草稿', 'ok');
+            await refreshWorkbench();
+            state.selectedIssueAvailableManuscriptId = '';
+            $('issue-add-manuscript-id').value = '';
+            $('issue-add-folder').value = '';
+            renderIssueDraftDetail();
         } catch (error) {
-            setStatus('publish-status', error.message, 'error');
+            setStatus('issue-status', error.message, 'error');
         }
+    });
+    $('remove-manuscript-from-issue-button').addEventListener('click', async () => {
+        try {
+            if (!selectedIssueDraftId() || !state.selectedIssueManuscriptId) return;
+            state.selectedIssueDraft = await removeIssueDraftManuscript(selectedIssueDraftId(), state.selectedIssueManuscriptId);
+            state.selectedIssueManuscriptId = '';
+            setStatus('issue-status', '稿件已移出期刊草稿', 'ok');
+            await refreshWorkbench();
+            renderIssueDraftDetail();
+        } catch (error) {
+            setStatus('issue-status', error.message, 'error');
+        }
+    });
+    async function submitIssueReview(action) {
+        try {
+            if (!selectedIssueDraftId()) return;
+            state.selectedIssueDraft = await reviewIssueDraft(
+                selectedIssueDraftId(),
+                action,
+                $('issue-review-comment').value.trim(),
+                'internal'
+            );
+            $('issue-review-comment').value = '';
+            setStatus('issue-status', '期刊草稿状态已更新', 'ok');
+            await refreshWorkbench();
+            renderIssueDraftDetail();
+        } catch (error) {
+            setStatus('issue-status', error.message, 'error');
+        }
+    }
+    $('request-issue-review-button').addEventListener('click', () => submitIssueReview('request_review'));
+    $('approve-issue-button').addEventListener('click', () => submitIssueReview('approve'));
+    $('changes-issue-button').addEventListener('click', () => submitIssueReview('request_changes'));
+    $('preview-issue-button').addEventListener('click', async () => {
+        try {
+            if (!selectedIssueDraftId()) return;
+            const url = `/admin/issue-drafts/${encodeURIComponent(selectedIssueDraftId())}/preview-page`;
+            window.open(url, '_blank', 'noopener');
+            $('issue-preview').innerHTML = '<p>已打开整期读者页预览</p>';
+        } catch (error) {
+            setStatus('issue-status', error.message, 'error');
+        }
+    });
+    $('publish-issue-button').addEventListener('click', async () => {
+        try {
+            if (!selectedIssueDraftId()) return;
+            const result = await publishIssueDraft(selectedIssueDraftId());
+            setStatus('issue-status', `已发布 ${result.articleIds.join(', ')}`, 'ok');
+            await refreshWorkbench();
+            await selectIssueDraft(selectedIssueDraftId());
+        } catch (error) {
+            setStatus('issue-status', error.message, 'error');
+        }
+    });
+}
+
+function selectView(viewName) {
+    const requested = document.querySelector(`.admin-nav button[data-view="${viewName}"]`);
+    const fallback = Array.from(document.querySelectorAll('.admin-nav button')).find(button => !button.disabled && !button.hidden);
+    const activeView = requested && !requested.disabled && !requested.hidden
+        ? viewName
+        : (fallback?.dataset.view || 'manuscripts');
+    document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === `view-${activeView}`));
+    document.querySelectorAll('.admin-nav button').forEach(button => button.classList.toggle('active', button.dataset.view === activeView));
+    const [title, subtitle] = VIEW_TITLES[activeView] || VIEW_TITLES.submissions;
+    $('view-title').textContent = title;
+    $('view-subtitle').textContent = subtitle;
+}
+
+function bindNavigation() {
+    document.querySelectorAll('.admin-nav button').forEach(button => button.addEventListener('click', () => selectView(button.dataset.view)));
+    $('refresh-button').addEventListener('click', async () => {
+        await refreshWorkbench();
+        await state.authorPanel?.refreshAuthors();
+        await refreshVolumes();
+        await refreshAdminUsers();
+        await refreshAuditLog();
     });
 }
 
 function bindLintFlow() {
     $('run-lint-button').addEventListener('click', async () => {
-        $('lint-output').textContent = 'Running...\n';
+        $('lint-output').textContent = '检查中...\n';
         try {
             const result = await runLint();
-            const issueLines = (result.issues || []).map(issue => `${issue.severity}: ${issue.message}`).join('\n');
             $('lint-output').textContent = [
-                `${result.ok ? 'OK' : 'FAILED'} · ${result.summary?.errorCount || 0} errors · ${result.summary?.warningCount || 0} warnings`,
-                issueLines,
+                `${result.ok ? '通过' : '失败'} · ${result.summary?.errorCount || 0} 个错误 · ${result.summary?.warningCount || 0} 个警告`,
+                ...(result.issues || []).map(issue => `${issue.severity}: ${issue.message}`),
                 result.stdout || '',
                 result.stderr || ''
             ].filter(Boolean).join('\n\n');
@@ -688,58 +944,49 @@ function bindLintFlow() {
 function renderPublishedList() {
     const list = $('published-list');
     list.innerHTML = '';
-    state.published.forEach(article => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = `compact-item${state.selectedPublished?.articleId === article.articleId ? ' active' : ''}`;
-        item.innerHTML = `
-            <strong>${escapeHtml(article.title || article.articleId)}</strong>
-            <small>${escapeHtml(article.articleId)}${article.description ? ` · ${escapeHtml(article.description)}` : ''}</small>
-        `;
-        item.addEventListener('click', async () => {
-            state.selectedPublished = await getPublished(article.articleId);
-            $('published-editor').value = state.selectedPublished.indexContent || '';
-            renderFileList($('published-files'), state.selectedPublished.files || []);
-            await refreshPublishedHistory();
-            renderPublishedList();
-            syncActionState();
-        });
-        list.appendChild(item);
+    const issue = selectedAdminIssue();
+    const articles = issue ? (issue.publishedArticles || []) : state.published;
+    articles.forEach(article => {
+        list.appendChild(compactItem({
+            active: state.selectedPublished?.articleId === article.articleId,
+            title: article.title || article.articleId,
+            subtitle: `${article.articleId}${article.description ? ` · ${article.description}` : ''}`,
+            onClick: async () => {
+                state.selectedPublished = await getPublished(article.articleId);
+                $('published-editor').value = state.selectedPublished.indexContent || '';
+                renderFileList($('published-files'), state.selectedPublished.files || []);
+                await refreshPublishedHistory();
+                renderPublishedList();
+                syncActionState();
+            }
+        }));
     });
-
-    if (state.published.length === 0) {
-        list.innerHTML = '<div class="compact-item"><small>No published articles</small></div>';
-    }
+    if (!articles.length) list.innerHTML = '<div class="compact-item"><small>暂无已发布文章</small></div>';
 }
 
 async function refreshPublished() {
-    if (!state.permissions.canEditPublished) return;
-    const data = await listPublished();
-    state.published = data.articles || [];
-    renderPublishedList();
-    await refreshUnpublished();
+    if (!state.permissions.canEditPublished && !state.permissions.canUnpublish) return;
+    await refreshWorkbench();
 }
 
 function renderUnpublishedList() {
     const list = $('unpublished-list');
     list.innerHTML = '';
-    state.unpublished.forEach(article => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = `compact-item${state.selectedUnpublished?.articleId === article.articleId ? ' active' : ''}`;
-        item.innerHTML = `
-            <strong>${escapeHtml(article.title || article.articleId)}</strong>
-            <small>${escapeHtml(article.articleId)}</small>
-        `;
-        item.addEventListener('click', () => {
-            state.selectedUnpublished = article;
-            renderUnpublishedList();
-        });
-        list.appendChild(item);
+    const issue = selectedAdminIssue();
+    const articles = issue ? (issue.unpublishedArticles || []) : state.unpublished;
+    articles.forEach(article => {
+        list.appendChild(compactItem({
+            active: state.selectedUnpublished?.articleId === article.articleId,
+            title: article.title || article.articleId,
+            subtitle: article.articleId,
+            onClick: () => {
+                state.selectedUnpublished = article;
+                renderUnpublishedList();
+                syncActionState();
+            }
+        }));
     });
-    if (state.unpublished.length === 0) {
-        list.innerHTML = '<div class="compact-item"><small>No unpublished articles</small></div>';
-    }
+    if (!articles.length) list.innerHTML = '<div class="compact-item"><small>暂无已下线文章</small></div>';
 }
 
 async function refreshUnpublished() {
@@ -752,31 +999,29 @@ async function refreshUnpublished() {
 async function refreshPublishedHistory() {
     const list = $('published-history-list');
     list.innerHTML = '';
-    state.selectedPublishedSnapshotId = '';
     if (!state.selectedPublished || !state.permissions.canViewPublishedHistory) {
-        list.innerHTML = '<div class="compact-item"><small>No history selected</small></div>';
+        state.selectedPublishedSnapshotId = '';
+        list.innerHTML = '<div class="compact-item"><small>未选择历史快照</small></div>';
         return;
     }
     const data = await listPublishedHistory(state.selectedPublished.articleId);
-    (data.snapshots || []).forEach(snapshot => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'compact-item';
-        item.innerHTML = `
-            <strong>${escapeHtml(snapshot.reason || snapshot.snapshotId)}</strong>
-            <small>${escapeHtml(snapshot.snapshotId)}${snapshot.at ? ` · ${escapeHtml(snapshot.at)}` : ''}</small>
-        `;
-        item.addEventListener('click', () => {
-            state.selectedPublishedSnapshotId = snapshot.snapshotId;
-            list.querySelectorAll('.compact-item').forEach(node => node.classList.remove('active'));
-            item.classList.add('active');
-            syncActionState();
-        });
-        list.appendChild(item);
-    });
-    if (!data.snapshots?.length) {
-        list.innerHTML = '<div class="compact-item"><small>No history snapshots</small></div>';
+    const snapshots = data.snapshots || [];
+    if (!snapshots.some(snapshot => snapshot.snapshotId === state.selectedPublishedSnapshotId)) {
+        state.selectedPublishedSnapshotId = '';
     }
+    snapshots.forEach(snapshot => {
+        list.appendChild(compactItem({
+            active: state.selectedPublishedSnapshotId === snapshot.snapshotId,
+            title: snapshot.reason || snapshot.snapshotId,
+            subtitle: snapshot.at || snapshot.snapshotId,
+            onClick: () => {
+                state.selectedPublishedSnapshotId = snapshot.snapshotId;
+                refreshPublishedHistory();
+                syncActionState();
+            }
+        }));
+    });
+    if (!snapshots.length) list.innerHTML = '<div class="compact-item"><small>暂无历史快照</small></div>';
     syncActionState();
 }
 
@@ -784,7 +1029,7 @@ function bindPublishedFlow() {
     $('refresh-published-button').addEventListener('click', refreshPublished);
     $('published-files-input').addEventListener('change', () => {
         state.selectedPublishedFiles = normalizeFileSelection($('published-files-input').files);
-        setStatus('published-status', `${state.selectedPublishedFiles.length} published resource files selected`);
+        setStatus('published-status', `已选择 ${state.selectedPublishedFiles.length} 个已发布资源文件`);
     });
     $('save-published-button').addEventListener('click', async () => {
         try {
@@ -800,7 +1045,7 @@ function bindPublishedFlow() {
             $('published-delete-files').value = '';
             renderFileList($('published-files'), state.selectedPublished.files || []);
             await refreshPublishedHistory();
-            setStatus('published-status', `Saved ${state.selectedPublished.articleId}`, 'ok');
+            setStatus('published-status', `已保存 ${state.selectedPublished.articleId}`, 'ok');
             await refreshPublished();
         } catch (error) {
             setStatus('published-status', error.message, 'error');
@@ -810,7 +1055,7 @@ function bindPublishedFlow() {
         try {
             if (!state.selectedPublished) return;
             await unpublishArticle(state.selectedPublished.articleId);
-            setStatus('published-status', `Unpublished ${state.selectedPublished.articleId}`, 'ok');
+            setStatus('published-status', `已下线 ${state.selectedPublished.articleId}`, 'ok');
             state.selectedPublished = null;
             $('published-editor').value = '';
             $('published-files').innerHTML = '';
@@ -825,7 +1070,7 @@ function bindPublishedFlow() {
             if (!articleId) return;
             await restoreArticle(articleId);
             state.selectedUnpublished = null;
-            setStatus('published-status', `Restored ${articleId}`, 'ok');
+            setStatus('published-status', `已恢复 ${articleId}`, 'ok');
             await refreshPublished();
         } catch (error) {
             setStatus('published-status', error.message, 'error');
@@ -838,7 +1083,7 @@ function bindPublishedFlow() {
             $('published-editor').value = state.selectedPublished.indexContent || '';
             renderFileList($('published-files'), state.selectedPublished.files || []);
             await refreshPublishedHistory();
-            setStatus('published-status', `Rolled back ${state.selectedPublished.articleId}`, 'ok');
+            setStatus('published-status', `已回滚 ${state.selectedPublished.articleId}`, 'ok');
         } catch (error) {
             setStatus('published-status', error.message, 'error');
         }
@@ -850,17 +1095,15 @@ async function refreshAuditLog() {
     const data = await listAuditLog();
     $('audit-list').innerHTML = (data.entries || []).map(entry => `
         <div class="compact-item">
-            <strong>${escapeHtml(entry.action || '')}</strong>
+            <strong>${escapeHtml(entry.action || '-')}</strong>
             <small>${escapeHtml(entry.actor || '-')}${entry.at ? ` · ${escapeHtml(entry.at)}` : ''}</small>
-            <small>${escapeHtml(entry.draftId || entry.articleId || entry.authorId || entry.username || entry.vol || '')}</small>
+            <small>${escapeHtml(entry.submissionId || entry.manuscriptId || entry.issueDraftId || entry.articleId || entry.authorId || entry.username || entry.vol || '')}</small>
         </div>
-    `).join('') || '<div class="compact-item"><small>No audit entries</small></div>';
+    `).join('') || '<div class="compact-item"><small>暂无审计记录</small></div>';
 }
 
 function bindAuditFlow() {
-    $('refresh-audit-button').addEventListener('click', () => {
-        refreshAuditLog().catch(error => console.error(error));
-    });
+    $('refresh-audit-button').addEventListener('click', () => refreshAuditLog().catch(error => console.error(error)));
 }
 
 async function refreshVolumes() {
@@ -868,44 +1111,41 @@ async function refreshVolumes() {
     const data = await listVolumes();
     const list = $('volume-list');
     list.innerHTML = '';
-
     (data.volumes || []).forEach(volume => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'compact-item';
-        item.innerHTML = `
-            <strong>vol-${escapeHtml(volume.vol)}</strong>
-            <small>${Number(volume.contributions || 0).toLocaleString()} contributions</small>
-        `;
-        item.addEventListener('click', () => {
-            $('volume-id').value = volume.vol;
-            $('volume-radar').value = volume.radarContent || '';
-            setStatus('volume-status', `Selected vol-${volume.vol}`);
-        });
-        list.appendChild(item);
+        list.appendChild(compactItem({
+            title: `vol-${volume.vol}`,
+            subtitle: `${Number(volume.contributions || 0).toLocaleString()} 篇投稿`,
+            onClick: () => {
+                $('volume-id').value = volume.vol;
+                $('volume-radar').value = volume.radarContent || '';
+                setStatus('volume-status', `已选择 vol-${volume.vol}`);
+            }
+        }));
     });
-
-    if (!data.volumes?.length) {
-        list.innerHTML = '<div class="compact-item"><small>No volumes</small></div>';
-    }
+    if (!data.volumes?.length) list.innerHTML = '<div class="compact-item"><small>暂无卷期</small></div>';
 }
 
 function bindVolumeFlow() {
     $('create-volume-button').addEventListener('click', async () => {
         try {
             const result = await createVolume($('volume-id').value.trim(), $('volume-radar').value);
-            setStatus('volume-status', `Created vol-${result.vol}`, 'ok');
+            setStatus('volume-status', `已新建 vol-${result.vol}`, 'ok');
             await refreshVolumes();
+            await refreshWorkbench();
+            state.selectedIssueVol = result.vol;
+            selectAdminIssue(result.vol);
         } catch (error) {
             setStatus('volume-status', error.message, 'error');
         }
     });
-
     $('update-volume-button').addEventListener('click', async () => {
         try {
             const result = await updateVolumeRadar($('volume-id').value.trim(), $('volume-radar').value);
-            setStatus('volume-status', `Updated vol-${result.vol}`, 'ok');
+            setStatus('volume-status', `已更新 vol-${result.vol}`, 'ok');
             await refreshVolumes();
+            await refreshWorkbench();
+            state.selectedIssueVol = result.vol;
+            selectAdminIssue(result.vol);
         } catch (error) {
             setStatus('volume-status', error.message, 'error');
         }
@@ -926,28 +1166,20 @@ async function refreshAdminUsers() {
     const data = await listAdminUsers();
     const list = $('user-list');
     list.innerHTML = '';
-
     (data.users || []).forEach(user => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'compact-item';
-        item.innerHTML = `
-            <strong>${escapeHtml(user.displayName || user.username)}</strong>
-            <small>${escapeHtml(user.username)} · ${escapeHtml(user.role)}${user.disabled ? ' · disabled' : ''}</small>
-        `;
-        item.addEventListener('click', () => {
-            $('user-username').value = user.username;
-            $('user-display-name').value = user.displayName || '';
-            $('user-role').value = user.role || '';
-            $('user-password').value = '';
-            setStatus('user-status', `Selected ${user.username}`);
-        });
-        list.appendChild(item);
+        list.appendChild(compactItem({
+            title: user.displayName || user.username,
+            subtitle: `${user.username} · ${ROLE_LABELS[user.role] || user.role}${user.disabled ? ' · 已停用' : ''}`,
+            onClick: () => {
+                $('user-username').value = user.username;
+                $('user-display-name').value = user.displayName || '';
+                $('user-role').value = user.role || '';
+                $('user-password').value = '';
+                setStatus('user-status', `已选择 ${user.username}`);
+            }
+        }));
     });
-
-    if (!data.users?.length) {
-        list.innerHTML = '<div class="compact-item"><small>No users</small></div>';
-    }
+    if (!data.users?.length) list.innerHTML = '<div class="compact-item"><small>暂无用户</small></div>';
 }
 
 function bindUserFlow() {
@@ -955,41 +1187,36 @@ function bindUserFlow() {
         try {
             const result = await createAdminUser(readAdminUserForm());
             $('user-password').value = '';
-            setStatus('user-status', `Created ${result.user.username}`, 'ok');
+            setStatus('user-status', `已新建 ${result.user.username}`, 'ok');
             await refreshAdminUsers();
         } catch (error) {
             setStatus('user-status', error.message, 'error');
         }
     });
-
     $('update-user-button').addEventListener('click', async () => {
         try {
             const user = readAdminUserForm();
             const result = await updateAdminUser(user.username, user);
             $('user-password').value = '';
-            setStatus('user-status', `Updated ${result.user.username}`, 'ok');
+            setStatus('user-status', `已更新 ${result.user.username}`, 'ok');
             await refreshAdminUsers();
         } catch (error) {
             setStatus('user-status', error.message, 'error');
         }
     });
-
     $('disable-user-button').addEventListener('click', async () => {
         try {
-            const username = $('user-username').value.trim();
-            const result = await disableAdminUser(username);
-            setStatus('user-status', `Disabled ${result.user.username}`, 'ok');
+            const result = await disableAdminUser($('user-username').value.trim());
+            setStatus('user-status', `已停用 ${result.user.username}`, 'ok');
             await refreshAdminUsers();
         } catch (error) {
             setStatus('user-status', error.message, 'error');
         }
     });
-
     $('enable-user-button').addEventListener('click', async () => {
         try {
-            const username = $('user-username').value.trim();
-            const result = await enableAdminUser(username);
-            setStatus('user-status', `Enabled ${result.user.username}`, 'ok');
+            const result = await enableAdminUser($('user-username').value.trim());
+            setStatus('user-status', `已启用 ${result.user.username}`, 'ok');
             await refreshAdminUsers();
         } catch (error) {
             setStatus('user-status', error.message, 'error');
@@ -1005,6 +1232,7 @@ function showSession(session) {
     $('operator-name').textContent = session.user.displayName || session.user.username;
     $('operator-role').textContent = ROLE_LABELS[session.user.role] || session.user.role;
     applyPermissionState(document, state.permissions);
+    selectView(document.querySelector('.admin-nav button.active:not([hidden])')?.dataset.view || 'submissions');
     syncActionState();
 }
 
@@ -1019,21 +1247,19 @@ async function init() {
     bindAuth({
         onSignedIn: async session => {
             showSession(session);
-            await refreshDrafts();
+            await refreshWorkbench();
             await state.authorPanel?.refreshAuthors();
+            renderAcceptAuthorOptions();
             await refreshVolumes();
             await refreshAdminUsers();
-            await refreshPublished();
             await refreshAuditLog();
         },
         onSignedOut: showLogin
     });
     bindNavigation();
-    bindImportFlow();
-    bindDraftEditor();
     bindSubmissionFlow();
-    bindReviewFlow();
-    bindPublishFlow();
+    bindManuscriptFlow();
+    bindIssueDraftFlow();
     bindLintFlow();
     bindPublishedFlow();
     bindAuditFlow();
@@ -1049,13 +1275,12 @@ async function init() {
         showLogin();
         return;
     }
-
     showSession(session);
-    await refreshDrafts();
+    await refreshWorkbench();
     await state.authorPanel.refreshAuthors();
+    renderAcceptAuthorOptions();
     await refreshVolumes();
     await refreshAdminUsers();
-    await refreshPublished();
     await refreshAuditLog();
 }
 

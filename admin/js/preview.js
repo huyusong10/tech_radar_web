@@ -94,10 +94,10 @@ function sanitizeHtml(html) {
     return template.innerHTML;
 }
 
-export function renderPreview(container, indexContent, assetResolver) {
+export function renderPreview(container, indexContent, assetResolver, options = {}) {
     const { metadata, body } = parseFrontmatter(indexContent);
-    const title = metadata.title ? `# ${metadata.title}\n\n` : '';
-    const description = metadata.description ? `> ${metadata.description}\n\n` : '';
+    const title = options.includeMetadataHeader && metadata.title ? `# ${metadata.title}\n\n` : '';
+    const description = options.includeMetadataHeader && metadata.description ? `> ${metadata.description}\n\n` : '';
     const markdown = rewriteLocalImages(`${title}${description}${body}`, assetResolver);
     const html = globalThis.marked?.parse ? globalThis.marked.parse(markdown) : markdown;
     container.innerHTML = sanitizeHtml(html);

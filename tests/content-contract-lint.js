@@ -11,7 +11,10 @@ const CONTENTS_DIR = process.env.SITE_CONTENTS_DIR
     : path.join(PROJECT_ROOT, 'contents');
 const STRICT_RUNTIME = process.argv.includes('--strict-runtime');
 const ADMIN_DRAFT_STATUSES = new Set(['editing', 'review_requested', 'changes_requested', 'approved', 'published', 'rejected']);
-const SUBMISSION_STATUSES = new Set(['submitted', 'in_editing', 'in_technical_review', 'changes_requested', 'approved', 'published', 'rejected']);
+const SUBMISSION_STATUSES = new Set(['submitted', 'in_editor_review', 'changes_requested', 'accepted', 'published', 'rejected']);
+const LEGACY_DRAFT_SUBMISSION_STATUSES = new Set(['submitted', 'in_editing', 'in_technical_review', 'changes_requested', 'approved', 'published', 'rejected']);
+const MANUSCRIPT_STATUSES = new Set(['drafting', 'manuscript_review_requested', 'changes_requested', 'available', 'scheduled', 'published', 'archived']);
+const ISSUE_DRAFT_STATUSES = new Set(['editing', 'issue_review_requested', 'changes_requested', 'approved', 'published', 'archived']);
 const ADMIN_ROLES = new Set(['chief_editor', 'editor', 'tech_reviewer']);
 
 const errors = [];
@@ -335,7 +338,19 @@ async function validateAdminContent(authors) {
         return;
     }
 
-    const allowedEntries = new Set(['users.json', 'audit-log.json', 'drafts', 'reviews', 'revisions', 'unpublished', 'published-history']);
+    const allowedEntries = new Set([
+        'users.json',
+        'audit-log.json',
+        'submissions',
+        'manuscripts',
+        'manuscript-reviews',
+        'issue-drafts',
+        'drafts',
+        'reviews',
+        'revisions',
+        'unpublished',
+        'published-history'
+    ]);
     const entries = await fsPromises.readdir(adminDir, { withFileTypes: true });
     for (const entry of entries) {
         if (!allowedEntries.has(entry.name)) {
@@ -345,6 +360,9 @@ async function validateAdminContent(authors) {
 
     await validateAdminUsers(path.join(adminDir, 'users.json'));
     await validateAdminAuditLog(path.join(adminDir, 'audit-log.json'));
+    await validateAdminSubmissions(path.join(adminDir, 'submissions'), authors);
+    await validateAdminManuscripts(path.join(adminDir, 'manuscripts'), path.join(adminDir, 'manuscript-reviews'), authors);
+    await validateIssueDrafts(path.join(adminDir, 'issue-drafts'), path.join(adminDir, 'manuscripts'));
     await validateAdminDrafts(path.join(adminDir, 'drafts'), path.join(adminDir, 'reviews'), path.join(adminDir, 'revisions'), authors);
     await validateUnpublishedArticles(path.join(adminDir, 'unpublished'), authors);
     await validatePublishedHistory(path.join(adminDir, 'published-history'), authors);
@@ -406,9 +424,244 @@ async function validateAdminAuditLog(auditLogPath) {
     }
 }
 
+async function validateAdminSubmissions(submissionsDir, authors) {
+    if (!exists(submissionsDir)) {
+        return;
+    }
+
+    const entries = await fsPromises.readdir(submissionsDir, { withFileTypes: true });
+    for (const entry of entries) {
+        const submissionDir = path.join(submissionsDir, entry.name);
+        if (!entry.isDirectory()) {
+            addError('submissions may only contain submission directories', submissionDir);
+            continue;
+        }
+        if (!/^\d{14}-[a-z0-9._-]+(?:-[a-f0-9]{6})?$/.test(entry.name)) {
+            addError('submission id must use timestamp + slug', submissionDir);
+        }
+
+        const metaPath = path.join(submissionDir, 'meta.json');
+        const indexPath = path.join(submissionDir, 'index.md');
+        if (!exists(metaPath)) {
+            addError('submission is missing meta.json', submissionDir);
+            continue;
+        }
+        if (!exists(indexPath)) {
+            addError('submission is missing index.md', submissionDir);
+        }
+
+        try {
+            const meta = await readJson(metaPath);
+            if (meta.submissionId !== entry.name) {
+                addError('meta submissionId must match directory name', metaPath);
+            }
+            if (!SUBMISSION_STATUSES.has(meta.status)) {
+                addError(`submission status is invalid: ${meta.status || ''}`, metaPath);
+            }
+            if (!meta.submitter || typeof meta.submitter !== 'object') {
+                addError('submission submitter is required', metaPath);
+            }
+            if (!meta.submitterTokenHash || typeof meta.submitterTokenHash !== 'string') {
+                addError('submission token hash is required', metaPath);
+            }
+            if (!Number.isInteger(meta.revision) || meta.revision < 1) {
+                addError('submission revision must be a positive integer', metaPath);
+            }
+            if (meta.history !== undefined && !Array.isArray(meta.history)) {
+                addError('submission history must be an array', metaPath);
+            }
+        } catch (error) {
+            addError(`submission meta is not valid JSON: ${error.message}`, metaPath);
+        }
+
+        if (exists(indexPath)) {
+            const { metadata, content } = parseFrontmatter(await fsPromises.readFile(indexPath, 'utf8'), indexPath);
+            validateAuthorFields(metadata, indexPath, authors, { allowTemporaryAuthor: true });
+            validateRelativeAssets(content, submissionDir, indexPath);
+        }
+
+        const revisionsDir = path.join(submissionDir, 'revisions');
+        if (exists(revisionsDir)) {
+            const revisions = await fsPromises.readdir(revisionsDir, { withFileTypes: true });
+            for (const revision of revisions) {
+                if (!revision.isFile() || !/^revision-\d+\.md$/.test(revision.name)) {
+                    addError('submission revisions must be named revision-<n>.md', path.join(revisionsDir, revision.name));
+                }
+            }
+        }
+    }
+}
+
+async function validateAdminManuscripts(manuscriptsDir, reviewsDir, authors) {
+    if (!exists(manuscriptsDir)) {
+        return;
+    }
+
+    const manuscriptIds = new Set();
+    const entries = await fsPromises.readdir(manuscriptsDir, { withFileTypes: true });
+    for (const entry of entries) {
+        const manuscriptDir = path.join(manuscriptsDir, entry.name);
+        if (!entry.isDirectory()) {
+            addError('manuscripts may only contain manuscript directories', manuscriptDir);
+            continue;
+        }
+        manuscriptIds.add(entry.name);
+        if (!/^\d{14}-[a-z0-9._-]+(?:-[a-f0-9]{6})?$/.test(entry.name)) {
+            addError('manuscript id must use timestamp + slug', manuscriptDir);
+        }
+
+        const metaPath = path.join(manuscriptDir, 'meta.json');
+        const indexPath = path.join(manuscriptDir, 'index.md');
+        if (!exists(metaPath)) {
+            addError('manuscript is missing meta.json', manuscriptDir);
+        } else {
+            try {
+                const meta = await readJson(metaPath);
+                if (meta.manuscriptId !== entry.name) {
+                    addError('meta manuscriptId must match directory name', metaPath);
+                }
+                if (!MANUSCRIPT_STATUSES.has(meta.status)) {
+                    addError(`manuscript status is invalid: ${meta.status || ''}`, metaPath);
+                }
+                if (meta.status === 'scheduled' && !meta.scheduledIssueDraftId) {
+                    addError('scheduled manuscript must reference an issue draft', metaPath);
+                }
+                if (meta.reviewers !== undefined && !Array.isArray(meta.reviewers)) {
+                    addError('manuscript reviewers must be an array', metaPath);
+                }
+            } catch (error) {
+                addError(`manuscript meta is not valid JSON: ${error.message}`, metaPath);
+            }
+        }
+
+        if (!exists(indexPath)) {
+            addError('manuscript is missing index.md', manuscriptDir);
+        } else {
+            const { metadata, content } = parseFrontmatter(await fsPromises.readFile(indexPath, 'utf8'), indexPath);
+            validateAuthorFields(metadata, indexPath, authors);
+            validateRelativeAssets(content, manuscriptDir, indexPath);
+        }
+    }
+
+    if (exists(reviewsDir)) {
+        const reviewEntries = await fsPromises.readdir(reviewsDir, { withFileTypes: true });
+        for (const entry of reviewEntries) {
+            const reviewPath = path.join(reviewsDir, entry.name);
+            if (!entry.isFile() || !entry.name.endsWith('.json')) {
+                addError('manuscript reviews may only contain JSON files', reviewPath);
+                continue;
+            }
+            const manuscriptId = entry.name.replace(/\.json$/, '');
+            if (!manuscriptIds.has(manuscriptId)) {
+                addWarning(`review file does not match a manuscript: ${entry.name}`, reviewPath);
+            }
+            try {
+                const review = await readJson(reviewPath);
+                if (!Array.isArray(review.history)) {
+                    addError('manuscript review history must be an array', reviewPath);
+                }
+            } catch (error) {
+                addError(`manuscript review file is not valid JSON: ${error.message}`, reviewPath);
+            }
+        }
+    }
+}
+
+async function validateIssueDrafts(issueDraftsDir, manuscriptsDir) {
+    if (!exists(issueDraftsDir)) {
+        return;
+    }
+
+    const manuscriptUsage = new Map();
+    const entries = await fsPromises.readdir(issueDraftsDir, { withFileTypes: true });
+    for (const entry of entries) {
+        const issueDraftDir = path.join(issueDraftsDir, entry.name);
+        if (!entry.isDirectory()) {
+            addError('issue-drafts may only contain issue draft directories', issueDraftDir);
+            continue;
+        }
+        if (!/^\d{14}-[a-z0-9._-]+(?:-[a-f0-9]{6})?$/.test(entry.name)) {
+            addError('issue draft id must use timestamp + slug', issueDraftDir);
+        }
+
+        const metaPath = path.join(issueDraftDir, 'meta.json');
+        const reviewPath = path.join(issueDraftDir, 'issue-review.json');
+        if (!exists(metaPath)) {
+            addError('issue draft is missing meta.json', issueDraftDir);
+            continue;
+        }
+        if (!exists(reviewPath)) {
+            addError('issue draft is missing issue-review.json', issueDraftDir);
+        }
+
+        try {
+            const meta = await readJson(metaPath);
+            if (meta.issueDraftId !== entry.name) {
+                addError('meta issueDraftId must match directory name', metaPath);
+            }
+            if (!ISSUE_DRAFT_STATUSES.has(meta.status)) {
+                addError(`issue draft status is invalid: ${meta.status || ''}`, metaPath);
+            }
+            if (typeof meta.vol !== 'string' || !/^\d{3,10}$/.test(meta.vol)) {
+                addError('issue draft vol must be a volume id string', metaPath);
+            }
+            if (typeof meta.radarContent === 'string') {
+                const { metadata } = parseFrontmatter(meta.radarContent, metaPath);
+                if (metadata.vol && metadata.vol !== meta.vol) {
+                    addError('issue draft radar vol must match meta vol', metaPath);
+                }
+            }
+            if (!Array.isArray(meta.manuscripts)) {
+                addError('issue draft manuscripts must be an array', metaPath);
+            } else {
+                const folderNames = new Set();
+                for (const item of meta.manuscripts) {
+                    if (!item || typeof item !== 'object' || !item.manuscriptId) {
+                        addError('issue draft manuscript entry must include manuscriptId', metaPath);
+                        continue;
+                    }
+                    if (!exists(path.join(manuscriptsDir, item.manuscriptId))) {
+                        addError(`issue draft references missing manuscript "${item.manuscriptId}"`, metaPath);
+                    }
+                    if (typeof item.folderName !== 'string' || !/^[a-z0-9._-]+$/.test(item.folderName)) {
+                        addError('issue draft manuscript folderName must be a slug', metaPath);
+                    } else if (folderNames.has(item.folderName)) {
+                        addError(`duplicate folderName in issue draft: ${item.folderName}`, metaPath);
+                    } else {
+                        folderNames.add(item.folderName);
+                    }
+                    if (!['archived', 'published'].includes(meta.status)) {
+                        const usedBy = manuscriptUsage.get(item.manuscriptId) || [];
+                        usedBy.push(entry.name);
+                        manuscriptUsage.set(item.manuscriptId, usedBy);
+                    }
+                }
+            }
+        } catch (error) {
+            addError(`issue draft meta is not valid JSON: ${error.message}`, metaPath);
+        }
+
+        if (exists(reviewPath)) {
+            try {
+                const review = await readJson(reviewPath);
+                if (!Array.isArray(review.history)) {
+                    addError('issue review history must be an array', reviewPath);
+                }
+            } catch (error) {
+                addError(`issue review file is not valid JSON: ${error.message}`, reviewPath);
+            }
+        }
+    }
+
+    for (const [manuscriptId, issueDraftIds] of manuscriptUsage.entries()) {
+        if (issueDraftIds.length > 1) {
+            addError(`manuscript "${manuscriptId}" is scheduled in multiple issue drafts: ${issueDraftIds.join(', ')}`, issueDraftsDir);
+        }
+    }
+}
+
 async function validateAdminDrafts(draftsDir, reviewsDir, revisionsDir, authors) {
     if (!exists(draftsDir)) {
-        addError('missing admin drafts directory', draftsDir);
         return;
     }
 
@@ -499,7 +752,7 @@ async function validateAdminDraft(draftDir, draftId, authors) {
                 addError(`draft source is invalid: ${meta.source || ''}`, metaPath);
             }
             if (meta.source === 'submission') {
-                if (!SUBMISSION_STATUSES.has(meta.submissionStatus)) {
+                if (!LEGACY_DRAFT_SUBMISSION_STATUSES.has(meta.submissionStatus)) {
                     addError(`submission status is invalid: ${meta.submissionStatus || ''}`, metaPath);
                 }
                 if (!meta.submitter || typeof meta.submitter !== 'object') {
@@ -515,10 +768,14 @@ async function validateAdminDraft(draftDir, draftId, authors) {
             if (meta.assignee !== undefined && typeof meta.assignee !== 'string') {
                 addError('draft assignee must be a string', metaPath);
             }
-            if (typeof meta.targetVol !== 'string' || !/^\d{3,10}$/.test(meta.targetVol)) {
+            if (meta.source === 'submission' && meta.targetVol === '') {
+                // Submission drafts do not choose a final volume until an editor prepares publication.
+            } else if (typeof meta.targetVol !== 'string' || !/^\d{3,10}$/.test(meta.targetVol)) {
                 addError('draft targetVol must be a volume id string', metaPath);
             }
-            if (typeof meta.folderName !== 'string' || !/^[a-z0-9._-]+$/.test(meta.folderName)) {
+            if (meta.source === 'submission' && meta.folderName === '') {
+                // Submission drafts do not choose a final folder until an editor prepares publication.
+            } else if (typeof meta.folderName !== 'string' || !/^[a-z0-9._-]+$/.test(meta.folderName)) {
                 addError('draft folderName must be a slug', metaPath);
             }
         } catch (error) {

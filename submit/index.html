@@ -16,76 +16,154 @@
     <main class="submit-shell">
         <header class="submit-header">
             <div>
-                <div class="brand-mark">&gt;_ Tech Radar Submit</div>
-                <h1>Submit Draft</h1>
+                <div class="brand-mark">&gt;_ Tech Radar 投稿台</div>
+                <h1>提交初稿</h1>
             </div>
-            <a class="text-link" href="/">Reader</a>
+            <a class="text-link" href="/">返回读者页</a>
         </header>
 
-        <section class="panel" id="submit-form-view">
-            <div class="form-grid">
-                <label><span>Target volume</span><input id="submit-vol" placeholder="003" required></label>
-                <label><span>Folder name</span><input id="submit-folder" placeholder="new-idea" required></label>
-                <label><span>Name</span><input id="submitter-name"></label>
-                <label><span>Team</span><input id="submitter-team"></label>
-                <label><span>Role</span><input id="submitter-role"></label>
-                <label><span>Contact</span><input id="submitter-contact"></label>
+        <section class="submit-workbench" id="submit-form-view">
+            <div class="submit-stepper" aria-label="投稿步骤">
+                <span>1 上传文件</span>
+                <span>2 识别作者</span>
+                <span>3 预览提交</span>
             </div>
 
-            <div class="author-mode">
-                <label><input type="radio" name="author-mode" value="temporary" checked> New author</label>
-                <label><input type="radio" name="author-mode" value="known"> Existing author</label>
-            </div>
+            <section class="submit-panel upload-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>稿件文件</h2>
+                    </div>
+                    <span class="status-pill" id="upload-health">未上传</span>
+                </div>
 
-            <div class="form-grid" id="known-author-row">
-                <label><span>Author search</span><input id="author-search" placeholder="name / id / team"></label>
-                <label><span>Author ID</span><input id="submitter-author-id" placeholder="known_author"></label>
-            </div>
-            <div id="author-search-results" class="compact-list"></div>
+                <div class="upload-dropzone" id="submit-dropzone" role="button" tabindex="0" aria-describedby="upload-health">
+                    <div class="upload-mark">+</div>
+                    <div class="upload-copy">
+                        <strong>拖拽稿件到这里</strong>
+                    </div>
+                    <div class="upload-actions">
+                        <button type="button" id="choose-folder-button">选择文件夹</button>
+                        <button type="button" class="secondary-button" id="choose-files-button">选择文件</button>
+                    </div>
+                    <input id="submit-folder-input" type="file" multiple webkitdirectory hidden>
+                    <input id="submit-files-input" type="file" multiple hidden>
+                </div>
 
-            <input id="submit-files" type="file" multiple webkitdirectory>
-            <div id="submit-file-list" class="file-list"></div>
+                <div id="submit-file-list" class="file-list file-list-rich"></div>
+            </section>
 
-            <div class="toolbar">
-                <button id="submit-preview-button">Preview</button>
-                <button id="submit-button">Submit</button>
-            </div>
-            <p class="status-line" id="submit-status"></p>
+            <section class="submit-panel author-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>作者信息</h2>
+                    </div>
+                </div>
+
+                <div class="author-mode">
+                    <label class="mode-card">
+                        <input type="radio" name="author-mode" value="temporary" checked>
+                        <span>
+                            <strong>新作者 / 不确定</strong>
+                        </span>
+                    </label>
+                    <label class="mode-card">
+                        <input type="radio" name="author-mode" value="known">
+                        <span>
+                            <strong>已有作者</strong>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="form-grid" id="temporary-author-row">
+                    <label><span>中文姓名</span><input id="submitter-name" autocomplete="name"></label>
+                    <label><span>团队</span><input id="submitter-team"></label>
+                    <label><span>角色</span><input id="submitter-role"></label>
+                    <label><span>联系方式</span><input id="submitter-contact" autocomplete="email"></label>
+                </div>
+
+                <div class="known-author hidden" id="known-author-row">
+                    <label>
+                        <span>搜索作者</span>
+                        <input id="author-search" placeholder="输入中文名、拼音或首字母">
+                    </label>
+                    <input id="submitter-author-id" type="hidden">
+                    <div id="selected-author" class="selected-author hidden"></div>
+                    <div id="author-search-results" class="compact-list"></div>
+                </div>
+            </section>
+
+            <section class="submit-panel preview-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>效果预览</h2>
+                    </div>
+                    <div class="toolbar">
+                        <button id="submit-preview-button">预览稿件</button>
+                        <button id="submit-button">提交给编辑部</button>
+                    </div>
+                </div>
+                <p class="status-line" id="submit-status"></p>
+                <div class="preview-surface submit-preview-surface" id="submit-preview"></div>
+            </section>
         </section>
 
-        <section class="panel hidden" id="submit-result-view">
-            <h2>Status Link</h2>
+        <section class="submit-panel hidden" id="submit-result-view">
+            <h2>投稿已提交</h2>
             <div class="token-box" id="status-url"></div>
             <div class="toolbar">
-                <button id="copy-status-button">Copy</button>
-                <button id="open-status-button">Open</button>
+                <button id="copy-status-button">复制链接</button>
+                <button id="open-status-button">打开状态页</button>
             </div>
         </section>
 
-        <section class="panel hidden" id="submission-status-view">
+        <section class="submit-panel hidden" id="submission-status-view">
             <div class="panel-head">
                 <div>
-                    <h2 id="submission-heading">Submission</h2>
+                    <h2 id="submission-heading">投稿状态</h2>
                     <p class="status-line" id="submission-meta"></p>
                 </div>
-                <button id="reload-submission-button">Refresh</button>
+                <button id="reload-submission-button">刷新状态</button>
             </div>
-            <div id="submission-review-history" class="compact-list"></div>
-            <div id="submission-file-list" class="file-list"></div>
-            <div class="toolbar">
-                <input id="revision-files" type="file" multiple webkitdirectory>
-                <input id="revision-delete-files" placeholder="delete asset paths, comma separated">
-                <button id="revision-preview-button">Preview revision</button>
-                <button id="revision-submit-button">Submit revision</button>
-            </div>
-            <p class="status-line" id="revision-status"></p>
-        </section>
 
-        <section class="panel editor-panel">
-            <div class="split-editor">
-                <textarea id="submit-editor" spellcheck="false"></textarea>
-                <div class="preview-surface" id="submit-preview"></div>
+            <div class="status-grid">
+                <section>
+                    <h3>编辑部反馈</h3>
+                    <div id="submission-review-history" class="compact-list"></div>
+                </section>
+                <section>
+                    <h3>当前文件</h3>
+                    <div id="submission-file-list" class="file-list file-list-rich"></div>
+                </section>
             </div>
+
+            <section class="revision-panel" id="revision-panel">
+                <div class="panel-head">
+                    <div>
+                        <h3>提交返修版本</h3>
+                    </div>
+                    <div class="toolbar">
+                        <button id="revision-preview-button">预览返修</button>
+                        <button id="revision-submit-button">提交返修</button>
+                    </div>
+                </div>
+                <div class="upload-dropzone compact-dropzone" id="revision-dropzone" role="button" tabindex="0">
+                    <div class="upload-mark">+</div>
+                    <div class="upload-copy">
+                        <strong>拖拽返修稿件</strong>
+                    </div>
+                    <div class="upload-actions">
+                        <button type="button" id="revision-folder-button">选择文件夹</button>
+                        <button type="button" class="secondary-button" id="revision-files-button">选择文件</button>
+                    </div>
+                    <input id="revision-folder-input" type="file" multiple webkitdirectory hidden>
+                    <input id="revision-files-input" type="file" multiple hidden>
+                </div>
+                <div id="revision-file-list" class="file-list file-list-rich"></div>
+                <p class="status-line" id="revision-status"></p>
+            </section>
+
+            <div class="preview-surface submit-preview-surface" id="status-preview"></div>
         </section>
     </main>
 

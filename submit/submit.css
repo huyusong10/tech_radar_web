@@ -1,48 +1,254 @@
+body {
+    min-height: 100vh;
+}
+
 .submit-shell {
-    width: min(1280px, 100%);
+    width: min(1320px, 100%);
     display: grid;
-    gap: 18px;
+    gap: 20px;
     margin: 0 auto;
-    padding: 24px;
+    padding: 28px;
 }
 
 .submit-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 16px;
+    gap: 18px;
+    padding: 10px 0 6px;
 }
 
 .submit-header h1 {
-    margin: 8px 0 0;
-    font-size: clamp(1.8rem, 4vw, 3rem);
-    line-height: 1;
+    margin: 10px 0 0;
+    font-size: clamp(2.6rem, 7vw, 5.2rem);
+    line-height: 0.92;
+    white-space: nowrap;
 }
 
 .text-link {
     color: var(--accent-cyan);
     text-decoration: none;
     font-family: var(--font-mono);
+    font-weight: 800;
+    white-space: nowrap;
 }
 
-.author-mode {
+.submit-workbench {
+    display: grid;
+    grid-template-columns: minmax(320px, 0.78fr) minmax(0, 1.22fr);
+    gap: 18px;
+}
+
+.submit-stepper,
+.upload-panel {
+    grid-column: 1 / -1;
+}
+
+.submit-stepper {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.submit-stepper span {
+    min-height: 44px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(0, 243, 255, 0.22);
+    border-radius: 8px;
+    background: rgba(0, 243, 255, 0.055);
+    color: var(--accent-cyan);
+    font-family: var(--font-mono);
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.submit-panel {
+    min-width: 0;
+    padding: 22px;
+    border: 1px solid rgba(0, 243, 255, 0.28);
+    border-radius: 8px;
+    background:
+        linear-gradient(135deg, rgba(0, 243, 255, 0.055), rgba(255, 0, 255, 0.035)),
+        rgba(18, 18, 18, 0.94);
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
+}
+
+.panel-head {
+    align-items: center;
+}
+
+.upload-panel {
+    align-self: start;
+}
+
+.upload-dropzone {
+    min-height: 210px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 18px;
+    margin: 18px 0;
+    padding: 24px;
+    border: 1px dashed rgba(0, 243, 255, 0.55);
+    border-radius: 8px;
+    background: rgba(0, 243, 255, 0.045);
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.drag-active,
+.upload-dropzone:focus-visible {
+    border-color: var(--accent-cyan);
+    background: rgba(0, 243, 255, 0.09);
+    box-shadow: 0 0 34px rgba(0, 243, 255, 0.18);
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.compact-dropzone {
+    min-height: 150px;
+}
+
+.upload-mark {
+    width: 70px;
+    height: 70px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(0, 255, 136, 0.45);
+    border-radius: 8px;
+    color: var(--accent-green);
+    font-family: var(--font-mono);
+    font-size: 2rem;
+    font-weight: 900;
+}
+
+.upload-copy {
+    display: grid;
+    gap: 8px;
+}
+
+.upload-copy strong {
+    color: var(--text-primary);
+    font-size: 1.16rem;
+    white-space: nowrap;
+}
+
+.upload-actions {
+    grid-column: 1 / -1;
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
-    margin: 12px 0;
+    gap: 10px;
 }
 
-.author-mode label {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+.toolbar button,
+.upload-actions button,
+.mode-card strong,
+.submit-panel h2,
+.status-grid h3,
+.revision-panel h3,
+label span {
+    white-space: nowrap;
+}
+
+.secondary-button {
+    background: rgba(255, 255, 255, 0.035);
+    border-color: rgba(255, 255, 255, 0.12);
     color: var(--text-secondary);
 }
 
-.author-mode input,
-#submit-files,
-#revision-files {
-    width: auto;
+.file-list-rich {
+    max-height: 300px;
+    overflow: auto;
+}
+
+.file-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+}
+
+.file-item strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-kind {
+    color: var(--accent-green);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.author-panel {
+    align-self: start;
+}
+
+.author-mode {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.mode-card {
+    min-height: 72px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.035);
+    cursor: pointer;
+}
+
+.mode-card:has(input:checked) {
+    border-color: var(--accent-cyan);
+    background: rgba(0, 243, 255, 0.075);
+}
+
+.mode-card span {
+    display: grid;
+    gap: 0;
+}
+
+.known-author {
+    display: grid;
+    gap: 12px;
+}
+
+.selected-author {
+    padding: 12px;
+    border: 1px solid rgba(0, 255, 136, 0.34);
+    border-radius: 8px;
+    background: rgba(0, 255, 136, 0.07);
+    color: var(--accent-green);
+    font-family: var(--font-mono);
+}
+
+.submit-preview-surface {
+    min-height: 470px;
+    margin-top: 14px;
+    border-radius: 8px;
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+    gap: 18px;
+}
+
+.status-grid h3,
+.revision-panel h3 {
+    margin: 0 0 10px;
+}
+
+.revision-panel {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .token-box {
@@ -55,20 +261,39 @@
     padding: 12px;
 }
 
-#submit-editor {
-    min-height: 520px;
-    font-family: var(--font-mono);
-    font-size: 0.9rem;
-    line-height: 1.55;
-}
-
-@media (max-width: 760px) {
+@media (max-width: 900px) {
     .submit-shell {
-        padding: 16px;
+        padding: 18px;
     }
 
-    .submit-header {
+    .submit-header,
+    .panel-head {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .submit-header h1 {
+        white-space: normal;
+    }
+
+    .submit-workbench,
+    .status-grid,
+    .author-mode,
+    .submit-stepper {
+        grid-template-columns: 1fr;
+    }
+
+    .upload-dropzone {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .upload-mark {
+        margin: 0 auto;
+    }
+
+    .upload-actions,
+    .toolbar {
+        justify-content: center;
     }
 }

@@ -36,6 +36,7 @@ async function createContentsSandbox() {
     const contentsDir = path.join(sandboxRoot, 'contents');
     await fs.cp(SOURCE_CONTENTS_DIR, contentsDir, { recursive: true });
     await fs.rm(path.join(contentsDir, 'admin'), { recursive: true, force: true });
+    await fs.rm(path.join(contentsDir, 'data'), { recursive: true, force: true });
 
     return { sandboxRoot, contentsDir };
 }
