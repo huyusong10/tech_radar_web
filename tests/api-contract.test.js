@@ -198,6 +198,38 @@ describe('API contract', () => {
         assert.equal(updatedVolume.views, updatedBody.views);
     });
 
+    test('rejects invalid or unknown volume view writes without creating counters', async () => {
+        const malformedResponse = await harness.request('/api/views/1', { method: 'POST' });
+        assert.equal(malformedResponse.status, 400);
+
+        const missingResponse = await harness.request('/api/views/999', { method: 'POST' });
+        assert.equal(missingResponse.status, 400);
+
+        const malformedRead = await readJson(await harness.request('/api/views/1'));
+        const missingRead = await readJson(await harness.request('/api/views/999'));
+        assert.equal(malformedRead.views, 0);
+        assert.equal(missingRead.views, 0);
+    });
+
+    test('stats ignore runtime view counters for unknown volumes', async () => {
+        const sandbox = await createContentsSandbox();
+        const dataDir = path.join(sandbox.contentsDir, 'data');
+        await fs.mkdir(dataDir, { recursive: true });
+        await fs.writeFile(path.join(dataDir, 'views.json'), JSON.stringify({
+            [sampleVolume]: 7,
+            1: 99
+        }));
+
+        const isolatedHarness = await createServerHarness(sandbox);
+        try {
+            const stats = await readJson(await isolatedHarness.request('/api/stats'));
+            assert.equal(stats.totalViews, 7);
+            assert.equal(stats.avgViewsPerVolume, Math.round(7 / stats.totalVolumes));
+        } finally {
+            await isolatedHarness.cleanup();
+        }
+    });
+
     test('refreshes stats after likes and views change', async () => {
         const isolatedHarness = await createServerHarness();
 

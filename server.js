@@ -17,6 +17,7 @@ const {
     DEFAULTS: CONFIG
 } = require('./server/utils/concurrency');
 const { getClientIP } = require('./server/utils/ip');
+const contentUtils = require('./server/utils/content');
 
 
 // Load site configuration
@@ -384,13 +385,8 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // Parse YAML frontmatter from markdown using js-yaml
 // Supports both LF and CRLF line endings
 function parseYamlFrontmatter(content) {
-    // Normalize line endings to LF for consistent parsing
-    const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const match = normalizedContent.match(/^---\n([\s\S]*?)\n---/);
-    if (!match) return {};
-
     try {
-        return yaml.load(match[1]) || {};
+        return contentUtils.parseYamlFrontmatter(content);
     } catch (e) {
         console.error('Failed to parse YAML:', e);
         return {};
@@ -819,16 +815,8 @@ function safeRelativePath(rawPath) {
 }
 
 function parseMarkdownDocument(raw) {
-    const normalized = String(raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const match = normalized.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-    if (!match) {
-        return { metadata: {}, body: normalized };
-    }
     try {
-        return {
-            metadata: yaml.load(match[1]) || {},
-            body: match[2] || ''
-        };
+        return contentUtils.parseMarkdownDocument(raw);
     } catch (error) {
         const parseError = new Error(`Invalid YAML frontmatter: ${error.message}`);
         parseError.statusCode = 400;
@@ -1580,14 +1568,7 @@ function validateDraftMetadata(metadata, options = {}) {
 }
 
 async function readAuthorsArray() {
-    const authorsPath = path.join(SHARED_DIR, 'authors.md');
-    try {
-        const content = await fsPromises.readFile(authorsPath, 'utf8');
-        const data = parseYamlFrontmatter(content);
-        return Array.isArray(data.authors) ? data.authors : [];
-    } catch {
-        return [];
-    }
+    return contentUtils.readAuthorsArray(SHARED_DIR);
 }
 
 async function writeAuthorsArray(authors) {
@@ -4554,8 +4535,7 @@ app.get('/api/config', rateLimitMiddleware('read'), async (req, res) => {
     if (!config) {
         const configPath = path.join(SHARED_DIR, 'config.md');
         try {
-            const content = await fsPromises.readFile(configPath, 'utf8');
-            config = parseYamlFrontmatter(content);
+            config = await contentUtils.readFrontmatterFile(configPath, {});
             cache.set(cacheKey, config, CONFIG.CACHE_TTL.config);
         } catch {
             config = {};
@@ -4572,23 +4552,12 @@ app.get('/api/authors', rateLimitMiddleware('read'), async (req, res) => {
     let authors = cache.get(cacheKey);
 
     if (!authors) {
-        const authorsPath = path.join(SHARED_DIR, 'authors.md');
-        authors = {};
-
         try {
-            const content = await fsPromises.readFile(authorsPath, 'utf8');
-            const data = parseYamlFrontmatter(content);
-
-            if (data.authors && Array.isArray(data.authors)) {
-                data.authors.forEach(author => {
-                    if (author.id) {
-                        authors[author.id] = author;
-                    }
-                });
-            }
+            authors = await contentUtils.readAuthorsMap(SHARED_DIR);
             cache.set(cacheKey, authors, CONFIG.CACHE_TTL.authors);
         } catch (error) {
             console.error('Failed to read authors:', error);
+            authors = {};
         }
     }
 
@@ -4603,20 +4572,8 @@ app.get('/api/authors/:authorId', rateLimitMiddleware('read'), async (req, res) 
     // Use the cached authors data
     let authors = cache.get('authors');
     if (!authors) {
-        const authorsPath = path.join(SHARED_DIR, 'authors.md');
-        authors = {};
-
         try {
-            const content = await fsPromises.readFile(authorsPath, 'utf8');
-            const data = parseYamlFrontmatter(content);
-
-            if (data.authors && Array.isArray(data.authors)) {
-                data.authors.forEach(author => {
-                    if (author.id) {
-                        authors[author.id] = author;
-                    }
-                });
-            }
+            authors = await contentUtils.readAuthorsMap(SHARED_DIR);
             cache.set('authors', authors, CONFIG.CACHE_TTL.authors);
         } catch (error) {
             console.error('Failed to read authors:', error);
@@ -4642,38 +4599,8 @@ app.get('/api/volumes', rateLimitMiddleware('read'), async (req, res) => {
 
     if (!volumes) {
         const volumesDir = getVolumesDir(isDraft);
-
         try {
-            await fsPromises.access(volumesDir);
-        } catch {
-            console.log(`Volumes directory ${volumesDir} does not exist`);
-            return res.json([]);
-        }
-
-        try {
-            const dirs = await fsPromises.readdir(volumesDir, { withFileTypes: true });
-            const volumePromises = dirs
-                .filter(dir => dir.isDirectory() && dir.name.startsWith('vol-'))
-                .map(async dir => {
-                    const vol = dir.name.replace('vol-', '');
-                    const radarPath = path.join(volumesDir, dir.name, 'radar.md');
-                    let date = '';
-
-                    try {
-                        const content = await fsPromises.readFile(radarPath, 'utf8');
-                        const dateMatch = content.match(/date:\s*"?([^"\n]+)"?/);
-                        if (dateMatch) {
-                            date = dateMatch[1].trim();
-                        }
-                    } catch {
-                        // File doesn't exist or can't be read
-                    }
-
-                    return { vol, date, views: isDraft ? 0 : (viewsData[vol] || 0) };
-                });
-
-            volumes = await Promise.all(volumePromises);
-            volumes.sort((a, b) => b.vol.localeCompare(a.vol));
+            volumes = await contentUtils.readVolumeSummaries(volumesDir, { isDraft, viewsData });
             cache.set(cacheKey, volumes, CONFIG.CACHE_TTL.volumes);
         } catch (error) {
             console.error('Failed to read volumes:', error);
@@ -4694,18 +4621,8 @@ app.get('/api/contributions/:vol', rateLimitMiddleware('read'), async (req, res)
     let contributions = cache.get(cacheKey);
 
     if (!contributions) {
-        const contributionsDir = path.join(getVolumesDir(isDraft), `vol-${vol}`, 'contributions');
-
-        try {
-            const dirs = await fsPromises.readdir(contributionsDir, { withFileTypes: true });
-            contributions = dirs
-                .filter(dir => dir.isDirectory())
-                .map(dir => dir.name)
-                .sort();
-            cache.set(cacheKey, contributions, CONFIG.CACHE_TTL.contributions);
-        } catch {
-            contributions = [];
-        }
+        contributions = await contentUtils.listCollectionFolders(getVolumesDir(isDraft), vol, 'contributions');
+        cache.set(cacheKey, contributions, CONFIG.CACHE_TTL.contributions);
     }
 
     res.set('Cache-Control', 'public, max-age=30');
@@ -4721,18 +4638,8 @@ app.get('/api/best-practices/:vol', rateLimitMiddleware('read'), async (req, res
     let bestPractices = cache.get(cacheKey);
 
     if (!bestPractices) {
-        const bestPracticesDir = path.join(getVolumesDir(isDraft), `vol-${vol}`, 'best-practices');
-
-        try {
-            const dirs = await fsPromises.readdir(bestPracticesDir, { withFileTypes: true });
-            bestPractices = dirs
-                .filter(dir => dir.isDirectory())
-                .map(dir => dir.name)
-                .sort();
-            cache.set(cacheKey, bestPractices, CONFIG.CACHE_TTL.contributions);
-        } catch {
-            bestPractices = [];
-        }
+        bestPractices = await contentUtils.listCollectionFolders(getVolumesDir(isDraft), vol, 'best-practices');
+        cache.set(cacheKey, bestPractices, CONFIG.CACHE_TTL.contributions);
     }
 
     res.set('Cache-Control', 'public, max-age=30');
@@ -5078,17 +4985,20 @@ app.get('/api/views/:vol', rateLimitMiddleware('read'), (req, res) => {
 // POST /api/views/:vol - Increment views for a volume (with concurrency control)
 // Draft mode: ?draft=true will not record any data
 app.post('/api/views/:vol', rateLimitMiddleware('write'), async (req, res) => {
-    const { vol } = req.params;
+    const vol = normalizeVolumeId(req.params.vol);
     const isDraft = req.query.draft === 'true';
 
     // Draft mode: return fake response without recording
     if (isDraft) {
-        return res.json({ vol, views: 0, draft: true });
+        return res.json({ vol: req.params.vol, views: 0, draft: true });
     }
 
     // Validate input
-    if (!vol || vol.length > 10 || !/^\d+$/.test(vol)) {
+    if (!vol) {
         return res.status(400).json({ error: 'Invalid volume ID' });
+    }
+    if (!await contentUtils.volumeExists(PUBLISHED_DIR, vol)) {
+        return res.status(400).json({ error: 'Volume not found' });
     }
 
     const lockKey = `views:${vol}`;
@@ -5203,7 +5113,10 @@ app.get('/api/stats', rateLimitMiddleware('read'), async (req, res) => {
             });
 
             // Calculate totals
-            const totalViews = Object.values(viewsData).reduce((sum, v) => sum + v, 0);
+            const totalViews = volumes.reduce((sum, vol) => {
+                const count = viewsData[vol];
+                return sum + (Number.isInteger(count) && count > 0 ? count : 0);
+            }, 0);
             const totalAuthors = Object.keys(authorStats).length;
             const totalVolumes = volumes.length;
 
@@ -5259,29 +5172,7 @@ async function generateArchiveJson(isDraft = false) {
     }
 
     try {
-        const dirs = await fsPromises.readdir(volumesDir, { withFileTypes: true });
-        const volumePromises = dirs
-            .filter(dir => dir.isDirectory() && dir.name.startsWith('vol-'))
-            .map(async dir => {
-                const vol = dir.name.replace('vol-', '');
-                const radarPath = path.join(volumesDir, dir.name, 'radar.md');
-                let date = '';
-
-                try {
-                    const content = await fsPromises.readFile(radarPath, 'utf8');
-                    const dateMatch = content.match(/date:\s*"?([^"\n]+)"?/);
-                    if (dateMatch) {
-                        date = dateMatch[1].trim();
-                    }
-                } catch {
-                    // File doesn't exist
-                }
-
-                return { vol, date, views: isDraft ? 0 : (viewsData[vol] || 0) };
-            });
-
-        const volumes = await Promise.all(volumePromises);
-        volumes.sort((a, b) => b.vol.localeCompare(a.vol));
+        const volumes = await contentUtils.readVolumeSummaries(volumesDir, { isDraft, viewsData });
 
         await fsPromises.writeFile(archivePath, JSON.stringify(volumes, null, 2));
         console.log(`Generated ${isDraft ? 'draft ' : ''}archive.json with ${volumes.length} volumes`);

@@ -8,6 +8,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const INDEX_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'index.html'), 'utf8');
 const SUBMIT_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'submit', 'index.html'), 'utf8');
 const ADMIN_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'admin', 'index.html'), 'utf8');
+const ADMIN_DRAFTS_JS = fs.readFileSync(path.join(PROJECT_ROOT, 'admin', 'js', 'drafts.js'), 'utf8');
 const INLINE_SCRIPT = INDEX_HTML.match(/<script>([\s\S]*)<\/script>\s*<\/body>/)[1];
 
 function createResponse(body, options = {}) {
@@ -171,6 +172,25 @@ describe('Frontend contract', () => {
         assert.deepEqual(await second.json(), { ok: true });
     });
 
+    test('markdown loading coalesces duplicate in-flight requests', async () => {
+        let fetchCount = 0;
+        const context = loadFrontendContext({
+            fetchImpl: async (url) => {
+                fetchCount += 1;
+                assert.equal(url, '/contents/published/vol-001/contributions/demo/index.md');
+                return createResponse('---\ntitle: Demo\n---\nBody');
+            }
+        });
+
+        const [first, second] = await Promise.all([
+            context.loadMarkdown('/contents/published/vol-001/contributions/demo/index.md'),
+            context.loadMarkdown('/contents/published/vol-001/contributions/demo/index.md')
+        ]);
+
+        assert.equal(fetchCount, 1);
+        assert.equal(first, second);
+    });
+
     test('draft mode static volume fallback reads the draft archive', async () => {
         const requestedUrls = [];
         const context = loadFrontendContext({
@@ -242,6 +262,15 @@ describe('Frontend contract', () => {
         assert.doesNotMatch(INDEX_HTML, /onclick="loadMoreVolumes/);
     });
 
+    test('dynamic reader cards use event delegation instead of inline handlers', () => {
+        assert.doesNotMatch(INDEX_HTML, /onclick="\\$\\{hasDetails/);
+        assert.doesNotMatch(INDEX_HTML, /onclick="toggleContributionCard/);
+        assert.doesNotMatch(INDEX_HTML, /onclick="event\.stopPropagation\(\); toggleLike/);
+        assert.match(INDEX_HTML, /data-trending-toggle="true"/);
+        assert.match(INDEX_HTML, /data-card-toggle="true"/);
+        assert.match(INDEX_HTML, /data-like-button="true"/);
+    });
+
     test('reader page exposes submission as a direct route entry', () => {
         assert.match(INDEX_HTML, /href="\/submit"/);
         assert.equal((INDEX_HTML.match(/href="\/submit"/g) || []).length, 1);
@@ -310,6 +339,12 @@ describe('Frontend contract', () => {
             'user-list',
             'audit-list'
         ].forEach(id => assert.match(ADMIN_HTML, new RegExp(`id="${id}"`)));
+    });
+
+    test('admin workflow guards refresh and detail selection races', () => {
+        assert.match(ADMIN_DRAFTS_JS, /workbenchRefreshPromise/);
+        assert.match(ADMIN_DRAFTS_JS, /selectionTokens/);
+        assert.match(ADMIN_DRAFTS_JS, /refreshButton\.disabled = true/);
     });
 
     test('article batch rendering isolates individual markdown failures', async () => {

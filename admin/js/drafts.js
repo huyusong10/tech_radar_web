@@ -63,7 +63,13 @@ const state = {
     selectedPublishedFiles: [],
     selectedPublishedSnapshotId: '',
     authorPanel: null,
-    previewTimer: null
+    previewTimer: null,
+    workbenchRefreshPromise: null,
+    selectionTokens: {
+        submission: 0,
+        manuscript: 0,
+        issueDraft: 0
+    }
 };
 
 const MANUSCRIPT_STATUS_LABELS = {
@@ -580,39 +586,64 @@ function syncActionState() {
 }
 
 async function refreshWorkbench() {
-    const [submissions, manuscripts, issueDrafts, issues] = await Promise.all([
-        listSubmissions(),
-        listManuscripts(),
-        listIssueDrafts(),
-        listIssues()
-    ]);
-    state.submissions = submissions.submissions || [];
-    state.manuscripts = manuscripts.manuscripts || [];
-    state.issueDrafts = issueDrafts.issueDrafts || [];
-    state.issues = issues.issues || [];
-    state.published = state.issues.flatMap(issue => issue.publishedArticles || []);
-    state.unpublished = state.issues.flatMap(issue => issue.unpublishedArticles || []);
-    if (state.selectedIssueVol && !state.issues.some(issue => issue.vol === state.selectedIssueVol)) {
-        state.selectedIssueVol = '';
+    if (state.workbenchRefreshPromise) {
+        return state.workbenchRefreshPromise;
     }
-    renderAllLists();
-    syncActionState();
+
+    const refreshButton = $('refresh-button');
+    const wasDisabled = refreshButton?.disabled;
+    if (refreshButton) refreshButton.disabled = true;
+
+    state.workbenchRefreshPromise = (async () => {
+        const [submissions, manuscripts, issueDrafts, issues] = await Promise.all([
+            listSubmissions(),
+            listManuscripts(),
+            listIssueDrafts(),
+            listIssues()
+        ]);
+        state.submissions = submissions.submissions || [];
+        state.manuscripts = manuscripts.manuscripts || [];
+        state.issueDrafts = issueDrafts.issueDrafts || [];
+        state.issues = issues.issues || [];
+        state.published = state.issues.flatMap(issue => issue.publishedArticles || []);
+        state.unpublished = state.issues.flatMap(issue => issue.unpublishedArticles || []);
+        if (state.selectedIssueVol && !state.issues.some(issue => issue.vol === state.selectedIssueVol)) {
+            state.selectedIssueVol = '';
+        }
+        renderAllLists();
+        syncActionState();
+    })().finally(() => {
+        state.workbenchRefreshPromise = null;
+        if (refreshButton) refreshButton.disabled = Boolean(wasDisabled);
+        syncActionState();
+    });
+
+    return state.workbenchRefreshPromise;
 }
 
 async function selectSubmission(submissionId) {
-    state.selectedSubmission = await getSubmission(submissionId);
+    const token = ++state.selectionTokens.submission;
+    const detail = await getSubmission(submissionId);
+    if (token !== state.selectionTokens.submission) return;
+    state.selectedSubmission = detail;
     renderAllLists();
     renderSubmissionDetail();
 }
 
 async function selectManuscript(manuscriptId) {
-    state.selectedManuscript = await getManuscript(manuscriptId);
+    const token = ++state.selectionTokens.manuscript;
+    const detail = await getManuscript(manuscriptId);
+    if (token !== state.selectionTokens.manuscript) return;
+    state.selectedManuscript = detail;
     renderAllLists();
     renderManuscriptDetail();
 }
 
 async function selectIssueDraft(issueDraftId) {
-    state.selectedIssueDraft = await getIssueDraft(issueDraftId);
+    const token = ++state.selectionTokens.issueDraft;
+    const detail = await getIssueDraft(issueDraftId);
+    if (token !== state.selectionTokens.issueDraft) return;
+    state.selectedIssueDraft = detail;
     state.selectedIssueVol = state.selectedIssueDraft?.meta?.vol || state.selectedIssueVol;
     state.selectedIssueManuscriptId = '';
     state.selectedIssueAvailableManuscriptId = '';
