@@ -3671,6 +3671,8 @@
         let loadedContributions = 0;
         let currentVolume = '';
         let isLoadingContributions = false;
+        let activeVolumeLoad = null;
+        let volumeLoadVersion = 0;
         const CONTRIBUTIONS_PER_BATCH = 3;
 
         // Store unique contributors (author_ids)
@@ -3721,8 +3723,25 @@
         }
 
         // Pre-fetch all contributor authors for header display
-        async function prefetchContributors(vol, folders) {
+        function startVolumeLoad(vol) {
+            currentVolume = vol;
+            activeVolumeLoad = { vol, version: ++volumeLoadVersion };
+            isLoadingContributions = false;
+            isLoadingBestPractices = false;
+            return activeVolumeLoad;
+        }
+
+        function isActiveVolumeLoad(loadContext) {
+            return Boolean(
+                loadContext &&
+                activeVolumeLoad === loadContext &&
+                loadContext.vol === currentVolume
+            );
+        }
+
+        async function prefetchContributors(vol, folders, loadContext = activeVolumeLoad) {
             const basePath = `${CONTENT_DIR}/vol-${vol}/contributions`;
+            const nextContributorIds = new Set();
 
             // Fetch all contribution metadata in parallel
             const fetchPromises = folders.map(async (folder) => {
@@ -3741,20 +3760,27 @@
             });
 
             const authorIdArrays = await Promise.all(fetchPromises);
+            if (!isActiveVolumeLoad(loadContext)) return;
             authorIdArrays.forEach(ids => {
-                if (ids) ids.forEach(id => contributorIds.add(id));
+                if (ids) ids.forEach(id => nextContributorIds.add(id));
             });
+            nextContributorIds.forEach(id => contributorIds.add(id));
             renderContributors();
         }
 
         // Load and render contributions with lazy loading
-        async function loadContributions(vol) {
+        async function loadContributions(vol, loadContext = activeVolumeLoad) {
+            if (!loadContext || loadContext.vol !== vol) {
+                loadContext = startVolumeLoad(vol);
+            }
             const contributionsGrid = document.getElementById('contributions-grid');
             const contributionsSectionEl = document.getElementById('contributions-section');
             contributionsGrid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading contributions...</p>';
 
-            currentVolume = vol;
-            contributionFolders = await getContributionFolders(vol);
+            const folders = await getContributionFolders(vol);
+            if (!isActiveVolumeLoad(loadContext)) return;
+
+            contributionFolders = folders;
             loadedContributions = 0;
             contributorIds = new Set(); // Reset contributors for new volume
 
@@ -3768,23 +3794,24 @@
             contributionsSectionEl.style.display = '';
 
             // Pre-fetch all contributor authors for header (non-blocking)
-            prefetchContributors(vol, contributionFolders);
+            prefetchContributors(vol, contributionFolders, loadContext);
 
             // Clear and load initial batch
             contributionsGrid.innerHTML = '';
-            await loadMoreContributions();
+            await loadMoreContributions(loadContext);
+            if (!isActiveVolumeLoad(loadContext)) return;
 
             // Set up intersection observer for infinite scroll
             setupContributionsObserver();
         }
 
         // Load more contributions (batch loading)
-        async function loadMoreContributions() {
-            if (isLoadingContributions || loadedContributions >= contributionFolders.length) return;
+        async function loadMoreContributions(loadContext = activeVolumeLoad) {
+            if (!isActiveVolumeLoad(loadContext) || isLoadingContributions || loadedContributions >= contributionFolders.length) return;
             isLoadingContributions = true;
 
             const contributionsGrid = document.getElementById('contributions-grid');
-            const basePath = `${CONTENT_DIR}/vol-${currentVolume}/contributions`;
+            const basePath = `${CONTENT_DIR}/vol-${loadContext.vol}/contributions`;
 
             // Remove loading sentinel if exists
             const sentinel = document.getElementById('contributions-sentinel');
@@ -3803,7 +3830,7 @@
                         }
 
                         const { metadata, content: markdownContent } = parseFrontmatter(content);
-                        const articleId = `${currentVolume}-${folder}`;
+                        const articleId = `${loadContext.vol}-${folder}`;
                         const folderPath = `${basePath}/${folder}`;
                         // Collect contributor author_ids (support multi-author)
                         if (metadata.author_ids && Array.isArray(metadata.author_ids)) {
@@ -3819,6 +3846,7 @@
                 });
 
                 const results = await Promise.all(loadPromises);
+                if (!isActiveVolumeLoad(loadContext)) return;
 
                 results.forEach(result => {
                     if (result) {
@@ -3845,7 +3873,9 @@
                     }
                 }
             } finally {
-                isLoadingContributions = false;
+                if (isActiveVolumeLoad(loadContext)) {
+                    isLoadingContributions = false;
+                }
             }
         }
 
@@ -3859,7 +3889,7 @@
             contributionsObserver = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting && loadedContributions < contributionFolders.length) {
-                        loadMoreContributions();
+                        loadMoreContributions(activeVolumeLoad);
                     }
                 });
             }, { rootMargin: '100px' });
@@ -4017,13 +4047,19 @@
         let isLoadingBestPractices = false;
 
         // Load and render best practices with lazy loading
-        async function loadBestPractices(vol) {
+        async function loadBestPractices(vol, loadContext = activeVolumeLoad) {
+            if (!loadContext || loadContext.vol !== vol) {
+                loadContext = startVolumeLoad(vol);
+            }
             const grid = document.querySelector('#best-practices-grid');
             const sectionEl = document.getElementById('best-practices-section');
             grid.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Loading best practices...</p>';
 
             currentBestPracticesVolume = vol;
-            bestPracticeFolders = await getBestPracticeFolders(vol);
+            const folders = await getBestPracticeFolders(vol);
+            if (!isActiveVolumeLoad(loadContext)) return;
+
+            bestPracticeFolders = folders;
             loadedBestPractices = 0;
 
             if (bestPracticeFolders.length === 0) {
@@ -4033,17 +4069,18 @@
             sectionEl.style.display = '';
 
             grid.innerHTML = '';
-            await loadMoreBestPractices();
+            await loadMoreBestPractices(loadContext);
+            if (!isActiveVolumeLoad(loadContext)) return;
             setupBestPracticesObserver();
         }
 
         // Load more best practices (batch loading)
-        async function loadMoreBestPractices() {
-            if (isLoadingBestPractices || loadedBestPractices >= bestPracticeFolders.length) return;
+        async function loadMoreBestPractices(loadContext = activeVolumeLoad) {
+            if (!isActiveVolumeLoad(loadContext) || isLoadingBestPractices || loadedBestPractices >= bestPracticeFolders.length) return;
             isLoadingBestPractices = true;
 
             const grid = document.querySelector('#best-practices-grid');
-            const basePath = `${CONTENT_DIR}/vol-${currentBestPracticesVolume}/best-practices`;
+            const basePath = `${CONTENT_DIR}/vol-${loadContext.vol}/best-practices`;
 
             const sentinel = document.getElementById('best-practices-sentinel');
             if (sentinel) sentinel.remove();
@@ -4060,7 +4097,7 @@
                         }
 
                         const { metadata, content: markdownContent } = parseFrontmatter(content);
-                        const articleId = `bp-${currentBestPracticesVolume}-${folder}`;
+                        const articleId = `bp-${loadContext.vol}-${folder}`;
                         const folderPath = `${basePath}/${folder}`;
                         return { html: renderBestPractice(metadata, markdownContent, articleId, folderPath), folder };
                     } catch (error) {
@@ -4070,6 +4107,7 @@
                 });
 
                 const results = await Promise.all(loadPromises);
+                if (!isActiveVolumeLoad(loadContext)) return;
 
                 results.forEach(result => {
                     if (result) {
@@ -4091,7 +4129,9 @@
                     }
                 }
             } finally {
-                isLoadingBestPractices = false;
+                if (isActiveVolumeLoad(loadContext)) {
+                    isLoadingBestPractices = false;
+                }
             }
         }
 
@@ -4105,7 +4145,7 @@
             bestPracticesObserver = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting && loadedBestPractices < bestPracticeFolders.length) {
-                        loadMoreBestPractices();
+                        loadMoreBestPractices(activeVolumeLoad);
                     }
                 });
             }, { rootMargin: '100px' });
@@ -4132,6 +4172,7 @@
             } catch (error) {
                 console.error('Failed to get current volume, using default:', error);
             }
+            const initialLoadContext = startVolumeLoad(vol);
 
             // Load config and authors in parallel (non-blocking for main content)
             const configPromise = loadConfig().catch(err => {
@@ -4146,6 +4187,7 @@
             // Wait for config and authors
             await Promise.all([configPromise, authorsPromise]);
             applySiteConfig();
+            initSearch();
 
             // Load likes data and user's liked articles - MUST complete before rendering contributions
             try {
@@ -4163,6 +4205,7 @@
 
             // Increment and display page views (non-critical)
             incrementViews(vol).then(views => {
+                if (!isActiveVolumeLoad(initialLoadContext)) return;
                 document.getElementById('page-views').textContent = views.toLocaleString();
                 // Also update the sidebar views for current volume to keep in sync
                 updateSidebarViews(vol, views);
@@ -4170,6 +4213,7 @@
                 volumesCachePromise = null;
                 volumesCache = null;
             }).catch(err => {
+                if (!isActiveVolumeLoad(initialLoadContext)) return;
                 console.error('Failed to increment views:', err);
                 document.getElementById('page-views').textContent = '0';
             });
@@ -4187,6 +4231,7 @@
             try {
                 const volPath = `${CONTENT_DIR}/vol-${vol}`;
                 const radarContent = await loadMarkdown(`${volPath}/radar.md`);
+                if (!isActiveVolumeLoad(initialLoadContext)) return;
                 if (radarContent) {
                     const { metadata, content } = parseFrontmatter(radarContent);
                     renderRadar(metadata, content, volPath);
@@ -4199,6 +4244,7 @@
                 document.getElementById('main-header').classList.add('loaded');
                 document.getElementById('trending-list').classList.add('loaded');
             } catch (error) {
+                if (!isActiveVolumeLoad(initialLoadContext)) return;
                 console.error('Failed to load radar content:', error);
                 // Hide trending section on error
                 document.getElementById('trending-section').style.display = 'none';
@@ -4208,9 +4254,11 @@
 
             // Load best practices with lazy loading
             try {
-                await loadBestPractices(vol);
+                await loadBestPractices(vol, initialLoadContext);
+                if (!isActiveVolumeLoad(initialLoadContext)) return;
                 document.getElementById('best-practices-grid').classList.add('loaded');
             } catch (error) {
+                if (!isActiveVolumeLoad(initialLoadContext)) return;
                 console.error('Failed to load best practices:', error);
                 const bpGrid = document.getElementById('best-practices-grid');
                 if (bpGrid) {
@@ -4221,10 +4269,12 @@
 
             // Load contributions with lazy loading
             try {
-                await loadContributions(vol);
+                await loadContributions(vol, initialLoadContext);
+                if (!isActiveVolumeLoad(initialLoadContext)) return;
                 // Mark contributions as loaded
                 document.getElementById('contributions-grid').classList.add('loaded');
             } catch (error) {
+                if (!isActiveVolumeLoad(initialLoadContext)) return;
                 console.error('Failed to load contributions:', error);
                 const contributionsGrid = document.getElementById('contributions-grid');
                 if (contributionsGrid) {
@@ -4365,6 +4415,7 @@
         // ==================== SEARCH FUNCTIONALITY ====================
         // Search state is scoped per input so sidebar and header searches do not race each other.
         const searchStates = new Map();
+        let searchInitialized = false;
 
         function getSearchState(dropdown) {
             const key = dropdown.id || 'default-search';
@@ -4381,6 +4432,8 @@
 
         // Initialize all search boxes
         function initSearch() {
+            if (searchInitialized) return;
+            searchInitialized = true;
             // Initialize sidebar search
             initSearchBox('search-input', 'search-dropdown', '.search-container');
             // Initialize header search
@@ -4616,10 +4669,11 @@
                     ? `${window.location.pathname}?vol=${vol}`
                     : (isDraftMode() ? `/draft?vol=${vol}` : `/?vol=${vol}`);
                 window.history.pushState({ vol }, '', newUrl);
-                currentVolume = vol;
+                const loadContext = startVolumeLoad(vol);
 
                 // Load the volume content
-                await loadVolumeContent(vol);
+                await loadVolumeContent(vol, loadContext);
+                if (!isActiveVolumeLoad(loadContext)) return;
 
                 // Update sidebar active state
                 updateSidebarActiveState(vol);
@@ -4627,18 +4681,23 @@
                 // After content loads, scroll to target
                 // Use a small delay to ensure DOM is updated
                 setTimeout(() => {
+                    if (!isActiveVolumeLoad(loadContext)) return;
                     scrollToTarget(type, target);
                 }, 100);
             }
         }
 
         // Load volume content (radar + contributions)
-        async function loadVolumeContent(vol) {
+        async function loadVolumeContent(vol, loadContext = activeVolumeLoad) {
+            if (!loadContext || loadContext.vol !== vol) {
+                loadContext = startVolumeLoad(vol);
+            }
             const volPath = `${CONTENT_DIR}/vol-${vol}`;
 
             // Load radar content
             try {
                 const radarContent = await loadMarkdown(`${volPath}/radar.md`);
+                if (!isActiveVolumeLoad(loadContext)) return;
                 if (radarContent) {
                     const { metadata, content } = parseFrontmatter(radarContent);
                     renderRadar(metadata, content, volPath);
@@ -4647,36 +4706,43 @@
                     document.getElementById('trending-section').style.display = 'none';
                 }
             } catch (error) {
+                if (!isActiveVolumeLoad(loadContext)) return;
                 console.error('Failed to load radar:', error);
                 document.getElementById('trending-section').style.display = 'none';
             }
 
             // Load best practices
             try {
-                await loadBestPractices(vol);
+                await loadBestPractices(vol, loadContext);
             } catch (error) {
+                if (!isActiveVolumeLoad(loadContext)) return;
                 console.error('Failed to load best practices:', error);
             }
 
             // Load contributions
             try {
-                await loadContributions(vol);
+                await loadContributions(vol, loadContext);
             } catch (error) {
+                if (!isActiveVolumeLoad(loadContext)) return;
                 console.error('Failed to load contributions:', error);
             }
 
             // Update views (draft and admin preview modes show 0 without recording)
             try {
                 if (isReadOnlyPreviewMode()) {
+                    if (!isActiveVolumeLoad(loadContext)) return;
                     document.getElementById('page-views').textContent = '0';
                     return;
                 }
                 const viewsResult = await fetchWithRetry(`/api/views/${vol}`, { method: 'POST' });
+                if (!isActiveVolumeLoad(loadContext)) return;
                 if (viewsResult.ok) {
                     const viewsData = await viewsResult.json();
+                    if (!isActiveVolumeLoad(loadContext)) return;
                     document.getElementById('page-views').textContent = viewsData.views;
                 }
             } catch (error) {
+                if (!isActiveVolumeLoad(loadContext)) return;
                 console.error('Failed to update views:', error);
             }
         }

@@ -271,6 +271,40 @@ describe('Frontend contract', () => {
         assert.match(INDEX_HTML, /data-like-button="true"/);
     });
 
+    test('volume load contexts invalidate stale async work', () => {
+        const context = loadFrontendContext();
+
+        const first = context.startVolumeLoad('001');
+        assert.equal(context.isActiveVolumeLoad(first), true);
+
+        const second = context.startVolumeLoad('002');
+        assert.equal(context.isActiveVolumeLoad(first), false);
+        assert.equal(context.isActiveVolumeLoad(second), true);
+    });
+
+    test('stale search responses cannot overwrite newer query state', async () => {
+        let resolveFetch;
+        const context = loadFrontendContext({
+            fetchImpl: async () => new Promise(resolve => {
+                resolveFetch = resolve;
+            })
+        });
+        const dropdown = createElementMock();
+        dropdown.id = 'search-dropdown';
+        const state = context.getSearchState(dropdown);
+        state.requestId = 1;
+
+        const searchPromise = context.performSearch('old', dropdown, state, 1);
+        state.requestId = 2;
+        resolveFetch(createResponse({
+            results: [{ type: 'contribution', title: 'Old', vol: '001', authorIds: [] }]
+        }));
+        await searchPromise;
+
+        assert.equal(dropdown.innerHTML, '');
+        assert.equal(state.results.length, 0);
+    });
+
     test('reader page exposes submission as a direct route entry', () => {
         assert.match(INDEX_HTML, /href="\/submit"/);
         assert.equal((INDEX_HTML.match(/href="\/submit"/g) || []).length, 1);

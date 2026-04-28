@@ -241,7 +241,7 @@
 | `like-ips/vol-<vol>.json` | 非数组值必须在加载时归一化为空数组 |
 | `views.json` | 仅记录已发布卷期阅读量，不记录页面局部状态；键必须对应当前 `contents/published/vol-<vol>/` |
 
-运行时数据只允许上述正式文件与迁移后保留的 `likes.json.migrated`、`like-ips.json.migrated`。其它历史实验文件不属于契约，内容巡检应报告 warning，服务端也不应读取它们恢复状态。
+运行时数据只允许上述正式文件与迁移后保留的 `likes.json.migrated`、`like-ips.json.migrated`。其它历史实验文件不属于契约，内容巡检应报告 warning，服务端也不应读取它们恢复状态。`npm run repair:runtime` 默认只做 dry-run；显式加 `-- --write` 时，可以移除未知卷期阅读量并把非契约运行时文件移入后台私有修复归档。
 
 ## 衍生文件契约
 

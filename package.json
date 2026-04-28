@@ -7,6 +7,7 @@
     "start": "node server.js",
     "start:test": "LOAD_TEST_MODE=true node server.js",
     "lint:content": "node tests/content-contract-lint.js",
+    "repair:runtime": "node scripts/repair-runtime-data.js",
     "test": "npm run lint:content && npm run test:contracts",
     "test:contracts": "node --test tests/*.test.js",
     "test:load": "node tests/load-test.js",
