@@ -40,10 +40,11 @@
 | `contents/admin/issue-drafts/<issueDraftId>/` | 期刊草稿 | 包含 `meta.json` 与 `issue-review.json`，通过引用组织稿件 |
 | `contents/admin/unpublished/<articleId>/` | 下线文章归档 | 不硬删除，支持恢复 |
 | `contents/admin/published-history/<articleId>/` | 已发布文章快照 | 编辑、下线或回滚前保存最近版本 |
+| `contents/admin/runtime-repair/<repairId>/` | 运行时数据修复归档 | 保存从运行时数据目录隔离出的非契约历史文件 |
 | `contents/admin/users.json` | 后台账号 | 服务端私有，不返回密码摘要 |
 | `contents/admin/audit-log.json` | 审计日志 | 记录关键治理事件 |
 
-`contents/admin/drafts/` 是旧模型迁移来源；新后台不再把它作为主数据写入。`/contents/admin/**` 必须返回 `403`。
+`contents/admin/drafts/` 是旧模型迁移来源；新后台不再把它作为主数据写入。旧 `drafts` 写入、审核和发布 API 必须返回 `410`，只能保留受登录保护的兼容读取。`/contents/admin/**` 必须返回 `403`。
 
 ## 状态机
 

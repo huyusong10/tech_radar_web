@@ -360,7 +360,8 @@
             transition: color 0.2s;
         }
 
-        .search-clear:hover {
+        .search-clear:hover,
+        .search-clear:focus-visible {
             color: var(--accent-pink);
         }
 
@@ -577,7 +578,8 @@
             transition: color 0.2s;
         }
 
-        .header-search-clear:hover {
+        .header-search-clear:hover,
+        .header-search-clear:focus-visible {
             color: var(--accent-pink);
         }
 
@@ -708,11 +710,13 @@
             border-radius: var(--radius-md);
             font-family: var(--font-mono);
             font-size: 0.8rem;
+            color: inherit;
             cursor: pointer;
             transition: all 0.3s ease;
         }
 
-        .header-stats:hover {
+        .header-stats:hover,
+        .header-stats:focus-visible {
             background: rgba(255, 0, 255, 0.2);
             border-color: rgba(255, 0, 255, 0.5);
             transform: translateY(-2px);
@@ -2567,13 +2571,13 @@
 </head>
 <body>
     <!-- ==================== MOBILE MENU TOGGLE ==================== -->
-    <button class="sidebar-toggle" onclick="toggleSidebar()">☰ Archive</button>
+    <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle archive menu">☰ Archive</button>
 
     <!-- ==================== SIDEBAR NAVIGATION ==================== -->
     <aside class="sidebar dynamic-content" id="sidebar">
         <div class="sidebar-header">
             <div class="sidebar-logo" id="sidebar-logo"><span style="color: var(--accent-pink);">&gt;_</span> Contents</div>
-            <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse/Expand Sidebar">
+            <button class="sidebar-collapse-btn" id="sidebar-collapse-button" title="Collapse/Expand Sidebar" aria-label="Collapse or expand archive sidebar">
                 <span id="collapse-icon">◀</span>
             </button>
         </div>
@@ -2582,7 +2586,7 @@
             <div class="search-input-wrapper">
                 <input type="text" class="search-input" id="search-input" placeholder="Search articles..." autocomplete="off">
                 <span class="search-icon">🔍</span>
-                <button class="search-clear" id="search-clear" onclick="clearSearch()">×</button>
+                <button class="search-clear" id="search-clear" aria-label="Clear sidebar search">×</button>
             </div>
             <div class="search-dropdown" id="search-dropdown"></div>
         </div>
@@ -2603,7 +2607,7 @@
                 <div class="header-search-wrapper">
                     <span class="header-search-icon">🔍</span>
                     <input type="text" class="header-search-input" id="header-search-input" placeholder="Search all articles..." autocomplete="off">
-                    <button class="header-search-clear" id="header-search-clear" onclick="clearHeaderSearch()">×</button>
+                    <button class="header-search-clear" id="header-search-clear" aria-label="Clear header search">×</button>
                 </div>
                 <div class="header-search-dropdown" id="header-search-dropdown"></div>
             </div>
@@ -2628,10 +2632,10 @@
                     </div>
                 </div>
             </div>
-            <div class="header-stats" onclick="openStatsModal()">
+            <button class="header-stats" id="stats-button" type="button" aria-haspopup="dialog" aria-controls="stats-modal">
                 <span class="stats-icon">📊</span>
                 <span class="stats-label">Stats</span>
-            </div>
+            </button>
             <div class="header-views">
                 <span class="views-icon">👁️</span>
                 <span class="views-count" id="page-views">--</span>
@@ -2711,11 +2715,11 @@
     </div> <!-- End of main-content -->
 
     <!-- ==================== STATS MODAL ==================== -->
-    <div class="modal-overlay" id="stats-modal">
+    <div class="modal-overlay" id="stats-modal" role="dialog" aria-modal="true" aria-labelledby="stats-modal-title">
         <div class="modal-content">
             <div class="modal-header">
-                <span class="modal-title">📊 Author Statistics / 作者统计</span>
-                <button class="modal-close" onclick="closeStatsModal()">×</button>
+                <span class="modal-title" id="stats-modal-title">📊 Author Statistics / 作者统计</span>
+                <button class="modal-close" id="stats-modal-close" aria-label="Close statistics modal">×</button>
             </div>
             <div class="modal-body" id="stats-modal-body">
                 <div class="stats-loading">Loading statistics...</div>
@@ -3629,7 +3633,7 @@
                                 <p class="contribution-desc">${escapeHtml(metadata.description || '')}</p>
                                 ${contentHtml}
                                 <div class="card-footer">
-                                    <button type="button" class="like-button ${likedClass}" data-like-button="true" aria-pressed="${userLiked ? 'true' : 'false'}">
+                                    <button type="button" class="like-button ${likedClass}" data-like-button="true" aria-pressed="${userLiked ? 'true' : 'false'}" aria-label="Toggle article like">
                                         <span class="like-icon">♥</span>
                                         <span class="like-count">${likesCount}</span>
                                     </button>
@@ -4644,6 +4648,15 @@
             resetSearchBox('header-search-input', 'header-search-dropdown');
         }
 
+        function bindStaticControls() {
+            document.getElementById('sidebar-toggle')?.addEventListener('click', toggleSidebar);
+            document.getElementById('sidebar-collapse-button')?.addEventListener('click', toggleSidebarCollapse);
+            document.getElementById('search-clear')?.addEventListener('click', clearSearch);
+            document.getElementById('header-search-clear')?.addEventListener('click', clearHeaderSearch);
+            document.getElementById('stats-button')?.addEventListener('click', openStatsModal);
+            document.getElementById('stats-modal-close')?.addEventListener('click', closeStatsModal);
+        }
+
         // Select a search result and navigate
         function selectSearchResult(result, input, dropdown) {
             dropdown.classList.remove('active');
@@ -5182,7 +5195,6 @@
         // Close modal on overlay click
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) {
-                closeSubmitModal();
                 closeStatsModal();
             }
         });
@@ -5190,7 +5202,6 @@
         // Close modal on ESC key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                closeSubmitModal();
                 closeStatsModal();
             }
         });
@@ -5440,6 +5451,7 @@
 
         // Initialize when DOM is ready
         document.addEventListener('DOMContentLoaded', () => {
+            bindStaticControls();
             init();
             // Set up hot reload after a short delay to avoid blocking initial load
             setTimeout(setupHotReload, 1000);

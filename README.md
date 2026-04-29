@@ -31,7 +31,6 @@ tech_radar_web/
 ├── site.config.js          # 站点配置文件
 ├── package.json            # 依赖配置
 ├── README.md               # 用户文档
-├── CLAUDE.md               # AI 助手指南
 └── contents/               # 内容目录（可配置外部路径）
     ├── published/          # 已发布的周刊
     │   └── vol-001/
@@ -51,11 +50,13 @@ tech_radar_web/
     │       └── avatars/    # 作者头像
     ├── admin/              # 后台私有数据（自动生成，不公开）
     │   ├── users.json
-    │   ├── drafts/
-    │   ├── reviews/
-    │   ├── revisions/
+    │   ├── submissions/
+    │   ├── manuscripts/
+    │   ├── manuscript-reviews/
+    │   ├── issue-drafts/
     │   ├── unpublished/
     │   ├── published-history/
+    │   ├── runtime-repair/
     │   └── audit-log.json
     └── data/               # 运行时数据（自动生成）
         ├── likes/          # 按卷期分片的点赞计数
@@ -107,11 +108,11 @@ ADMIN_BOOTSTRAP_DISPLAY_NAME='Chief Editor' \
 npm start
 ```
 
-后台支持投稿接收、导入草稿、预览 Markdown 与资源、公开/内部审核意见、补发投稿状态链接、提交技术审核、发布前检查、主编一键发布、已发布文章编辑、资源增删、下线/恢复、历史回滚、作者维护/合并、卷期 `radar.md` 管理、后台用户管理和审计日志。`/contents/admin/**` 与 `/contents/data/**` 均不会作为静态资源公开。
+后台支持投稿初审、接收入稿件池、单篇审核、期刊草稿编排、整期预览、主编发布、已发布文章编辑、资源增删、下线/恢复、历史回滚、作者维护/合并、卷期 `radar.md` 管理、后台用户管理和审计日志。旧 draft 写入接口已退役，只保留迁移核对读取。`/contents/admin/**` 与 `/contents/data/**` 均不会作为静态资源公开。
 
 ### 自助投稿
 
-访问 `http://localhost:5090/submit` 可进入投稿入口。投稿者选择包含 `index.md` 的文件夹或多个文件，填写作者信息或绑定已有作者，预览后提交。提交成功后页面会返回状态链接；投稿者可通过该链接查看公开审核意见，并在退回修改时直接编辑正文、追加/替换资源或删除非正文资源后提交新版本。
+访问 `http://localhost:5090/submit` 可进入投稿入口。投稿者选择包含 `index.md` 的文件夹或多个文件，填写作者信息或绑定已有作者，预览后提交。提交成功后页面会返回状态链接；投稿者可通过该链接查看公开审核意见，并在退回修改时上传完整返修文件包。
 
 ### 本地验证
 

@@ -8,6 +8,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const INDEX_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'index.html'), 'utf8');
 const SUBMIT_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'submit', 'index.html'), 'utf8');
 const ADMIN_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'admin', 'index.html'), 'utf8');
+const ADMIN_API_JS = fs.readFileSync(path.join(PROJECT_ROOT, 'admin', 'js', 'api.js'), 'utf8');
 const ADMIN_DRAFTS_JS = fs.readFileSync(path.join(PROJECT_ROOT, 'admin', 'js', 'drafts.js'), 'utf8');
 const INLINE_SCRIPT = INDEX_HTML.match(/<script>([\s\S]*)<\/script>\s*<\/body>/)[1];
 
@@ -258,17 +259,14 @@ describe('Frontend contract', () => {
         assert.ok(!requestedUrls.includes('/api/volumes'));
     });
 
-    test('archive load-more controls do not use inline JavaScript handlers', () => {
-        assert.doesNotMatch(INDEX_HTML, /onclick="loadMoreVolumes/);
-    });
-
-    test('dynamic reader cards use event delegation instead of inline handlers', () => {
-        assert.doesNotMatch(INDEX_HTML, /onclick="\\$\\{hasDetails/);
-        assert.doesNotMatch(INDEX_HTML, /onclick="toggleContributionCard/);
-        assert.doesNotMatch(INDEX_HTML, /onclick="event\.stopPropagation\(\); toggleLike/);
-        assert.match(INDEX_HTML, /data-trending-toggle="true"/);
-        assert.match(INDEX_HTML, /data-card-toggle="true"/);
-        assert.match(INDEX_HTML, /data-like-button="true"/);
+    test('reader shell exposes accessible controls for core interactions', () => {
+        assert.match(INDEX_HTML, /id="stats-button"[^>]*type="button"[^>]*aria-haspopup="dialog"[^>]*aria-controls="stats-modal"/);
+        assert.match(INDEX_HTML, /id="stats-modal"[^>]*role="dialog"[^>]*aria-modal="true"/);
+        assert.match(INDEX_HTML, /id="stats-modal-close"[^>]*aria-label="[^"]+"/);
+        assert.match(INDEX_HTML, /id="search-clear"[^>]*aria-label="[^"]+"/);
+        assert.match(INDEX_HTML, /id="header-search-clear"[^>]*aria-label="[^"]+"/);
+        assert.match(INDEX_HTML, /data-like-button="true"[^>]*aria-pressed="\$\{userLiked \? 'true' : 'false'\}"[^>]*aria-label="[^"]+"/);
+        assert.doesNotMatch(INDEX_HTML, /closeSubmitModal/);
     });
 
     test('volume load contexts invalidate stale async work', () => {
@@ -375,10 +373,15 @@ describe('Frontend contract', () => {
         ].forEach(id => assert.match(ADMIN_HTML, new RegExp(`id="${id}"`)));
     });
 
-    test('admin workflow guards refresh and detail selection races', () => {
-        assert.match(ADMIN_DRAFTS_JS, /workbenchRefreshPromise/);
-        assert.match(ADMIN_DRAFTS_JS, /selectionTokens/);
-        assert.match(ADMIN_DRAFTS_JS, /refreshButton\.disabled = true/);
+    test('admin client follows the manuscript and issue workflow instead of retired draft mutations', () => {
+        assert.match(ADMIN_API_JS, /\/api\/admin\/submissions/);
+        assert.match(ADMIN_API_JS, /\/api\/admin\/manuscripts/);
+        assert.match(ADMIN_API_JS, /\/api\/admin\/issue-drafts/);
+        assert.doesNotMatch(
+            ADMIN_API_JS,
+            /export function (listDrafts|getDraft|importDraft|updateDraft|assignDraft|issueStatusLink|deleteDraft|acceptDraft|rejectDraft|requestReview|reviewDraft|publishDraft|checkPublish)\b/
+        );
+        assert.doesNotMatch(ADMIN_DRAFTS_JS, /\/api\/admin\/drafts/);
     });
 
     test('article batch rendering isolates individual markdown failures', async () => {

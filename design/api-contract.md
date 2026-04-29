@@ -98,8 +98,9 @@
 | `POST /api/admin/issue-drafts/:issueDraftId/publish` | `chief_editor` | 从 `approved` 期刊草稿发布到 `contents/published` |
 | `GET /api/admin/issues` | all roles | 按卷期聚合期刊草稿、已发布文章和已下线文章，供期刊管理界面使用 |
 | `GET /api/admin/drafts` | all roles | 旧模型兼容读取；新后台不再作为主流程入口 |
-| `POST /api/admin/drafts/:draftId/publish-check` | `chief_editor` | 已废弃；返回 `410` |
-| `POST /api/admin/drafts/:draftId/publish` | `chief_editor` | 已废弃；返回 `410` |
+| `GET /api/admin/drafts/:draftId` | all roles | 旧模型兼容详情读取，仅用于迁移核对 |
+| `GET /api/admin/drafts/:draftId/assets/*` | all roles | 旧模型兼容资源读取，仅用于迁移核对 |
+| `POST/PUT/DELETE /api/admin/drafts/**` | 原权限边界内 | 旧模型写入、审核和发布接口均已废弃；返回 `410` |
 | `GET /api/admin/authors` | `editor`、`chief_editor` | 作者主数据列表 |
 | `POST /api/admin/authors` | `editor`、`chief_editor` | 创建正式作者 |
 | `PUT /api/admin/authors/:authorId` | `editor`、`chief_editor` | 更新正式作者资料 |

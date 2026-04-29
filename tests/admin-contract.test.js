@@ -128,6 +128,24 @@ describe('Admin contract', () => {
                 jsonRequest({}, cookie)
             );
             assert.equal(retiredPublish.status, 410);
+
+            const retiredDraftWrites = [
+                ['/api/admin/drafts/import', jsonRequest({}, cookie)],
+                ['/api/admin/drafts/20260427010101-old-flow', putJsonRequest({}, cookie)],
+                ['/api/admin/drafts/20260427010101-old-flow', deleteRequest(cookie)],
+                ['/api/admin/drafts/20260427010101-old-flow/accept', jsonRequest({}, cookie)],
+                ['/api/admin/drafts/20260427010101-old-flow/assign', jsonRequest({}, cookie)],
+                ['/api/admin/drafts/20260427010101-old-flow/status-link', jsonRequest({}, cookie)],
+                ['/api/admin/drafts/20260427010101-old-flow/reject', jsonRequest({}, cookie)],
+                ['/api/admin/drafts/20260427010101-old-flow/review-request', jsonRequest({}, cookie)],
+                ['/api/admin/drafts/20260427010101-old-flow/review', jsonRequest({}, cookie)],
+                ['/api/admin/drafts/20260427010101-old-flow/publish-check', jsonRequest({}, cookie)]
+            ];
+
+            for (const [url, init] of retiredDraftWrites) {
+                const response = await harness.request(url, init);
+                assert.equal(response.status, 410, `${url} should be retired`);
+            }
         } finally {
             await harness.cleanup();
         }

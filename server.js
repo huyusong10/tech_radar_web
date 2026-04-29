@@ -828,18 +828,6 @@ function stringifyMarkdownDocument(metadata, body) {
     return `---\n${yaml.dump(metadata || {}, { lineWidth: -1 })}---\n${body || ''}`;
 }
 
-function submissionStatusForDraft(status) {
-    const map = {
-        editing: 'in_editing',
-        review_requested: 'in_technical_review',
-        changes_requested: 'changes_requested',
-        approved: 'approved',
-        published: 'published',
-        rejected: 'rejected'
-    };
-    return map[status] || 'submitted';
-}
-
 function normalizeSubmitter(input = {}) {
     return {
         name: String(input.name || '').trim(),
@@ -1586,44 +1574,6 @@ async function appendAuditLog(entry) {
         at: new Date().toISOString()
     });
     await writeJsonFile(ADMIN_AUDIT_LOG_FILE, auditLog);
-}
-
-async function appendReviewHistory(draftId, entry) {
-    const reviewPath = path.join(ADMIN_REVIEWS_DIR, `${draftId}.json`);
-    const review = await readJsonFile(reviewPath, { draftId, history: [] });
-    review.history = Array.isArray(review.history) ? review.history : [];
-    review.history.push({
-        ...entry,
-        visibility: normalizeReviewVisibility(entry.visibility, 'internal'),
-        at: new Date().toISOString()
-    });
-    await writeJsonFile(reviewPath, review);
-    return review;
-}
-
-async function updateDraftMeta(draftId, patch, operator) {
-    const draftDir = getDraftDir(draftId);
-    const metaPath = path.join(draftDir, 'meta.json');
-    const meta = await readJsonFile(metaPath, null);
-    if (!meta) return null;
-
-    const normalizedPatch = { ...patch };
-    if (
-        meta.source === 'submission' &&
-        normalizedPatch.status &&
-        !normalizedPatch.submissionStatus
-    ) {
-        normalizedPatch.submissionStatus = submissionStatusForDraft(normalizedPatch.status);
-    }
-
-    const updated = {
-        ...meta,
-        ...normalizedPatch,
-        updatedAt: new Date().toISOString(),
-        updatedBy: operator.username
-    };
-    await writeJsonFile(metaPath, updated);
-    return updated;
 }
 
 async function writeDraftFiles(draftDir, files) {
@@ -2846,231 +2796,6 @@ async function restoreArticle(articleId, operator) {
     return { status: 200, body: { articleId } };
 }
 
-async function previewResolvedAuthorMetadata(metadata, resolution) {
-    if (!metadata.author) {
-        return {
-            metadata,
-            requiresAuthorResolution: false,
-            resolvedAuthorId: metadata.author_id || (Array.isArray(metadata.author_ids) ? metadata.author_ids.join(',') : ''),
-            createsAuthor: false
-        };
-    }
-
-    if (!resolution || !resolution.mode) {
-        return {
-            metadata,
-            requiresAuthorResolution: true,
-            resolvedAuthorId: '',
-            error: 'Temporary author must be resolved before publishing'
-        };
-    }
-
-    const authors = await readAuthorsArray();
-    if (resolution.mode === 'existing') {
-        const authorId = sanitizeSlug(resolution.authorId, '');
-        if (!authors.some(author => author.id === authorId)) {
-            return { metadata, requiresAuthorResolution: true, resolvedAuthorId: authorId, error: 'Selected author does not exist' };
-        }
-        const normalized = { ...metadata, author_id: authorId };
-        delete normalized.author;
-        return { metadata: normalized, requiresAuthorResolution: false, resolvedAuthorId: authorId, createsAuthor: false };
-    }
-
-    if (resolution.mode === 'create') {
-        let author;
-        try {
-            author = normalizeAdminAuthorInput(resolution.author || metadata.author || {}, undefined);
-        } catch (error) {
-            return { metadata, requiresAuthorResolution: true, resolvedAuthorId: '', error: error.message };
-        }
-        if (authors.some(item => item.id === author.id)) {
-            return { metadata, requiresAuthorResolution: true, resolvedAuthorId: author.id, error: 'Author already exists' };
-        }
-        const normalized = { ...metadata, author_id: author.id };
-        delete normalized.author;
-        return { metadata: normalized, requiresAuthorResolution: false, resolvedAuthorId: author.id, createsAuthor: true };
-    }
-
-    return { metadata, requiresAuthorResolution: true, resolvedAuthorId: '', error: 'Unsupported author resolution mode' };
-}
-
-async function buildPublishCheck(draftId, authorResolution) {
-    const detail = await readDraftDetail(draftId);
-    if (!detail) {
-        return { status: 404, body: { error: 'Draft not found' } };
-    }
-
-    const checks = [];
-    const addCheck = (id, ok, message, details) => {
-        checks.push({ id, ok, message, ...(details !== undefined ? { details } : {}) });
-    };
-
-    addCheck('status', detail.meta.status === 'approved', 'Draft must be approved before publishing');
-
-    const targetVol = normalizeVolumeId(detail.meta.targetVol);
-    const folderName = sanitizeSlug(detail.meta.folderName, '');
-    const articleId = targetVol && folderName ? `${targetVol}-${folderName}` : '';
-    addCheck('target', Boolean(targetVol && folderName), 'Target volume and folder name must be valid');
-
-    const targetDir = targetVol && folderName
-        ? assertInside(PUBLISHED_DIR, path.join(PUBLISHED_DIR, `vol-${targetVol}`, 'contributions', folderName))
-        : null;
-    addCheck('target_available', Boolean(targetDir && !fs.existsSync(targetDir)), 'Published target path must be available');
-
-    const draftDir = getDraftDir(draftId);
-    const document = parseMarkdownDocument(detail.indexContent || '');
-    const authorPreview = await previewResolvedAuthorMetadata(document.metadata, authorResolution);
-    if (authorPreview.error) {
-        addCheck('author_resolution', false, authorPreview.error);
-    } else {
-        addCheck('author_resolution', true, 'Author resolution is ready', authorPreview.resolvedAuthorId);
-    }
-
-    const validationErrors = validateDraftMetadata(authorPreview.metadata, { allowTemporaryAuthor: false });
-    addCheck('frontmatter', validationErrors.length === 0, 'Frontmatter must match the published article contract', validationErrors);
-
-    try {
-        if (!authorPreview.requiresAuthorResolution && !authorPreview.error && !authorPreview.createsAuthor) {
-            await validatePublishedAuthorReferences(authorPreview.metadata);
-        }
-        addCheck('author_references', true, 'Official author references are valid');
-    } catch (error) {
-        addCheck('author_references', false, error.message);
-    }
-
-    const missingAssets = validateMarkdownAssetReferences(document.body, draftDir);
-    addCheck('assets', missingAssets.length === 0, 'Referenced local assets must exist', missingAssets);
-
-    return {
-        status: 200,
-        body: {
-            ok: checks.every(check => check.ok),
-            draftId,
-            articleId,
-            targetVol,
-            folderName,
-            targetPath: targetVol && folderName ? `/contents/published/vol-${targetVol}/contributions/${folderName}/index.md` : '',
-            requiresAuthorResolution: authorPreview.requiresAuthorResolution,
-            resolvedAuthorId: authorPreview.resolvedAuthorId,
-            checks
-        }
-    };
-}
-
-async function publishDraft(draftId, operator, authorResolution) {
-    const preflight = await buildPublishCheck(draftId, authorResolution);
-    if (preflight.status !== 200) return preflight;
-    if (!preflight.body.ok) {
-        return { status: 400, body: { error: 'Publish check failed', checks: preflight.body.checks } };
-    }
-
-    const detail = await readDraftDetail(draftId);
-    if (!detail) {
-        return { status: 404, body: { error: 'Draft not found' } };
-    }
-    if (detail.meta.status !== 'approved') {
-        return { status: 400, body: { error: 'Only approved drafts can be published' } };
-    }
-
-    const targetVol = normalizeVolumeId(detail.meta.targetVol);
-    const folderName = sanitizeSlug(detail.meta.folderName, '');
-    if (!targetVol || !folderName) {
-        return { status: 400, body: { error: 'Invalid target volume or folder name' } };
-    }
-
-    const draftDir = getDraftDir(draftId);
-    const targetDir = assertInside(
-        PUBLISHED_DIR,
-        path.join(PUBLISHED_DIR, `vol-${targetVol}`, 'contributions', folderName)
-    );
-    if (fs.existsSync(targetDir)) {
-        return { status: 409, body: { error: 'Published target already exists' } };
-    }
-
-    const indexPath = path.join(draftDir, 'index.md');
-    const document = parseMarkdownDocument(await fsPromises.readFile(indexPath, 'utf8'));
-    const metadata = await resolveTemporaryAuthor(document.metadata, authorResolution);
-    const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: false });
-    if (validationErrors.length > 0) {
-        return { status: 400, body: { error: 'Draft is not publishable', details: validationErrors } };
-    }
-
-    try {
-        await validatePublishedAuthorReferences(metadata);
-    } catch (error) {
-        return { status: 400, body: { error: error.message } };
-    }
-
-    const missingAssets = validateMarkdownAssetReferences(document.body, draftDir);
-    if (missingAssets.length > 0) {
-        return { status: 400, body: { error: 'Draft references missing assets', details: missingAssets } };
-    }
-
-    await fsPromises.mkdir(targetDir, { recursive: true });
-    const files = await collectFiles(draftDir, { skip: relative => relative === 'meta.json' });
-    for (const file of files) {
-        const source = path.join(draftDir, file.path);
-        const target = assertInside(targetDir, path.join(targetDir, file.path));
-        await fsPromises.mkdir(path.dirname(target), { recursive: true });
-        if (file.path === 'index.md') {
-            await fsPromises.writeFile(target, stringifyMarkdownDocument(metadata, document.body), 'utf8');
-        } else {
-            await fsPromises.copyFile(source, target);
-        }
-    }
-
-    const publishedArticleId = `${targetVol}-${folderName}`;
-    await generateArchiveJson(false);
-    const lintResult = await runContentLint();
-    if (!lintResult.ok) {
-        await fsPromises.rm(targetDir, { recursive: true, force: true });
-        await generateArchiveJson(false);
-        return {
-            status: 400,
-            body: {
-                error: 'Content check failed',
-                stdout: lintResult.stdout,
-                stderr: lintResult.stderr
-            }
-        };
-    }
-
-    await updateDraftMeta(draftId, {
-        status: 'published',
-        publishedAt: new Date().toISOString(),
-        publishedArticleId
-    }, operator);
-    await appendReviewHistory(draftId, {
-        action: 'published',
-        actor: operator.username,
-        role: operator.role,
-        comment: `Published as ${publishedArticleId}`,
-        visibility: 'public'
-    });
-    await appendAuditLog({
-        action: 'publish_draft',
-        actor: operator.username,
-        draftId,
-        articleId: publishedArticleId
-    });
-
-    cache.invalidatePattern('volumes');
-    cache.invalidatePattern('contributions');
-    cache.invalidatePattern('search:');
-    cache.invalidate('stats');
-    cache.invalidate('authors');
-    notifyHotReload('admin-publish', targetDir);
-
-    return {
-        status: 200,
-        body: {
-            draftId,
-            articleId: publishedArticleId,
-            path: `/contents/published/vol-${targetVol}/contributions/${folderName}/index.md`
-        }
-    };
-}
-
 function parseLintOutput(stdout, stderr) {
     const lines = `${stdout || ''}\n${stderr || ''}`
         .split('\n')
@@ -3871,339 +3596,87 @@ app.get('/api/admin/drafts/:draftId', requireAdmin, asyncRoute(async (req, res) 
     res.json(detail);
 }));
 
+function retiredDraftMutation(req, res) {
+    res.status(410).json({
+        error: 'Legacy draft mutations are retired; use submissions, manuscripts and issue drafts instead'
+    });
+}
+
 app.post(
     '/api/admin/drafts/import',
     requireAdmin,
     requireAdminPermission('canImportDraft'),
-    asyncRoute(async (req, res) => {
-        const { targetVol, folderName, files } = req.body || {};
-        const vol = normalizeVolumeId(targetVol);
-        const safeFolderName = sanitizeSlug(folderName, '');
-
-        if (!vol || !safeFolderName || !Array.isArray(files) || files.length === 0) {
-            return res.status(400).json({ error: 'targetVol, folderName and files are required' });
-        }
-
-        const draftId = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${safeFolderName}`;
-        const draftDir = getDraftDir(draftId);
-        if (fs.existsSync(draftDir)) {
-            return res.status(409).json({ error: 'Draft already exists' });
-        }
-
-        await fsPromises.mkdir(draftDir, { recursive: true });
-        const hasIndex = await writeDraftFiles(draftDir, files);
-        if (!hasIndex) {
-            await fsPromises.rm(draftDir, { recursive: true, force: true });
-            return res.status(400).json({ error: 'index.md is required' });
-        }
-
-        const indexContent = await fsPromises.readFile(path.join(draftDir, 'index.md'), 'utf8');
-        const { metadata } = parseMarkdownDocument(indexContent);
-        const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: true });
-        if (validationErrors.length > 0) {
-            await fsPromises.rm(draftDir, { recursive: true, force: true });
-            return res.status(400).json({ error: 'Draft frontmatter is invalid', details: validationErrors });
-        }
-
-        const now = new Date().toISOString();
-        const meta = {
-            draftId,
-            source: 'admin',
-            status: 'editing',
-            targetVol: vol,
-            folderName: safeFolderName,
-            createdBy: req.adminUser.username,
-            updatedBy: req.adminUser.username,
-            createdAt: now,
-            updatedAt: now
-        };
-        await writeJsonFile(path.join(draftDir, 'meta.json'), meta);
-        await writeJsonFile(path.join(ADMIN_REVIEWS_DIR, `${draftId}.json`), { draftId, history: [] });
-        await appendAuditLog({
-            action: 'import_draft',
-            actor: req.adminUser.username,
-            draftId
-        });
-
-        res.status(201).json(await readDraftDetail(draftId));
-    })
+    retiredDraftMutation
 );
 
 app.put(
     '/api/admin/drafts/:draftId',
     requireAdmin,
     requireAdminPermission('canEditDraft'),
-    asyncRoute(async (req, res) => {
-        const { indexContent, targetVol, folderName, files, deleteFiles, assignee } = req.body || {};
-        const detail = await readDraftDetail(req.params.draftId);
-        if (!detail) {
-            return res.status(404).json({ error: 'Draft not found' });
-        }
-        if (detail.meta.status === 'published') {
-            return res.status(400).json({ error: 'Published drafts cannot be edited' });
-        }
-
-        const draftDir = getDraftDir(req.params.draftId);
-        if (typeof indexContent === 'string') {
-            const { metadata } = parseMarkdownDocument(indexContent);
-            const validationErrors = validateDraftMetadata(metadata, { allowTemporaryAuthor: true });
-            if (validationErrors.length > 0) {
-                return res.status(400).json({ error: 'Draft frontmatter is invalid', details: validationErrors });
-            }
-            await fsPromises.writeFile(path.join(draftDir, 'index.md'), indexContent, 'utf8');
-        }
-
-        if (Array.isArray(files) && files.length > 0) {
-            await writeDraftFiles(draftDir, files);
-        }
-        if (Array.isArray(deleteFiles) && deleteFiles.length > 0) {
-            try {
-                await deleteManagedFiles(draftDir, deleteFiles);
-            } catch (error) {
-                return res.status(400).json({ error: error.message });
-            }
-        }
-
-        const patch = {};
-        if (targetVol !== undefined) {
-            const vol = normalizeVolumeId(targetVol);
-            if (!vol) return res.status(400).json({ error: 'Invalid target volume' });
-            patch.targetVol = vol;
-        }
-        if (folderName !== undefined) {
-            const safeFolderName = sanitizeSlug(folderName, '');
-            if (!safeFolderName) return res.status(400).json({ error: 'Invalid folder name' });
-            patch.folderName = safeFolderName;
-        }
-        if (assignee !== undefined) {
-            patch.assignee = sanitizeSlug(assignee, '');
-        }
-        if (detail.meta.status === 'review_requested' || detail.meta.status === 'approved') {
-            patch.status = 'editing';
-        }
-
-        await updateDraftMeta(req.params.draftId, patch, req.adminUser);
-        await appendAuditLog({
-            action: 'update_draft',
-            actor: req.adminUser.username,
-            draftId: req.params.draftId
-        });
-        res.json(await readDraftDetail(req.params.draftId));
-    })
+    retiredDraftMutation
 );
 
 app.delete(
     '/api/admin/drafts/:draftId',
     requireAdmin,
     requireAdminPermission('canDeleteDraft'),
-    asyncRoute(async (req, res) => {
-        const detail = await readDraftDetail(req.params.draftId);
-        if (!detail) {
-            return res.status(404).json({ error: 'Draft not found' });
-        }
-        if (detail.meta.status === 'published') {
-            return res.status(400).json({ error: 'Published drafts are retained for audit' });
-        }
-
-        await fsPromises.rm(getDraftDir(req.params.draftId), { recursive: true, force: true });
-        await fsPromises.rm(path.join(ADMIN_REVIEWS_DIR, `${req.params.draftId}.json`), { force: true });
-        await appendAuditLog({
-            action: 'delete_draft',
-            actor: req.adminUser.username,
-            draftId: req.params.draftId
-        });
-        res.json({ ok: true });
-    })
+    retiredDraftMutation
 );
 
 app.post(
     '/api/admin/drafts/:draftId/accept',
     requireAdmin,
     requireAdminPermission('canEditDraft'),
-    asyncRoute(async (req, res) => {
-        const detail = await readDraftDetail(req.params.draftId);
-        if (!detail) return res.status(404).json({ error: 'Draft not found' });
-        if (detail.meta.source !== 'submission') {
-            return res.status(400).json({ error: 'Only submissions can be accepted' });
-        }
-        if (!['editing', 'rejected'].includes(detail.meta.status)) {
-            return res.status(400).json({ error: 'Draft cannot be accepted from this status' });
-        }
-        await updateDraftMeta(req.params.draftId, {
-            status: 'editing',
-            submissionStatus: 'in_editing'
-        }, req.adminUser);
-        await appendReviewHistory(req.params.draftId, {
-            action: 'accepted',
-            actor: req.adminUser.username,
-            role: req.adminUser.role,
-            comment: req.body?.comment || '',
-            visibility: normalizeReviewVisibility(req.body?.visibility, 'internal')
-        });
-        await appendAuditLog({
-            action: 'accept_submission',
-            actor: req.adminUser.username,
-            draftId: req.params.draftId
-        });
-        res.json(await readDraftDetail(req.params.draftId));
-    })
+    retiredDraftMutation
 );
 
 app.post(
     '/api/admin/drafts/:draftId/assign',
     requireAdmin,
     requireAdminPermission('canAssignDraft'),
-    asyncRoute(async (req, res) => {
-        const detail = await readDraftDetail(req.params.draftId);
-        if (!detail) return res.status(404).json({ error: 'Draft not found' });
-        const assignee = sanitizeSlug(req.body?.assignee || '', '');
-        await updateDraftMeta(req.params.draftId, { assignee }, req.adminUser);
-        await appendAuditLog({
-            action: 'assign_draft',
-            actor: req.adminUser.username,
-            draftId: req.params.draftId,
-            assignee
-        });
-        res.json(await readDraftDetail(req.params.draftId));
-    })
+    retiredDraftMutation
 );
 
 app.post(
     '/api/admin/drafts/:draftId/status-link',
     requireAdmin,
     requireAdminPermission('canIssueStatusLink'),
-    asyncRoute(async (req, res) => {
-        const detail = await readDraftDetail(req.params.draftId);
-        if (!detail) return res.status(404).json({ error: 'Draft not found' });
-        if (detail.meta.source !== 'submission') {
-            return res.status(400).json({ error: 'Only submission drafts have status links' });
-        }
-        const token = createAccessToken();
-        const now = new Date().toISOString();
-        await updateDraftMeta(req.params.draftId, {
-            submitterTokenHash: hashAccessToken(token),
-            lastStatusLinkIssuedAt: now,
-            lastStatusLinkIssuedBy: req.adminUser.username
-        }, req.adminUser);
-        await appendAuditLog({
-            action: 'issue_submission_status_link',
-            actor: req.adminUser.username,
-            draftId: req.params.draftId
-        });
-        res.json({
-            submissionId: req.params.draftId,
-            accessToken: token,
-            statusUrl: `/submit?id=${encodeURIComponent(req.params.draftId)}&token=${encodeURIComponent(token)}`
-        });
-    })
+    retiredDraftMutation
 );
 
 app.post(
     '/api/admin/drafts/:draftId/reject',
     requireAdmin,
     requireAdminPermission('canRejectDraft'),
-    asyncRoute(async (req, res) => {
-        const detail = await readDraftDetail(req.params.draftId);
-        if (!detail) return res.status(404).json({ error: 'Draft not found' });
-        if (detail.meta.status === 'published') {
-            return res.status(400).json({ error: 'Published drafts cannot be rejected' });
-        }
-        await updateDraftMeta(req.params.draftId, {
-            status: 'rejected',
-            submissionStatus: detail.meta.source === 'submission' ? 'rejected' : undefined
-        }, req.adminUser);
-        await appendReviewHistory(req.params.draftId, {
-            action: 'rejected',
-            actor: req.adminUser.username,
-            role: req.adminUser.role,
-            comment: req.body?.comment || '',
-            visibility: normalizeReviewVisibility(req.body?.visibility, 'public')
-        });
-        await appendAuditLog({
-            action: 'reject_submission',
-            actor: req.adminUser.username,
-            draftId: req.params.draftId
-        });
-        res.json(await readDraftDetail(req.params.draftId));
-    })
+    retiredDraftMutation
 );
 
 app.post(
     '/api/admin/drafts/:draftId/review-request',
     requireAdmin,
     requireAdminPermission('canRequestReview'),
-    asyncRoute(async (req, res) => {
-        const detail = await readDraftDetail(req.params.draftId);
-        if (!detail) return res.status(404).json({ error: 'Draft not found' });
-        if (!['editing', 'changes_requested'].includes(detail.meta.status)) {
-            return res.status(400).json({ error: 'Draft cannot be submitted for review from this status' });
-        }
-        await updateDraftMeta(req.params.draftId, { status: 'review_requested' }, req.adminUser);
-        await appendReviewHistory(req.params.draftId, {
-            action: 'review_requested',
-            actor: req.adminUser.username,
-            role: req.adminUser.role,
-            comment: req.body?.comment || '',
-            visibility: normalizeReviewVisibility(req.body?.visibility, 'internal')
-        });
-        await appendAuditLog({
-            action: 'request_review',
-            actor: req.adminUser.username,
-            draftId: req.params.draftId
-        });
-        res.json(await readDraftDetail(req.params.draftId));
-    })
+    retiredDraftMutation
 );
 
 app.post(
     '/api/admin/drafts/:draftId/review',
     requireAdmin,
     requireAdminPermission('canReview'),
-    asyncRoute(async (req, res) => {
-        const { action, comment } = req.body || {};
-        const detail = await readDraftDetail(req.params.draftId);
-        if (!detail) return res.status(404).json({ error: 'Draft not found' });
-        if (detail.meta.status !== 'review_requested') {
-            return res.status(400).json({ error: 'Only review_requested drafts can be reviewed' });
-        }
-        if (!['approve', 'request_changes'].includes(action)) {
-            return res.status(400).json({ error: 'Unsupported review action' });
-        }
-
-        const status = action === 'approve' ? 'approved' : 'changes_requested';
-        await updateDraftMeta(req.params.draftId, { status }, req.adminUser);
-        await appendReviewHistory(req.params.draftId, {
-            action,
-            actor: req.adminUser.username,
-            role: req.adminUser.role,
-            comment: comment || '',
-            visibility: normalizeReviewVisibility(req.body?.visibility, 'public')
-        });
-        await appendAuditLog({
-            action: `review_${action}`,
-            actor: req.adminUser.username,
-            draftId: req.params.draftId
-        });
-        res.json(await readDraftDetail(req.params.draftId));
-    })
+    retiredDraftMutation
 );
 
 app.post(
     '/api/admin/drafts/:draftId/publish-check',
     requireAdmin,
     requireAdminPermission('canPublish'),
-    asyncRoute(async (req, res) => {
-        res.status(410).json({ error: 'Direct draft publishing is retired; publish an approved issue draft instead' });
-    })
+    retiredDraftMutation
 );
 
 app.post(
     '/api/admin/drafts/:draftId/publish',
     requireAdmin,
     requireAdminPermission('canPublish'),
-    asyncRoute(async (req, res) => {
-        res.status(410).json({ error: 'Direct draft publishing is retired; publish an approved issue draft instead' });
-    })
+    retiredDraftMutation
 );
 
 app.get(

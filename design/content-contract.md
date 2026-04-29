@@ -17,6 +17,7 @@
 | `contents/admin/issue-drafts/<issueDraftId>/` | 期刊草稿 | 引用已审核稿件，负责整期编排和发布前审核 |
 | `contents/admin/unpublished/<articleId>/` | 下线文章归档 | 从正式内容移出但保留恢复依据 |
 | `contents/admin/published-history/<articleId>/` | 已发布文章快照 | 保存编辑或下线前的最近版本，用于回滚 |
+| `contents/admin/runtime-repair/<repairId>/` | 运行时数据修复归档 | 保存从 `contents/data/` 移出的非契约历史文件；不参与服务端状态恢复 |
 | `contents/data/likes/vol-<vol>.json` | 分片点赞快照 | 仅供服务端读写；键为 `articleId`，值为非负整数 |
 | `contents/data/views.json` | 阅读量快照 | 键为 `vol`，值为非负整数 |
 | `contents/data/like-ips/vol-<vol>.json` | 分片点赞身份映射 | 仅供服务端读写；键为 `articleId`，值为身份数组 |

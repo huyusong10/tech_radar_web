@@ -349,7 +349,8 @@ async function validateAdminContent(authors) {
         'reviews',
         'revisions',
         'unpublished',
-        'published-history'
+        'published-history',
+        'runtime-repair'
     ]);
     const entries = await fsPromises.readdir(adminDir, { withFileTypes: true });
     for (const entry of entries) {
@@ -366,6 +367,7 @@ async function validateAdminContent(authors) {
     await validateAdminDrafts(path.join(adminDir, 'drafts'), path.join(adminDir, 'reviews'), path.join(adminDir, 'revisions'), authors);
     await validateUnpublishedArticles(path.join(adminDir, 'unpublished'), authors);
     await validatePublishedHistory(path.join(adminDir, 'published-history'), authors);
+    await validateRuntimeRepairArchives(path.join(adminDir, 'runtime-repair'));
 }
 
 async function validateAdminUsers(usersPath) {
@@ -848,6 +850,20 @@ async function validatePublishedHistory(historyDir, authors) {
             } else {
                 await validateCollectionEntry(contentDir, authors);
             }
+        }
+    }
+}
+
+async function validateRuntimeRepairArchives(repairDir) {
+    if (!exists(repairDir)) {
+        return;
+    }
+
+    const entries = await fsPromises.readdir(repairDir, { withFileTypes: true });
+    for (const entry of entries) {
+        const entryPath = path.join(repairDir, entry.name);
+        if (!entry.isDirectory()) {
+            addError('runtime repair archive may only contain repair directories', entryPath);
         }
     }
 }

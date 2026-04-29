@@ -43,14 +43,6 @@ export function me() {
     return request('/api/admin/me');
 }
 
-export function listDrafts(filters = {}) {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-        if (value) params.set(key, value);
-    });
-    return request(`/api/admin/drafts${params.toString() ? `?${params}` : ''}`);
-}
-
 export function listSubmissions(filters = {}) {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
@@ -173,85 +165,6 @@ export function previewIssueDraft(issueDraftId) {
 export function publishIssueDraft(issueDraftId) {
     return request(`/api/admin/issue-drafts/${encodeURIComponent(issueDraftId)}/publish`, {
         method: 'POST'
-    });
-}
-
-export function getDraft(draftId) {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}`);
-}
-
-export function importDraft(payload) {
-    return request('/api/admin/drafts/import', {
-        method: 'POST',
-        body: payload
-    });
-}
-
-export function updateDraft(draftId, payload) {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}`, {
-        method: 'PUT',
-        body: payload
-    });
-}
-
-export function assignDraft(draftId, assignee) {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/assign`, {
-        method: 'POST',
-        body: { assignee }
-    });
-}
-
-export function issueStatusLink(draftId) {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/status-link`, {
-        method: 'POST'
-    });
-}
-
-export function deleteDraft(draftId) {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}`, {
-        method: 'DELETE'
-    });
-}
-
-export function acceptDraft(draftId, comment = '', visibility = 'internal') {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/accept`, {
-        method: 'POST',
-        body: { comment, visibility }
-    });
-}
-
-export function rejectDraft(draftId, comment = '', visibility = 'public') {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/reject`, {
-        method: 'POST',
-        body: { comment, visibility }
-    });
-}
-
-export function requestReview(draftId, comment = '', visibility = 'internal') {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/review-request`, {
-        method: 'POST',
-        body: { comment, visibility }
-    });
-}
-
-export function reviewDraft(draftId, action, comment = '', visibility = 'public') {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/review`, {
-        method: 'POST',
-        body: { action, comment, visibility }
-    });
-}
-
-export function publishDraft(draftId, authorResolution) {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/publish`, {
-        method: 'POST',
-        body: { authorResolution }
-    });
-}
-
-export function checkPublish(draftId, authorResolution) {
-    return request(`/api/admin/drafts/${encodeURIComponent(draftId)}/publish-check`, {
-        method: 'POST',
-        body: { authorResolution }
     });
 }
 
