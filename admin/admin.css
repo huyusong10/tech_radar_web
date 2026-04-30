@@ -17,6 +17,8 @@
     --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-mono: 'JetBrains Mono', 'Courier New', monospace;
     --sidebar-width: 272px;
+    --admin-workbench-height: clamp(840px, calc(100vh - 220px), 1080px);
+    --admin-list-max-height: clamp(340px, 58vh, 680px);
 }
 
 * {
@@ -313,13 +315,18 @@ label span {
 
 .workspace-grid.manuscript-grid {
     grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-    min-height: clamp(760px, calc(100vh - 220px), 1040px);
+    height: var(--admin-workbench-height);
+    min-height: 0;
+    max-height: var(--admin-workbench-height);
+    align-items: stretch;
 }
 
 .manuscript-grid > .panel:first-child {
     position: sticky;
     top: 24px;
-    max-height: clamp(560px, calc(100vh - 220px), 900px);
+    align-self: stretch;
+    height: 100%;
+    max-height: var(--admin-workbench-height);
     display: grid;
     grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     overflow: hidden;
@@ -331,7 +338,7 @@ label span {
 }
 
 #manuscript-list {
-    grid-auto-rows: minmax(118px, auto);
+    grid-auto-rows: 118px;
 }
 
 .workspace-grid.submission-grid {
@@ -632,6 +639,7 @@ label span {
 .compact-list,
 .file-list {
     display: grid;
+    align-content: start;
     gap: 10px;
 }
 
@@ -646,6 +654,12 @@ label span {
 .compact-list.compact-scroll,
 .file-list.compact-scroll {
     min-height: 0;
+    overflow: auto;
+}
+
+.panel > .compact-list:not(#manuscript-list),
+.panel > .file-list {
+    max-height: var(--admin-list-max-height);
     overflow: auto;
 }
 
@@ -803,10 +817,11 @@ label span {
 }
 
 .manuscript-detail-panel {
-    min-height: clamp(760px, calc(100vh - 220px), 1040px);
+    height: 100%;
+    min-height: 0;
     display: grid;
-    grid-template-rows: auto auto auto auto auto;
-    overflow: visible;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    overflow: hidden;
 }
 
 .workflow-panel {
@@ -1106,15 +1121,18 @@ label span {
 .manuscript-detail-matrix {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: minmax(220px, auto) minmax(260px, auto);
+    grid-template-rows: minmax(240px, 0.9fr) minmax(300px, 1.1fr);
     gap: 10px;
     margin-top: 10px;
     align-items: stretch;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .detail-card {
     min-width: 0;
-    min-height: 220px;
+    min-height: 0;
+    max-height: 100%;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     gap: 8px;
@@ -1130,13 +1148,15 @@ label span {
 }
 
 .detail-card-list {
-    min-height: 260px;
+    min-height: 0;
 }
 
 .detail-card-list .file-list,
 .detail-card-list .compact-list {
     align-content: start;
     grid-auto-rows: minmax(82px, auto);
+    min-height: 0;
+    overflow: auto;
 }
 
 .detail-card-list .file-item,
@@ -1150,7 +1170,7 @@ label span {
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     align-content: start;
     gap: 8px;
-    overflow: visible;
+    overflow: auto;
 }
 
 .detail-fact {
