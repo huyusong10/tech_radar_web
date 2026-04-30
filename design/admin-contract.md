@@ -6,14 +6,14 @@
 
 | 对象 | 职责 |
 |------|------|
-| `Submission` | 投稿者上传的原始文件包，只用于编辑初审、退回和返修沟通 |
-| `Manuscript` | 编辑接收后的单篇候选文章，进入稿件池并接受单篇审核 |
-| `IssueDraft` | 某一期期刊草稿，引用若干已审核稿件，负责编排、排序和整期预览 |
+| `Submission` | 投稿者上传的原始文件包，只用于编辑初审和未接收前的投稿者修改 |
+| `Manuscript` | 编辑接收后的单篇候选文章，作为稿件池资产承载组刊去向和后续作者修改标记 |
+| `IssueDraft` | 某一期期刊草稿，引用若干有效稿件资产，负责编排、排序、整期预览和技术审核 |
 | `PublishedIssue` | 从已审核期刊草稿物化到 `contents/published` 的正式内容 |
 
 后台操作者、投稿者和正式作者是三类独立身份：
 
-- `Submitter`：投稿者，通过 token 链接查看和返修自己的投稿。
+- `Submitter`：投稿者，通过 token 链接查看和修改自己的未接收投稿；接收入池后的修改使用稿件修改链接。
 - `Operator`：后台登录用户，角色为 `chief_editor`、`editor` 或 `tech_reviewer`。
 - `Author`：正式作者库条目，写入 `contents/shared/authors.md`，供可发布内容引用。
 
@@ -25,8 +25,8 @@
 |------|----------|
 | `chief_editor` | 全部后台权限；发布期刊草稿；管理后台用户、卷期、作者、已发布内容和审计 |
 | `editor` | 初审投稿；创建和编辑稿件；管理作者；创建期刊草稿；编排稿件；提交整期审核；编辑、下线和恢复已发布文章 |
-| `tech_reviewer` | 查看投稿、稿件和期刊草稿；运行内容检查；审核单篇稿件；审核整期期刊草稿 |
-| `submitter-token` | 查看和返修自己的投稿，不能访问后台 |
+| `tech_reviewer` | 查看投稿、稿件和期刊草稿；运行内容检查；审核整期期刊草稿 |
+| `submitter-token` | 查看和修改自己的未接收投稿，不能访问后台 |
 
 权限判断必须发生在服务端。前端只负责隐藏或禁用当前角色不可用的操作。
 
@@ -36,7 +36,8 @@
 |------|------|------|
 | `contents/admin/submissions/<submissionId>/` | 投稿原始文件包 | 包含 `index.md`、`meta.json`、资源和 `revisions/` |
 | `contents/admin/manuscripts/<manuscriptId>/` | 稿件池单篇稿件 | 包含已归一化作者的 `index.md`、`meta.json` 和资源 |
-| `contents/admin/manuscript-reviews/<manuscriptId>.json` | 单篇稿件审核记录 | 记录审核动作、意见、审稿人和可见性 |
+| `contents/admin/manuscript-edits/<manuscriptId>/` | 作者提交的待确认稿件修改包 | 包含完整替换包、`index.md`、`meta.json` 和资源 |
+| `contents/admin/manuscript-reviews/<manuscriptId>.json` | 稿件历史记录 | 兼容旧单篇审核历史，并记录稿件修改采用或放弃等资产维护事件 |
 | `contents/admin/issue-drafts/<issueDraftId>/` | 期刊草稿 | 包含 `meta.json` 与 `issue-review.json`，通过引用组织稿件 |
 | `contents/admin/unpublished/<articleId>/` | 下线文章归档 | 不硬删除，支持恢复 |
 | `contents/admin/published-history/<articleId>/` | 已发布文章快照 | 编辑、下线或回滚前保存最近版本 |
@@ -51,23 +52,44 @@
 `Submission`：
 
 ```text
-submitted -> in_editor_review -> changes_requested -> accepted
-submitted -> rejected
+submitted -> accepted
+in_editor_review -> accepted
+changes_requested -> accepted
+rejected -> accepted
 accepted -> published
 ```
 
-`Manuscript`：
+`changes_requested` 和 `rejected` 是历史兼容状态；新后台不再主动写入。所有未 `accepted` / `published` 的投稿都视为“未接收，可通过原投稿链接修改”。
+
+`Manuscript` 稿件池资产状态：
 
 ```text
-drafting -> manuscript_review_requested -> changes_requested -> available -> scheduled -> published
-drafting -> archived
+active -> archived
 ```
 
-`IssueDraft`：
+`Manuscript` 去向关系从引用派生，不再作为单篇审核流程展示：
 
 ```text
-editing -> issue_review_requested -> changes_requested -> approved -> published
+unassigned | scheduled | published
+```
+
+`Manuscript` 后续修改标记独立于资产状态和去向关系：
+
+```text
+idle -> editing -> pending_review -> idle
+```
+
+`IssueDraft` 整期审核流程：
+
+```text
+editing -> issue_review_requested -> changes_requested -> approved
 editing -> archived
+```
+
+`IssueDraft` 后续发布标记：
+
+```text
+approved -> published
 ```
 
 稳定语义：
@@ -75,8 +97,16 @@ editing -> archived
 - 投稿不会直接写入正式作者库。
 - 编辑接收投稿时必须完成作者归一化：绑定已有作者或新建正式作者。
 - 后台作者归一化入口必须把“绑定已有作者”和“新建作者”作为互斥操作呈现，不能同时暴露两组输入造成误提交。
-- `available` 稿件才能加入期刊草稿；加入后变为 `scheduled`，不能同时加入其他期刊草稿。
-- `scheduled` 稿件默认锁定；若要修改，应先从期刊草稿移除，或把相关期刊草稿退回编辑态。
+- 稿件池不再承载当前单篇审核流程；技术审核只发生在整期草稿上。
+- 新接收入池稿件直接成为可组刊资产；旧 `drafting`、`manuscript_review_requested`、`changes_requested`、`available` 均兼容解释为有效稿件资产。
+- 稿件去向由期刊草稿引用和正式发布引用派生：未组刊、已加入某期草稿、已发布。
+- 有效且未被期刊草稿或正式发布引用的稿件才能加入期刊草稿；同一稿件不能同时加入多个期刊草稿。
+- `scheduled` 和 `published` 稿件仍可通过稿件修改链接提交修改；修改链接应支持源码包下载、简单正文编辑和完整替换包上传。编辑采用修改后，`scheduled` 稿件关联的期刊草稿必须回到需要确认的编辑态，`published` 稿件复用发布后维护的快照、内容检查和正式内容更新语义。
+- 稿件池页面默认是候选稿件工作台，只展示有效、未组刊、未发布的稿件；已组刊、已发布、归档和修改待处理稿件通过 scope 视图进入，不污染默认组刊工作流。
+- `editing` scope 是任务视图，不是互斥状态；同一稿件可同时属于候选、已组刊或已发布，并因修改标记进入修改待处理视图。
+- 编辑和主编可以把无引用且无待处理修改的候选稿件归档；归档稿件不参与候选组刊，可从归档视图恢复为候选资产。
+- 稿件池允许永久删除未被期刊草稿或正式内容引用的稿件；删除必须校验权限、二次确认、引用保护并写审计日志。
+- `approved` 是整期期刊草稿审核流程终点；`published` 表示后续发布标记，不能在整期审核流程图中作为新步骤呈现。
 - 期刊草稿必须由技术审核或主编审核通过后才能发布。
 - 正式内容必须从 `IssueDraft` 发布，不能绕过期刊草稿直接发布单篇稿件。
 - 期刊草稿预览从草稿详情进入，打开读者页完整界面；预览数据由后台 API 按该期刊草稿即时生成，不依赖全局 `/draft` 目录作为工作入口。
@@ -88,7 +118,9 @@ editing -> archived
 - 投稿者不填写卷期或发布目录。
 - 创建投稿返回 `submissionId`、随机 `accessToken` 和状态链接；服务端只保存 token hash。
 - 投稿者状态页只展示自己的状态、公开意见、文件列表、预览和发布结果。
-- 返修只能在 `changes_requested` 状态进行，并以完整文件包替换当前投稿；`revision + 1`。
+- 只要投稿尚未被接收入池或发布，投稿者都可以通过原投稿链接上传完整替换文件包；`revision + 1`。
+- 投稿一旦接收入稿件池，原投稿链接只展示接收结果，不再修改原始投稿；后续修改由稿件修改链接承载。
+- 投稿初审队列默认只显示仍需编辑处理的投稿；已接收入池或已发布投稿自动离队。编辑可以把未接收投稿移出队列，但不删除投稿文件包，投稿者后续通过原链接提交新版本时应重新进入队列。
 - 投稿者的临时作者信息只保留在 `Submission`，不会自动进入正式作者库。
 
 ## 后台信息架构
@@ -97,15 +129,19 @@ editing -> archived
 
 | 入口 | 主要用户 | 职责 |
 |------|----------|------|
-| `投稿初审` | 编辑 | 处理新投稿、退回返修、拒稿或接收入稿件池 |
-| `稿件池` | 编辑、技术审核 | 查看和编辑单篇稿件，完成单篇审核 |
-| `审核任务` | 技术审核、主编 | 集中查看待审核稿件与待审核期刊 |
+| `投稿初审` | 编辑 | 预览投稿、接收入稿件池或复制投稿链接 |
+| `稿件池` | 编辑、技术审核 | 默认处理候选稿件，按 scope 查看修改待处理、已组刊、已发布、归档和全量稿件资产 |
+| `审核任务` | 技术审核、主编 | 集中查看待审核期刊和运行内容检查 |
 | `期刊管理` | 编辑、主编 | 按卷期管理期刊草稿、整期预览、发布和发布后维护 |
 | `作者管理` | 编辑、主编 | 作者入库、修改、头像和合并 |
 | `人员权限` | 主编 | 维护后台用户、角色和停用状态 |
 | `操作日志` | 主编 | 查看关键后台操作记录 |
 
 `期刊管理` 是发布后治理的主轴。已发布文章、已下线文章和历史快照都从某一期进入，不再作为全站平铺列表优先呈现。
+
+后台编辑页以对象选择、状态摘要和可执行动作为主；稿件正文与资源修改统一通过稿件修改链接完成，稿件池详情不提供嵌入式编辑表单。Markdown 渲染预览应作为按需打开的临时预览层，不能长期挤占主工作区。单篇稿件、待确认稿件修改和已发布文章预览应基于当前可采用内容生成，以便校验待确认修改。
+`稿件池` 的单篇详情应呈现资产状态、组刊去向、发布去向和修改标记，不呈现单篇审核流程图；`期刊管理` 的整期草稿详情才呈现审核流程阶段，并把流转动作放在当前阶段附近。组刊和发布结果作为独立标记呈现，不应拉长审核流程图。不相关的审核动作不应长期作为禁用按钮挤占主工作区。期刊草稿的可加入稿件列表必须使用候选稿件 scope，不依赖稿件池当前视图。
+后台工作区的列表、详情卡片和动作区应保持稳定排版：外层卡片尺寸由页面网格决定，标题、长 ID、历史记录和文件列表等可变内容在卡片内部截断或滚动，不应因为内容长短导致整页重新布局或留下大块空白。不同语义的动作应分组呈现，同组按钮保持一致尺寸。
 
 后台预览从期刊草稿详情进入，不依赖统一 `/draft` 作为工作入口。
 期刊草稿编排必须在选中具体期刊草稿后提供当前可加入稿件池，编辑不应依赖复制稿件 ID 完成组刊；手填 ID 只作为高级回退路径保留。
@@ -129,7 +165,7 @@ editing -> archived
 
 - 审核历史中的记录可声明 `visibility: public | internal`。
 - 投稿者状态页只能返回公开记录；后台详情返回完整记录。
-- 审计日志至少记录投稿创建、返修、拒稿、接收入池、稿件修改、稿件审核、期刊草稿创建/修改/审核/发布、作者治理、已发布内容治理、卷期治理和用户治理。
+- 审计日志至少记录投稿创建、投稿者修改、接收入池、稿件修改链接、稿件修改提交/采用/放弃、稿件归档/恢复/删除、期刊草稿创建/修改/审核/发布、作者治理、已发布内容治理、卷期治理和用户治理。
 
 ## 多语言约束
 

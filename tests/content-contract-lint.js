@@ -14,6 +14,7 @@ const ADMIN_DRAFT_STATUSES = new Set(['editing', 'review_requested', 'changes_re
 const SUBMISSION_STATUSES = new Set(['submitted', 'in_editor_review', 'changes_requested', 'accepted', 'published', 'rejected']);
 const LEGACY_DRAFT_SUBMISSION_STATUSES = new Set(['submitted', 'in_editing', 'in_technical_review', 'changes_requested', 'approved', 'published', 'rejected']);
 const MANUSCRIPT_STATUSES = new Set(['drafting', 'manuscript_review_requested', 'changes_requested', 'available', 'scheduled', 'published', 'archived']);
+const MANUSCRIPT_EDIT_STATUSES = new Set(['idle', 'editing', 'pending_review']);
 const ISSUE_DRAFT_STATUSES = new Set(['editing', 'issue_review_requested', 'changes_requested', 'approved', 'published', 'archived']);
 const ADMIN_ROLES = new Set(['chief_editor', 'editor', 'tech_reviewer']);
 
@@ -343,6 +344,7 @@ async function validateAdminContent(authors) {
         'audit-log.json',
         'submissions',
         'manuscripts',
+        'manuscript-edits',
         'manuscript-reviews',
         'issue-drafts',
         'drafts',
@@ -363,6 +365,7 @@ async function validateAdminContent(authors) {
     await validateAdminAuditLog(path.join(adminDir, 'audit-log.json'));
     await validateAdminSubmissions(path.join(adminDir, 'submissions'), authors);
     await validateAdminManuscripts(path.join(adminDir, 'manuscripts'), path.join(adminDir, 'manuscript-reviews'), authors);
+    await validateManuscriptEdits(path.join(adminDir, 'manuscript-edits'), path.join(adminDir, 'manuscripts'), authors);
     await validateIssueDrafts(path.join(adminDir, 'issue-drafts'), path.join(adminDir, 'manuscripts'));
     await validateAdminDrafts(path.join(adminDir, 'drafts'), path.join(adminDir, 'reviews'), path.join(adminDir, 'revisions'), authors);
     await validateUnpublishedArticles(path.join(adminDir, 'unpublished'), authors);
@@ -472,6 +475,9 @@ async function validateAdminSubmissions(submissionsDir, authors) {
             if (meta.history !== undefined && !Array.isArray(meta.history)) {
                 addError('submission history must be an array', metaPath);
             }
+            if (meta.removedFromQueue !== undefined && typeof meta.removedFromQueue !== 'boolean') {
+                addError('submission removedFromQueue must be a boolean when present', metaPath);
+            }
         } catch (error) {
             addError(`submission meta is not valid JSON: ${error.message}`, metaPath);
         }
@@ -525,6 +531,9 @@ async function validateAdminManuscripts(manuscriptsDir, reviewsDir, authors) {
                 if (!MANUSCRIPT_STATUSES.has(meta.status)) {
                     addError(`manuscript status is invalid: ${meta.status || ''}`, metaPath);
                 }
+                if (meta.editStatus !== undefined && !MANUSCRIPT_EDIT_STATUSES.has(meta.editStatus)) {
+                    addError(`manuscript editStatus is invalid: ${meta.editStatus || ''}`, metaPath);
+                }
                 if (meta.status === 'scheduled' && !meta.scheduledIssueDraftId) {
                     addError('scheduled manuscript must reference an issue draft', metaPath);
                 }
@@ -565,6 +574,45 @@ async function validateAdminManuscripts(manuscriptsDir, reviewsDir, authors) {
             } catch (error) {
                 addError(`manuscript review file is not valid JSON: ${error.message}`, reviewPath);
             }
+        }
+    }
+}
+
+async function validateManuscriptEdits(editsDir, manuscriptsDir, authors) {
+    if (!exists(editsDir)) {
+        return;
+    }
+
+    const entries = await fsPromises.readdir(editsDir, { withFileTypes: true });
+    for (const entry of entries) {
+        const editDir = path.join(editsDir, entry.name);
+        if (!entry.isDirectory()) {
+            addError('manuscript-edits may only contain edit package directories', editDir);
+            continue;
+        }
+        if (!exists(path.join(manuscriptsDir, entry.name))) {
+            addError(`manuscript edit package references missing manuscript "${entry.name}"`, editDir);
+        }
+        const metaPath = path.join(editDir, 'meta.json');
+        const indexPath = path.join(editDir, 'index.md');
+        if (!exists(metaPath)) {
+            addError('manuscript edit package is missing meta.json', editDir);
+        } else {
+            try {
+                const meta = await readJson(metaPath);
+                if (meta.manuscriptId !== entry.name) {
+                    addError('manuscript edit meta manuscriptId must match directory name', metaPath);
+                }
+            } catch (error) {
+                addError(`manuscript edit meta is not valid JSON: ${error.message}`, metaPath);
+            }
+        }
+        if (!exists(indexPath)) {
+            addError('manuscript edit package is missing index.md', editDir);
+        } else {
+            const { metadata, content } = parseFrontmatter(await fsPromises.readFile(indexPath, 'utf8'), indexPath);
+            validateAuthorFields(metadata, indexPath, authors);
+            validateRelativeAssets(content, editDir, indexPath);
         }
     }
 }

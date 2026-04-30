@@ -45,16 +45,16 @@
             <header class="admin-header">
                 <div>
                     <h1 id="view-title">投稿初审</h1>
-                    <p id="view-subtitle">处理新投稿、返修与接收入池</p>
+                    <p id="view-subtitle">预览投稿、接收入池或复制投稿链接</p>
                 </div>
                 <button id="refresh-button">刷新</button>
             </header>
 
             <div class="metric-grid">
-                <div class="metric"><span>新投稿</span><strong id="metric-submissions">0</strong></div>
-                <div class="metric"><span>待稿审</span><strong id="metric-manuscript-review">0</strong></div>
-                <div class="metric"><span>可入选</span><strong id="metric-available">0</strong></div>
-                <div class="metric"><span>期刊草稿</span><strong id="metric-issue-drafts">0</strong></div>
+                <div class="metric"><span>候选稿件</span><strong id="metric-submissions">0</strong></div>
+                <div class="metric"><span>待确认修改</span><strong id="metric-pending-edits">0</strong></div>
+                <div class="metric"><span>已组刊</span><strong id="metric-unassigned-manuscripts">0</strong></div>
+                <div class="metric"><span>已发布维护</span><strong id="metric-issue-drafts">0</strong></div>
             </div>
 
             <section class="view active" id="view-submissions">
@@ -67,10 +67,10 @@
                         <div class="panel-head">
                             <h2>投稿详情</h2>
                             <div class="toolbar">
+                                <button id="preview-submission-button">预览</button>
                                 <button id="accept-submission-button" data-permission="canEditDraft">接收入池</button>
-                                <button id="return-submission-button" data-permission="canEditDraft">退回返修</button>
-                                <button id="reject-submission-button" data-permission="canRejectDraft">拒稿</button>
-                                <button id="issue-status-link-button" data-permission="canIssueStatusLink">补发链接</button>
+                                <button id="issue-status-link-button" data-permission="canIssueStatusLink">复制投稿链接</button>
+                                <button id="remove-submission-button" data-permission="canEditDraft">移出队列</button>
                             </div>
                         </div>
                         <div class="submission-summary" id="submission-summary"></div>
@@ -90,17 +90,10 @@
                                 <label><span>角色</span><input id="accept-new-role"></label>
                             </div>
                         </div>
-                        <textarea id="submission-action-comment" class="short-textarea" placeholder="处理意见（内部可见）"></textarea>
-                        <div class="submission-preview-layout">
-                            <section>
-                                <div class="section-title">稿件预览</div>
-                                <div class="preview-surface submission-preview-surface" id="submission-preview"></div>
-                            </section>
-                            <section>
-                                <div class="section-title">文件</div>
-                                <div id="submission-files" class="file-list submission-file-list"></div>
-                            </section>
-                        </div>
+                        <section class="aux-section">
+                            <div class="section-title">文件</div>
+                            <div id="submission-files" class="file-list submission-file-list"></div>
+                        </section>
                         <div class="token-box" id="issued-status-link"></div>
                         <p class="status-line" id="submission-action-status"></p>
                     </section>
@@ -108,43 +101,87 @@
             </section>
 
             <section class="view" id="view-manuscripts">
-                <div class="workspace-grid wide-left">
+                <div class="workspace-grid manuscript-grid">
                     <section class="panel">
                         <h2>稿件池</h2>
+                        <div class="scope-tabs" id="manuscript-scope-tabs" aria-label="稿件视图">
+                            <button data-manuscript-scope="candidate" class="active">候选稿件 <span>0</span></button>
+                            <button data-manuscript-scope="editing">修改待处理 <span>0</span></button>
+                            <button data-manuscript-scope="scheduled">已组刊 <span>0</span></button>
+                            <button data-manuscript-scope="published">已发布 <span>0</span></button>
+                            <button data-manuscript-scope="archived">归档 <span>0</span></button>
+                            <button data-manuscript-scope="all">全部 <span>0</span></button>
+                        </div>
+                        <label class="compact-search"><span>搜索稿件</span><input id="manuscript-search" placeholder="标题、作者、ID"></label>
                         <div id="manuscript-list" class="compact-list"></div>
+                        <div class="list-pager" id="manuscript-pager">
+                            <button id="manuscript-prev-page-button">上一页</button>
+                            <span id="manuscript-page-info">1 / 1</span>
+                            <button id="manuscript-next-page-button">下一页</button>
+                        </div>
                     </section>
-                    <section class="panel editor-panel">
+                    <section class="panel editor-panel manuscript-detail-panel">
                         <div class="panel-head">
-                            <h2>单篇稿件</h2>
-                            <div class="toolbar">
-                                <button id="save-manuscript-button" data-permission="canEditDraft">保存</button>
-                                <button id="approve-manuscript-button" data-permission="canReviewManuscript">稿件通过</button>
-                                <button id="changes-manuscript-button" data-permission="canReviewManuscript">稿件退回</button>
+                            <h2>稿件资产</h2>
+                        </div>
+                        <section class="asset-panel manuscript-asset-panel" aria-labelledby="manuscript-asset-title">
+                            <div class="asset-summary manuscript-asset-summary">
+                                <div>
+                                    <span class="section-title">资产状态</span>
+                                    <h3 id="manuscript-asset-title">未选择稿件</h3>
+                                    <p id="manuscript-asset-description">从左侧选择一篇稿件后查看去向、修改状态和可执行动作。</p>
+                                    <div class="workflow-markers" id="manuscript-asset-markers"></div>
+                                </div>
+                                <div class="workflow-actions manuscript-asset-actions" id="manuscript-asset-actions" aria-label="稿件动作">
+                                    <span class="section-title workflow-actions-title">可执行操作</span>
+                                    <div class="action-cluster">
+                                        <span>查看</span>
+                                        <button id="preview-manuscript-button">预览</button>
+                                    </div>
+                                    <div class="action-cluster">
+                                        <span>修改</span>
+                                        <button id="issue-manuscript-edit-link-button" data-permission="canEditDraft">复制修改链接</button>
+                                        <button id="preview-manuscript-edit-button" data-permission="canEditDraft">预览修改</button>
+                                        <button id="accept-manuscript-edit-button" data-permission="canEditDraft">采用修改</button>
+                                        <button id="discard-manuscript-edit-button" data-permission="canEditDraft">放弃修改</button>
+                                    </div>
+                                    <div class="action-cluster">
+                                        <span>组刊维护</span>
+                                        <button id="manuscript-go-issues-button">加入期刊草稿</button>
+                                        <button id="manuscript-open-issue-button">查看期刊草稿</button>
+                                        <button id="archive-manuscript-button" data-permission="canEditDraft">归档稿件</button>
+                                        <button id="restore-manuscript-button" data-permission="canEditDraft">恢复稿件</button>
+                                        <button id="delete-manuscript-button" data-permission="canEditDraft">删除稿件</button>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                        <div class="form-grid">
-                            <label><span>负责人</span><input id="manuscript-assignee"></label>
-                            <label><span>删除资源</span><input id="manuscript-delete-files" placeholder="asset.png, diagrams/a.svg"></label>
-                        </div>
-                        <input id="manuscript-files-input" type="file" multiple webkitdirectory>
-                        <textarea id="manuscript-review-comment" class="short-textarea" placeholder="稿件审核意见（内部可见）"></textarea>
-                        <div class="split-editor">
-                            <textarea id="manuscript-editor" spellcheck="false"></textarea>
-                            <div class="preview-surface" id="manuscript-preview"></div>
-                        </div>
-                        <div id="manuscript-files" class="file-list"></div>
-                        <div id="manuscript-review-history" class="compact-list"></div>
+                        </section>
+                        <section class="manuscript-detail-matrix" aria-label="稿件详情信息">
+                            <article class="detail-card detail-card-wide">
+                                <div class="section-title">文档信息</div>
+                                <div class="detail-facts" id="manuscript-info-facts"></div>
+                            </article>
+                            <article class="detail-card detail-card-wide">
+                                <div class="section-title">来源与去向</div>
+                                <div class="detail-facts" id="manuscript-route-facts"></div>
+                            </article>
+                            <article class="detail-card detail-card-wide detail-card-list">
+                                <div class="section-title">资源文件</div>
+                                <div id="manuscript-file-list" class="file-list compact-scroll"></div>
+                            </article>
+                            <article class="detail-card detail-card-wide detail-card-list">
+                                <div class="section-title">历史记录</div>
+                                <div id="manuscript-review-history" class="compact-list compact-scroll"></div>
+                            </article>
+                        </section>
+                        <div class="token-box" id="manuscript-edit-link"></div>
                         <p class="status-line" id="manuscript-status"></p>
                     </section>
                 </div>
             </section>
 
             <section class="view" id="view-reviews">
-                <div class="workspace-grid">
-                    <section class="panel">
-                        <h2>待审核稿件</h2>
-                        <div id="review-manuscript-list" class="compact-list"></div>
-                    </section>
+                <div class="workspace-grid review-grid">
                     <section class="panel">
                         <h2>待审核期刊</h2>
                         <div id="review-issue-list" class="compact-list"></div>
@@ -192,15 +229,27 @@
                     <section class="panel editor-panel">
                         <div class="panel-head">
                             <h2>草稿编排</h2>
-                            <div class="toolbar">
-                                <button id="create-issue-draft-button" data-permission="canManageIssueDrafts">新建草稿</button>
-                                <button id="save-issue-draft-button" data-permission="canManageIssueDrafts">保存草稿</button>
-                                <button id="request-issue-review-button" data-permission="canManageIssueDrafts">提交整期审核</button>
-                                <button id="approve-issue-button" data-permission="canReviewIssueDraft">整期通过</button>
-                                <button id="changes-issue-button" data-permission="canReviewIssueDraft">整期退回</button>
-                                <button id="publish-issue-button" data-permission="canPublish">发布整期</button>
-                            </div>
                         </div>
+                        <section class="workflow-panel issue-flow-panel" aria-labelledby="issue-flow-title">
+                            <div class="workflow-summary issue-flow-summary">
+                                <div>
+                                    <span class="section-title">当前阶段</span>
+                                    <h3 id="issue-flow-title">未选择草稿</h3>
+                                    <p id="issue-flow-description">从左侧选择一个期刊草稿后查看流程位置和可执行动作。</p>
+                                    <div class="workflow-markers" id="issue-flow-markers"></div>
+                                </div>
+                                <div class="workflow-actions issue-flow-actions" id="issue-flow-actions">
+                                    <button id="preview-issue-button">预览草稿</button>
+                                    <button id="create-issue-draft-button" data-permission="canManageIssueDrafts">新建草稿</button>
+                                    <button id="save-issue-draft-button" data-permission="canManageIssueDrafts">保存草稿</button>
+                                    <button id="request-issue-review-button" data-permission="canManageIssueDrafts">提交整期审核</button>
+                                    <button id="approve-issue-button" data-permission="canReviewIssueDraft">整期通过</button>
+                                    <button id="changes-issue-button" data-permission="canReviewIssueDraft">整期退回</button>
+                                    <button id="publish-issue-button" data-permission="canPublish">发布整期</button>
+                                </div>
+                            </div>
+                            <ol class="workflow-steps issue-flow-steps" id="issue-flow-steps" aria-label="整期草稿流程"></ol>
+                        </section>
                         <div class="form-grid">
                             <label><span>卷期</span><input id="issue-vol" placeholder="003"></label>
                             <label><span>标题</span><input id="issue-title"></label>
@@ -211,13 +260,9 @@
                         <div class="toolbar">
                             <button id="add-manuscript-to-issue-button" data-permission="canManageIssueDrafts">加入草稿</button>
                             <button id="remove-manuscript-from-issue-button" data-permission="canManageIssueDrafts">移出选中稿件</button>
-                            <button id="preview-issue-button">预览草稿</button>
                         </div>
                         <textarea id="issue-radar" spellcheck="false"></textarea>
-                        <div class="workspace-grid">
-                            <div id="issue-manuscript-list" class="compact-list"></div>
-                            <div class="preview-surface" id="issue-preview"></div>
-                        </div>
+                        <div id="issue-manuscript-list" class="compact-list"></div>
                         <div id="issue-review-history" class="compact-list"></div>
                         <p class="status-line" id="issue-status"></p>
                     </section>
@@ -237,6 +282,7 @@
                         <input id="published-files-input" type="file" multiple webkitdirectory>
                         <input id="published-delete-files" placeholder="删除资源路径，逗号分隔">
                         <div class="toolbar">
+                            <button id="preview-published-button">预览</button>
                             <button id="save-published-button" data-permission="canEditPublished">保存</button>
                             <button id="unpublish-button" data-permission="canUnpublish">下线</button>
                             <button id="restore-button" data-permission="canUnpublish">恢复</button>
@@ -306,6 +352,16 @@
             </section>
         </section>
     </main>
+
+    <div class="preview-dialog-backdrop hidden" id="admin-preview-dialog" aria-hidden="true">
+        <section class="preview-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-preview-title">
+            <header class="preview-dialog-head">
+                <h2 id="admin-preview-title">预览</h2>
+                <button id="admin-preview-close-button" type="button">关闭</button>
+            </header>
+            <div class="preview-surface preview-dialog-surface" id="admin-preview-surface"></div>
+        </section>
+    </div>
 
     <script type="module" src="/admin/js/drafts.js"></script>
 </body>

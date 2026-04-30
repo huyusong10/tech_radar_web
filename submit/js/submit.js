@@ -8,29 +8,37 @@ const state = {
     selectedFiles: [],
     revisionFiles: [],
     currentSubmission: null,
+    currentManuscriptEdit: null,
     currentToken: '',
     selectedAuthor: null,
     previewSignature: '',
     revisionPreviewSignature: '',
+    revisionEditorPreviewSignature: '',
     authorSearchTimer: null
 };
 
 const STATUS_LABELS = {
-    submitted: '已提交，等待编辑接收',
-    in_editor_review: '编辑初审中',
-    changes_requested: '需要返修',
+    submitted: '未接收，可继续修改',
+    in_editor_review: '未接收，可继续修改',
+    changes_requested: '未接收，可继续修改',
     accepted: '已进入稿件池',
     published: '已发布',
-    rejected: '已拒稿'
+    rejected: '未接收，可继续修改'
 };
 
 const REVIEW_ACTION_LABELS = {
     accepted: '编辑已接收',
-    rejected: '已拒稿',
-    request_changes: '需要返修',
+    rejected: '历史处理',
+    request_changes: '历史处理',
     approve: '技术审核通过',
     published: '已发布',
-    submitter_revision: '已提交返修'
+    submitter_revision: '已提交修改'
+};
+
+const MANUSCRIPT_EDIT_STATUS_LABELS = {
+    idle: '无修改',
+    editing: '修改中',
+    pending_review: '修改待确认'
 };
 
 function $(id) {
@@ -133,6 +141,10 @@ function filesSignature(files) {
     return files.map(file => `${file.relativePath}:${file.size}:${file.file.lastModified || 0}`).join('|');
 }
 
+function editorSignature(value) {
+    return String(value || '');
+}
+
 function hasIndex(files) {
     return files.some(file => file.relativePath === 'index.md');
 }
@@ -184,7 +196,7 @@ function setRevisionFiles(files) {
     state.revisionPreviewSignature = '';
     renderFileList($('revision-file-list'), state.revisionFiles);
     if (state.revisionFiles.length > 0) {
-        setStatus('revision-status', hasIndex(state.revisionFiles) ? '返修文件已载入，请先预览效果' : '缺少 index.md', hasIndex(state.revisionFiles) ? '' : 'error');
+        setStatus('revision-status', hasIndex(state.revisionFiles) ? '修改文件已载入，请先预览效果' : '缺少 index.md', hasIndex(state.revisionFiles) ? '' : 'error');
     }
 }
 
@@ -331,6 +343,17 @@ async function previewSelection(files, previewId, statusId, signatureKey) {
     setStatus(statusId, '预览已刷新', 'ok');
 }
 
+function setSubmitPageMode(mode) {
+    const manuscriptEdit = mode === 'manuscript-edit';
+    $('submit-brand').textContent = manuscriptEdit ? '>_ Tech Radar 修改台' : '>_ Tech Radar 投稿台';
+    $('submit-page-title').textContent = manuscriptEdit ? '稿件修改' : '提交投稿';
+    document.title = manuscriptEdit ? 'Tech Radar Manuscript Edit' : 'Tech Radar Submit';
+    $('source-download-link').classList.add('hidden');
+    $('revision-editor-panel').classList.toggle('hidden', !manuscriptEdit);
+    $('revision-title').textContent = manuscriptEdit ? '提交稿件修改' : '提交修改版本';
+    $('revision-dropzone-title').textContent = manuscriptEdit ? '上传完整替换包' : '拖拽修改稿件';
+}
+
 async function submitDraft() {
     try {
         if (state.selectedFiles.length === 0 || !hasIndex(state.selectedFiles)) {
@@ -362,6 +385,8 @@ async function submitDraft() {
 
 function renderSubmission(detail) {
     state.currentSubmission = detail;
+    state.currentManuscriptEdit = null;
+    setSubmitPageMode('submission');
     $('submit-form-view').classList.add('hidden');
     $('submit-result-view').classList.add('hidden');
     $('submission-status-view').classList.remove('hidden');
@@ -379,7 +404,35 @@ function renderSubmission(detail) {
         </div>
     `).join('') || '<div class="compact-item"><small>暂无公开反馈</small></div>';
 
-    const canRevise = detail.status === 'changes_requested';
+    const canRevise = !['accepted', 'published'].includes(detail.status);
+    $('revision-panel').classList.toggle('hidden', !canRevise);
+    $('revision-folder-button').disabled = !canRevise;
+    $('revision-files-button').disabled = !canRevise;
+    $('revision-preview-button').disabled = !canRevise;
+    $('revision-submit-button').disabled = !canRevise;
+}
+
+function renderManuscriptEdit(detail) {
+    state.currentSubmission = null;
+    state.currentManuscriptEdit = detail;
+    setSubmitPageMode('manuscript-edit');
+    $('submit-form-view').classList.add('hidden');
+    $('submit-result-view').classList.add('hidden');
+    $('submission-status-view').classList.remove('hidden');
+    $('submission-heading').textContent = detail.title || detail.manuscriptId;
+    $('submission-meta').textContent = `稿件修改 · ${MANUSCRIPT_EDIT_STATUS_LABELS[detail.editStatus] || detail.editStatus}`;
+    $('source-download-link').href = `/api/manuscript-edits/${encodeURIComponent(detail.manuscriptId)}/source.zip?token=${encodeURIComponent(state.currentToken)}`;
+    $('source-download-link').setAttribute('download', `${detail.manuscriptId}-source.zip`);
+    $('source-download-link').classList.remove('hidden');
+    $('revision-editor').value = detail.indexContent || '';
+    state.revisionEditorPreviewSignature = '';
+    renderPreview($('status-preview'), detail.indexContent || '', buildDraftAssetResolver(detail.files || []));
+    renderFileList($('submission-file-list'), detail.files || []);
+    $('submission-review-history').innerHTML = detail.editStatus === 'pending_review'
+        ? '<div class="compact-item"><small>修改已提交，等待编辑确认。</small></div>'
+        : '<div class="compact-item"><small>请上传完整修改包，编辑确认后生效。</small></div>';
+
+    const canRevise = detail.editStatus !== 'idle';
     $('revision-panel').classList.toggle('hidden', !canRevise);
     $('revision-folder-button').disabled = !canRevise;
     $('revision-files-button').disabled = !canRevise;
@@ -389,48 +442,97 @@ function renderSubmission(detail) {
 
 async function loadSubmission() {
     const params = new URLSearchParams(window.location.search);
+    const manuscriptId = params.get('manuscript');
     const id = params.get('id');
     const token = params.get('token');
-    if (!id || !token) return;
+    if (manuscriptId) {
+        setSubmitPageMode('manuscript-edit');
+        $('submit-form-view').classList.add('hidden');
+        $('submit-result-view').classList.add('hidden');
+        $('submission-status-view').classList.remove('hidden');
+        $('submission-heading').textContent = '稿件修改';
+        $('submission-meta').textContent = '正在读取修改链接';
+        $('submission-review-history').innerHTML = '<div class="compact-item"><small>正在读取</small></div>';
+        renderFileList($('submission-file-list'), []);
+        $('revision-panel').classList.add('hidden');
+        $('status-preview').innerHTML = '';
+    }
+    if (!token || (!id && !manuscriptId)) {
+        if (manuscriptId) {
+            $('submission-meta').textContent = '修改链接不可用';
+            $('submission-review-history').innerHTML = '<div class="compact-item"><small>缺少访问凭证</small></div>';
+        }
+        return;
+    }
     state.currentToken = token;
     try {
+        if (manuscriptId) {
+            const detail = await api(`/api/manuscript-edits/${encodeURIComponent(manuscriptId)}?token=${encodeURIComponent(token)}`);
+            renderManuscriptEdit(detail);
+            return;
+        }
         const detail = await api(`/api/submissions/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`);
         renderSubmission(detail);
     } catch (error) {
+        if (manuscriptId) {
+            $('submission-meta').textContent = '修改链接不可用';
+            $('submission-review-history').innerHTML = `<div class="compact-item"><small>${escapeHtml(error.message)}</small></div>`;
+            return;
+        }
         setStatus('submit-status', error.message, 'error');
     }
 }
 
 async function submitRevision() {
     try {
-        if (!state.currentSubmission) return;
-        if (state.revisionFiles.length === 0 || !hasIndex(state.revisionFiles)) {
-            setStatus('revision-status', '请上传包含 index.md 的完整返修文件', 'error');
+        if (!state.currentSubmission && !state.currentManuscriptEdit) return;
+        const usingEditor = state.currentManuscriptEdit && state.revisionFiles.length === 0;
+        if (!usingEditor && (state.revisionFiles.length === 0 || !hasIndex(state.revisionFiles))) {
+            setStatus('revision-status', '请上传包含 index.md 的完整修改文件', 'error');
             return;
         }
-        if (state.revisionPreviewSignature !== filesSignature(state.revisionFiles)) {
-            setStatus('revision-status', '请先预览当前返修文件再提交', 'error');
+        if (usingEditor && state.revisionEditorPreviewSignature !== editorSignature($('revision-editor').value)) {
+            setStatus('revision-status', '请先预览当前正文再提交', 'error');
+            return;
+        }
+        if (!usingEditor && state.revisionPreviewSignature !== filesSignature(state.revisionFiles)) {
+            setStatus('revision-status', '请先预览当前修改文件再提交', 'error');
             return;
         }
 
         const files = await Promise.all(state.revisionFiles.map(toPayloadFile));
-        const detail = await api(
-            `/api/submissions/${encodeURIComponent(state.currentSubmission.submissionId)}?token=${encodeURIComponent(state.currentToken)}`,
-            {
-                method: 'PUT',
-                body: {
-                    files,
-                    replaceFiles: true
+        const detail = state.currentManuscriptEdit
+            ? await api(
+                `/api/manuscript-edits/${encodeURIComponent(state.currentManuscriptEdit.manuscriptId)}?token=${encodeURIComponent(state.currentToken)}`,
+                {
+                    method: 'PUT',
+                    body: usingEditor
+                        ? { indexContent: $('revision-editor').value }
+                        : { files, replaceFiles: true }
                 }
-            }
-        );
+            )
+            : await api(
+                `/api/submissions/${encodeURIComponent(state.currentSubmission.submissionId)}?token=${encodeURIComponent(state.currentToken)}`,
+                {
+                    method: 'PUT',
+                    body: {
+                        files,
+                        replaceFiles: true
+                    }
+                }
+            );
         state.revisionFiles = [];
         state.revisionPreviewSignature = '';
+        state.revisionEditorPreviewSignature = '';
         $('revision-folder-input').value = '';
         $('revision-files-input').value = '';
         renderFileList($('revision-file-list'), []);
-        setStatus('revision-status', '返修版本已提交', 'ok');
-        renderSubmission(detail);
+        setStatus('revision-status', '修改版本已提交', 'ok');
+        if (state.currentManuscriptEdit) {
+            renderManuscriptEdit(detail);
+        } else {
+            renderSubmission(detail);
+        }
     } catch (error) {
         setStatus('revision-status', error.message, 'error');
     }
@@ -508,11 +610,24 @@ function bindEvents() {
         window.location.href = $('status-url').textContent;
     });
     $('reload-submission-button').addEventListener('click', loadSubmission);
-    $('revision-preview-button').addEventListener('click', () => previewSelection(state.revisionFiles, 'status-preview', 'revision-status', 'revisionPreviewSignature'));
+    $('revision-preview-button').addEventListener('click', () => {
+        if (state.currentManuscriptEdit && state.revisionFiles.length === 0) {
+            renderPreview(
+                $('status-preview'),
+                $('revision-editor').value,
+                buildDraftAssetResolver(state.currentManuscriptEdit.files || [])
+            );
+            state.revisionEditorPreviewSignature = editorSignature($('revision-editor').value);
+            setStatus('revision-status', '预览已刷新', 'ok');
+            return;
+        }
+        previewSelection(state.revisionFiles, 'status-preview', 'revision-status', 'revisionPreviewSignature');
+    });
     $('revision-submit-button').addEventListener('click', submitRevision);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    setSubmitPageMode('submission');
     syncAuthorMode();
     renderFileList($('submit-file-list'), []);
     renderFileList($('revision-file-list'), []);

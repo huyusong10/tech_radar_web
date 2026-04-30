@@ -8,6 +8,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const INDEX_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'index.html'), 'utf8');
 const SUBMIT_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'submit', 'index.html'), 'utf8');
 const ADMIN_HTML = fs.readFileSync(path.join(PROJECT_ROOT, 'admin', 'index.html'), 'utf8');
+const ADMIN_CSS = fs.readFileSync(path.join(PROJECT_ROOT, 'admin', 'admin.css'), 'utf8');
 const ADMIN_API_JS = fs.readFileSync(path.join(PROJECT_ROOT, 'admin', 'js', 'api.js'), 'utf8');
 const ADMIN_DRAFTS_JS = fs.readFileSync(path.join(PROJECT_ROOT, 'admin', 'js', 'drafts.js'), 'utf8');
 const INLINE_SCRIPT = INDEX_HTML.match(/<script>([\s\S]*)<\/script>\s*<\/body>/)[1];
@@ -314,8 +315,11 @@ describe('Frontend contract', () => {
         assert.doesNotMatch(SUBMIT_HTML, /id="submit-vol"/);
         assert.doesNotMatch(SUBMIT_HTML, /id="submit-folder"/);
         assert.doesNotMatch(SUBMIT_HTML, /id="submit-editor"/);
+        assert.doesNotMatch(SUBMIT_HTML, /提交初稿/);
         assert.match(SUBMIT_HTML, /id="submit-dropzone"/);
         assert.match(SUBMIT_HTML, /id="revision-dropzone"/);
+        assert.match(SUBMIT_HTML, /id="source-download-link"/);
+        assert.match(SUBMIT_HTML, /id="revision-editor"/);
     });
 
     test('admin page exposes direct workflow modules and issue-centered management', () => {
@@ -356,27 +360,90 @@ describe('Frontend contract', () => {
         [
             'submission-list',
             'submission-summary',
+            'preview-submission-button',
+            'accept-submission-button',
+            'issue-status-link-button',
+            'remove-submission-button',
+            'manuscript-scope-tabs',
+            'manuscript-search',
             'manuscript-list',
-            'review-manuscript-list',
+            'manuscript-prev-page-button',
+            'manuscript-page-info',
+            'manuscript-next-page-button',
             'review-issue-list',
-            'manuscript-editor',
-            'manuscript-preview',
+            'manuscript-asset-title',
+            'manuscript-asset-description',
+            'manuscript-asset-markers',
+            'manuscript-asset-actions',
+            'preview-manuscript-button',
+            'issue-manuscript-edit-link-button',
+            'preview-manuscript-edit-button',
+            'accept-manuscript-edit-button',
+            'discard-manuscript-edit-button',
+            'archive-manuscript-button',
+            'restore-manuscript-button',
+            'delete-manuscript-button',
+            'manuscript-go-issues-button',
+            'manuscript-open-issue-button',
+            'manuscript-edit-link',
+            'manuscript-info-facts',
+            'manuscript-route-facts',
+            'manuscript-file-list',
             'manuscript-review-history',
+            'issue-flow-title',
+            'issue-flow-description',
+            'issue-flow-markers',
+            'issue-flow-steps',
+            'issue-flow-actions',
             'issue-radar',
-            'issue-preview',
+            'preview-issue-button',
             'issue-review-history',
             'author-list',
             'published-list',
+            'preview-published-button',
             'volume-list',
             'user-list',
-            'audit-list'
+            'audit-list',
+            'admin-preview-dialog',
+            'admin-preview-surface'
         ].forEach(id => assert.match(ADMIN_HTML, new RegExp(`id="${id}"`)));
+        assert.doesNotMatch(ADMIN_HTML, /id="return-submission-button"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="reject-submission-button"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="submission-action-comment"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="save-manuscript-button"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="manuscript-editor"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="manuscript-files-input"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="manuscript-review-comment"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="review-manuscript-list"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="approve-manuscript-button"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="changes-manuscript-button"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="manuscript-flow-steps"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="manuscript-edit-link" class="[^"]*hidden/);
+        assert.match(ADMIN_CSS, /\.token-box:empty::before/);
+        assert.match(ADMIN_CSS, /\.manuscript-asset-actions #discard-manuscript-edit-button/);
+        assert.match(ADMIN_CSS, /\.scope-tabs/);
+        assert.match(ADMIN_CSS, /\.status-pill\.is-warning/);
+        assert.match(ADMIN_CSS, /\.workflow-marker\.is-danger/);
+        assert.match(ADMIN_DRAFTS_JS, /scope:\s*state\.manuscriptScope/);
+        assert.match(ADMIN_DRAFTS_JS, /scope:\s*'candidate'/);
+        assert.match(ADMIN_API_JS, /archiveManuscript/);
+        assert.match(ADMIN_API_JS, /restoreManuscript/);
+    });
+
+    test('admin editing pages use an on-demand preview surface', () => {
+        assert.match(ADMIN_CSS, /\.workflow-steps/);
+        assert.doesNotMatch(ADMIN_CSS, /#draft-editor/);
+        assert.doesNotMatch(ADMIN_CSS, /#manuscript-editor/);
+        assert.doesNotMatch(ADMIN_HTML, /id="submission-preview"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="manuscript-preview"/);
+        assert.doesNotMatch(ADMIN_HTML, /id="issue-preview"/);
     });
 
     test('admin client follows the manuscript and issue workflow instead of retired draft mutations', () => {
         assert.match(ADMIN_API_JS, /\/api\/admin\/submissions/);
         assert.match(ADMIN_API_JS, /\/api\/admin\/manuscripts/);
         assert.match(ADMIN_API_JS, /\/api\/admin\/issue-drafts/);
+        assert.doesNotMatch(ADMIN_API_JS, /export function reviewManuscript\b/);
         assert.doesNotMatch(
             ADMIN_API_JS,
             /export function (listDrafts|getDraft|importDraft|updateDraft|assignDraft|issueStatusLink|deleteDraft|acceptDraft|rejectDraft|requestReview|reviewDraft|publishDraft|checkPublish)\b/

@@ -48,18 +48,22 @@
 |------|------|-----------|
 | `POST /api/submissions` | public | 通过 `files[]` 创建 `Submission`；投稿者不传目标卷期或发布目录；返回 `submissionId`、`accessToken`、`statusUrl` |
 | `GET /api/submissions/:submissionId` | token | 查看自己的投稿状态、正文、文件列表和审核意见 |
-| `PUT /api/submissions/:submissionId` | token | 在返修状态上传完整替换文件包；必须包含 `index.md` |
+| `PUT /api/submissions/:submissionId` | token | 未接收投稿上传完整替换文件包；必须包含 `index.md` |
 | `GET /api/submissions/:submissionId/assets/*` | token | 查看自己投稿中的资源 |
+| `GET /api/manuscript-edits/:manuscriptId` | token | 作者查看稿件修改链接对应的当前稿件或待确认修改包 |
+| `GET /api/manuscript-edits/:manuscriptId/source.zip` | token | 下载当前可修改源码包；有待确认修改时下载待确认包，否则下载稿件当前内容 |
+| `PUT /api/manuscript-edits/:manuscriptId` | token | 作者上传完整稿件修改包，或只提交 `indexContent` 进行简单正文修改；进入 `pending_review` |
+| `GET /api/manuscript-edits/:manuscriptId/assets/*` | token | 查看稿件修改链接可见资源 |
 | `GET /api/submission-authors` | public | 按中文名、别名、拼音或首字母搜索已有正式作者，返回有限公开字段 |
 
 投稿者接口失败语义：
 
 - token 缺失或错误返回 `403`。
 - 投稿不存在返回 `404`。
-- 非返修状态提交修订返回 `400`。
+- 已接收或已发布投稿通过原投稿链接提交修订返回 `400`。
 - 内容结构、作者引用或文件路径非法返回 `400`。
 - 删除 `index.md` 返回 `400`。
-- 投稿者提交和返修都不能决定最终卷期或发布目录；这些字段由后台期刊草稿编排流程写入。
+- 投稿者提交和修改都不能决定最终卷期或发布目录；这些字段由后台期刊草稿编排流程写入。
 - 后台写入审核意见时未声明 `visibility` 的事件按 `internal` 处理；后台界面默认只记录内部意见。
 
 ## 后台管理接口
@@ -75,19 +79,27 @@
 | `GET /api/admin/submissions/:submissionId` | all roles | 投稿元数据、正文、文件列表和初审历史 |
 | `GET /api/admin/submissions/:submissionId/assets/*` | all roles | 投稿资源文件 |
 | `POST /api/admin/submissions/:submissionId/accept` | `editor`、`chief_editor` | 接收投稿并创建稿件；必须完成作者归一化 |
-| `POST /api/admin/submissions/:submissionId/request-changes` | `editor`、`chief_editor` | 退回投稿者返修 |
-| `POST /api/admin/submissions/:submissionId/reject` | `editor`、`chief_editor` | 拒绝投稿 |
-| `POST /api/admin/submissions/:submissionId/status-link` | `editor`、`chief_editor` | 补发投稿状态链接并使旧链接失效 |
-| `GET /api/admin/manuscripts` | all roles | 稿件池列表；支持状态、负责人和关键词筛选；返回稿件标题、摘要和作者引用摘要以供组刊选择 |
-| `GET /api/admin/manuscripts/:manuscriptId` | all roles | 稿件元数据、正文、文件列表和审核历史 |
+| `POST /api/admin/submissions/:submissionId/remove` | `editor`、`chief_editor` | 将未接收投稿移出初审队列；不删除投稿文件包，投稿者再次提交修改后重新入队 |
+| `POST /api/admin/submissions/:submissionId/request-changes` | `editor`、`chief_editor` | 旧退回接口，返回 `410` |
+| `POST /api/admin/submissions/:submissionId/reject` | `editor`、`chief_editor` | 旧拒稿接口，返回 `410` |
+| `POST /api/admin/submissions/:submissionId/status-link` | `editor`、`chief_editor` | 生成投稿链接并使旧链接失效，前端只复制链接，不自动通知 |
+| `GET /api/admin/manuscripts` | all roles | 稿件池列表；支持 `scope=all/candidate/editing/scheduled/published/archived`、状态、负责人、关键词和分页筛选；默认 `scope=all`、`pageSize=50`，返回稿件摘要、派生生命周期、分页信息和各 scope 计数 |
+| `GET /api/admin/manuscripts/:manuscriptId` | all roles | 稿件元数据、派生生命周期、正文、文件列表和历史记录 |
 | `GET /api/admin/manuscripts/:manuscriptId/assets/*` | all roles | 稿件资源文件 |
-| `PUT /api/admin/manuscripts/:manuscriptId` | `editor`、`chief_editor` | 编辑未锁定稿件正文、资源和负责人 |
-| `POST /api/admin/manuscripts/:manuscriptId/review` | `editor`、`tech_reviewer`、`chief_editor` | 单篇稿件审核通过或退回 |
+| `PUT /api/admin/manuscripts/:manuscriptId` | `editor`、`chief_editor` | 旧后台直改接口，返回 `410`；稿件内容修改统一走稿件修改链接 |
+| `POST /api/admin/manuscripts/:manuscriptId/review` | logged-in | 旧单篇审核接口，返回 `410`；技术审核只通过期刊草稿审核接口完成 |
+| `POST /api/admin/manuscripts/:manuscriptId/edit-link` | `editor`、`chief_editor` | 生成稿件修改链接并进入 `editing` 标记 |
+| `GET /api/admin/manuscripts/:manuscriptId/pending-edit/assets/*` | all roles | 待确认修改包资源 |
+| `POST /api/admin/manuscripts/:manuscriptId/pending-edit/accept` | `editor`、`chief_editor` | 采用作者修改包；已组刊稿件会让相关期刊草稿回到需要确认状态，已发布稿件会更新正式内容并产生历史快照 |
+| `POST /api/admin/manuscripts/:manuscriptId/pending-edit/discard` | `editor`、`chief_editor` | 放弃待确认修改并清空修改标记 |
+| `POST /api/admin/manuscripts/:manuscriptId/archive` | `editor`、`chief_editor` | 归档无引用且无待处理修改的候选稿件，归档后不再进入候选 scope |
+| `POST /api/admin/manuscripts/:manuscriptId/restore` | `editor`、`chief_editor` | 将无引用的归档稿件恢复为有效候选资产 |
+| `DELETE /api/admin/manuscripts/:manuscriptId` | `editor`、`chief_editor` | 永久删除无期刊草稿或正式内容引用的稿件，删除正文、资源、审核记录和待确认修改包 |
 | `GET /api/admin/issue-drafts` | all roles | 期刊草稿列表；支持状态、卷期和关键词筛选 |
 | `POST /api/admin/issue-drafts` | `editor`、`chief_editor` | 创建期刊草稿 |
 | `GET /api/admin/issue-drafts/:issueDraftId` | all roles | 期刊草稿元数据和整期审核历史 |
 | `PUT /api/admin/issue-drafts/:issueDraftId` | `editor`、`chief_editor` | 修改卷期元数据、`radar.md` 内容和稿件排序 |
-| `POST /api/admin/issue-drafts/:issueDraftId/manuscripts` | `editor`、`chief_editor` | 加入 `available` 稿件并锁定为 `scheduled` |
+| `POST /api/admin/issue-drafts/:issueDraftId/manuscripts` | `editor`、`chief_editor` | 加入有效、未被其他草稿或正式发布引用的稿件资产，并记录组刊去向 |
 | `DELETE /api/admin/issue-drafts/:issueDraftId/manuscripts/:manuscriptId` | `editor`、`chief_editor` | 移出稿件并释放回 `available` |
 | `POST /api/admin/issue-drafts/:issueDraftId/review` | `editor`、`tech_reviewer`、`chief_editor` | 编辑提交整期审核；技术审核或主编通过/退回整期审核 |
 | `GET /api/admin/issue-drafts/:issueDraftId/preview` | all roles | 后台整期预览数据，不依赖全局 `/draft` |

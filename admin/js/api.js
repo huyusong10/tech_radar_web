@@ -62,17 +62,9 @@ export function acceptSubmission(submissionId, authorResolution) {
     });
 }
 
-export function requestSubmissionChanges(submissionId, comment = '', visibility = 'internal') {
-    return request(`/api/admin/submissions/${encodeURIComponent(submissionId)}/request-changes`, {
-        method: 'POST',
-        body: { comment, visibility }
-    });
-}
-
-export function rejectSubmission(submissionId, comment = '', visibility = 'internal') {
-    return request(`/api/admin/submissions/${encodeURIComponent(submissionId)}/reject`, {
-        method: 'POST',
-        body: { comment, visibility }
+export function removeSubmissionFromQueue(submissionId) {
+    return request(`/api/admin/submissions/${encodeURIComponent(submissionId)}/remove`, {
+        method: 'POST'
     });
 }
 
@@ -94,17 +86,39 @@ export function getManuscript(manuscriptId) {
     return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}`);
 }
 
-export function updateManuscript(manuscriptId, payload) {
-    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}`, {
-        method: 'PUT',
-        body: payload
+export function issueManuscriptEditLink(manuscriptId) {
+    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}/edit-link`, {
+        method: 'POST'
     });
 }
 
-export function reviewManuscript(manuscriptId, action, comment = '', visibility = 'internal') {
-    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}/review`, {
-        method: 'POST',
-        body: { action, comment, visibility }
+export function acceptManuscriptEdit(manuscriptId) {
+    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}/pending-edit/accept`, {
+        method: 'POST'
+    });
+}
+
+export function discardManuscriptEdit(manuscriptId) {
+    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}/pending-edit/discard`, {
+        method: 'POST'
+    });
+}
+
+export function archiveManuscript(manuscriptId) {
+    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}/archive`, {
+        method: 'POST'
+    });
+}
+
+export function restoreManuscript(manuscriptId) {
+    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}/restore`, {
+        method: 'POST'
+    });
+}
+
+export function deleteManuscript(manuscriptId) {
+    return request(`/api/admin/manuscripts/${encodeURIComponent(manuscriptId)}`, {
+        method: 'DELETE'
     });
 }
 

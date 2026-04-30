@@ -11,10 +11,11 @@
 | `contents/shared/submit-guide.md` | 投稿指南正文 | 以 Markdown 正文形式展示 |
 | `contents/assets/` | 共享静态资源 | 以静态路径暴露，供作者头像和共享图片使用 |
 | `contents/admin/` | 后台与投稿私有数据 | 仅供服务端读写；不通过静态资源公开 |
-| `contents/admin/submissions/<submissionId>/` | 投稿原始文件包 | 仅用于编辑初审和投稿者返修 |
-| `contents/admin/manuscripts/<manuscriptId>/` | 稿件池单篇稿件 | 已完成作者归一化，等待单篇审核或组刊 |
-| `contents/admin/manuscript-reviews/<manuscriptId>.json` | 单篇稿件审核记录 | 服务端私有事件流 |
-| `contents/admin/issue-drafts/<issueDraftId>/` | 期刊草稿 | 引用已审核稿件，负责整期编排和发布前审核 |
+| `contents/admin/submissions/<submissionId>/` | 投稿原始文件包 | 仅用于编辑初审和未接收前的投稿者修改 |
+| `contents/admin/manuscripts/<manuscriptId>/` | 稿件池单篇稿件 | 已完成作者归一化，作为候选稿件资产参与组刊或后续维护 |
+| `contents/admin/manuscript-edits/<manuscriptId>/` | 稿件待确认修改包 | 作者通过稿件修改链接提交的完整替换包 |
+| `contents/admin/manuscript-reviews/<manuscriptId>.json` | 稿件历史记录 | 兼容旧单篇审核历史，并记录稿件维护事件 |
+| `contents/admin/issue-drafts/<issueDraftId>/` | 期刊草稿 | 引用有效稿件资产，负责整期编排和发布前审核 |
 | `contents/admin/unpublished/<articleId>/` | 下线文章归档 | 从正式内容移出但保留恢复依据 |
 | `contents/admin/published-history/<articleId>/` | 已发布文章快照 | 保存编辑或下线前的最近版本，用于回滚 |
 | `contents/admin/runtime-repair/<repairId>/` | 运行时数据修复归档 | 保存从 `contents/data/` 移出的非契约历史文件；不参与服务端状态恢复 |
@@ -119,10 +120,12 @@
 | `revision` | 投稿修订版本，从 `1` 开始 |
 | `manuscriptId` | 接收入稿件池后的稿件 ID，可为空 |
 | `publishedArticleId` | 发布后的正式文章标识，可为空 |
+| `removedFromQueue` | 可选；为 `true` 时表示已被编辑移出初审队列，投稿者再次提交修改后清空 |
+| `removedAt` / `removedBy` | 可选；移出初审队列的审计辅助字段 |
 | `history[]` | 投稿初审和公开反馈事件 |
 | `createdAt` / `updatedAt` | ISO 时间戳 |
 
-`revisions/revision-<n>.md` 保存每次提交或返修后的 `index.md` 快照。
+`revisions/revision-<n>.md` 保存每次提交或修改后的 `index.md` 快照。
 
 ### `contents/admin/manuscripts/<manuscriptId>/index.md`
 
@@ -143,20 +146,25 @@
 |------|------|
 | `manuscriptId` | 稿件稳定标识 |
 | `sourceSubmissionId` | 来源投稿 ID，可为空 |
-| `status` | `drafting`、`manuscript_review_requested`、`changes_requested`、`available`、`scheduled`、`published`、`archived` |
+| `status` | 兼容历史值：`drafting`、`manuscript_review_requested`、`changes_requested`、`available`、`scheduled`、`published`、`archived`；新接收入池稿件默认写入 `available` |
+| `editStatus` | 独立修改标记：`idle`、`editing`、`pending_review`；缺失按 `idle` 兼容 |
 | `assignee` | 当前责任人用户名，可为空 |
-| `reviewers[]` | 已完成单篇审核的后台用户名 |
-| `scheduledIssueDraftId` | `scheduled` 状态下引用的期刊草稿 ID |
+| `reviewers[]` | 历史兼容字段，新流程不再写入单篇审核人 |
+| `scheduledIssueDraftId` | 组刊去向引用的期刊草稿 ID，可由期刊草稿引用派生 |
 | `publishedArticleId` | 发布后的正式文章标识，可为空 |
 | `createdBy` / `updatedBy` | 后台操作者用户名 |
 | `createdAt` / `updatedAt` | ISO 时间戳 |
+
+### `contents/admin/manuscript-edits/<manuscriptId>/`
+
+待确认修改包使用与稿件相同的 frontmatter 和资源规则，必须包含 `index.md`。稿件修改链接可提交完整替换包，也可只提交 `index.md` 正文；服务端会把简单正文修改合成为完整待确认包。`meta.json` 至少包含 `manuscriptId` 和提交时间。采用修改后，服务端把该包替换回稿件目录；若稿件已发布，还会更新正式内容并保存发布历史快照。
 
 ### `contents/admin/manuscript-reviews/<manuscriptId>.json`
 
 | 字段 | 说明 |
 |------|------|
 | `manuscriptId` | 稿件稳定标识 |
-| `history[]` | 单篇审核事件流 |
+| `history[]` | 历史事件流；可包含旧单篇审核事件和新稿件维护事件 |
 
 ### `contents/admin/issue-drafts/<issueDraftId>/meta.json`
 
