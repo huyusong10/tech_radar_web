@@ -338,6 +338,9 @@ describe('Frontend contract', () => {
 
         [
             'admin-issue-list',
+            'issue-workspace-drafts',
+            'issue-workspace-maintenance',
+            'issue-workspace-settings',
             'issue-draft-list',
             'issue-available-manuscript-list',
             'published-list',
@@ -350,6 +353,7 @@ describe('Frontend contract', () => {
 
     test('admin page keeps stable controls for submission, manuscript and review flows', () => {
         assert.match(ADMIN_HTML, /data-view="manuscripts"/);
+        assert.match(ADMIN_HTML, /data-view="reviews" data-permission="canReviewIssueDraft"/);
         assert.doesNotMatch(ADMIN_HTML, /data-view="drafts"/);
         assert.doesNotMatch(ADMIN_HTML, /data-view="publish"/);
         assert.match(ADMIN_HTML, /name="accept-author-mode"/);
@@ -371,6 +375,11 @@ describe('Frontend contract', () => {
             'manuscript-page-info',
             'manuscript-next-page-button',
             'review-issue-list',
+            'review-task-detail',
+            'review-task-title',
+            'review-task-facts',
+            'review-preview-issue-button',
+            'run-lint-button',
             'manuscript-asset-title',
             'manuscript-asset-description',
             'manuscript-asset-markers',
@@ -396,11 +405,15 @@ describe('Frontend contract', () => {
             'issue-flow-steps',
             'issue-flow-actions',
             'issue-radar',
+            'issue-manual-add-panel',
             'preview-issue-button',
+            'approve-issue-button',
+            'changes-issue-button',
             'issue-review-history',
             'author-list',
             'published-list',
             'preview-published-button',
+            'check-published-content-button',
             'volume-list',
             'user-list',
             'audit-list',
@@ -428,6 +441,44 @@ describe('Frontend contract', () => {
         assert.match(ADMIN_DRAFTS_JS, /scope:\s*'candidate'/);
         assert.match(ADMIN_API_JS, /archiveManuscript/);
         assert.match(ADMIN_API_JS, /restoreManuscript/);
+    });
+
+    test('admin issue management separates draft, maintenance and review task workspaces', () => {
+        const reviewView = ADMIN_HTML.match(/<section class="view" id="view-reviews"[\s\S]*?<section class="view" id="view-issues"/)[0];
+        const draftWorkspace = ADMIN_HTML.match(/<section class="issue-workspace" id="issue-workspace-drafts"[\s\S]*?<section class="issue-workspace" id="issue-workspace-maintenance"/)[0];
+        const maintenanceWorkspace = ADMIN_HTML.match(/<section class="issue-workspace" id="issue-workspace-maintenance"[\s\S]*?<section class="issue-workspace" id="issue-workspace-settings"/)[0];
+        const settingsWorkspace = ADMIN_HTML.match(/<section class="issue-workspace" id="issue-workspace-settings"[\s\S]*?<\/section>\s*<\/section>/)[0];
+
+        assert.match(reviewView, /id="review-issue-list"/);
+        assert.match(reviewView, /id="review-preview-issue-button"/);
+        assert.match(reviewView, /id="run-lint-button"/);
+        assert.match(reviewView, /id="approve-issue-button"/);
+        assert.match(reviewView, /id="changes-issue-button"/);
+        assert.doesNotMatch(reviewView, /id="publish-issue-button"/);
+
+        assert.match(draftWorkspace, /id="admin-issue-list"/);
+        assert.match(draftWorkspace, /id="issue-draft-list"/);
+        assert.match(draftWorkspace, /id="issue-available-manuscript-list"/);
+        assert.match(draftWorkspace, /id="issue-manual-add-panel"/);
+        assert.match(draftWorkspace, /id="request-issue-review-button"/);
+        assert.match(draftWorkspace, /id="publish-issue-button"/);
+        assert.doesNotMatch(draftWorkspace, /id="approve-issue-button"/);
+        assert.doesNotMatch(draftWorkspace, /id="changes-issue-button"/);
+
+        assert.match(maintenanceWorkspace, /id="published-list"/);
+        assert.match(maintenanceWorkspace, /id="unpublished-list"/);
+        assert.match(maintenanceWorkspace, /id="published-editor"/);
+        assert.match(maintenanceWorkspace, /id="check-published-content-button"/);
+        assert.match(maintenanceWorkspace, /id="check-published-content-button" data-check-scope="site"/);
+        assert.doesNotMatch(maintenanceWorkspace, /id="request-issue-review-button"/);
+        assert.doesNotMatch(maintenanceWorkspace, /id="approve-issue-button"/);
+        assert.doesNotMatch(maintenanceWorkspace, /id="changes-issue-button"/);
+
+        assert.match(settingsWorkspace, /id="volume-id"/);
+        assert.match(settingsWorkspace, /id="volume-list"/);
+        assert.match(ADMIN_DRAFTS_JS, /selectedReviewIssueDraft/);
+        assert.match(ADMIN_DRAFTS_JS, /selectedReviewIssueDraftId/);
+        assert.match(ADMIN_DRAFTS_JS, /issue-workspace-drafts/);
     });
 
     test('admin editing pages use an on-demand preview surface', () => {

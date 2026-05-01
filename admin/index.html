@@ -32,7 +32,7 @@
             <nav class="admin-nav">
                 <button data-view="submissions" data-permission="canEditDraft" class="active">投稿初审</button>
                 <button data-view="manuscripts">稿件池</button>
-                <button data-view="reviews" data-permission="canRunLint">审核任务</button>
+                <button data-view="reviews" data-permission="canReviewIssueDraft">审核任务</button>
                 <button data-view="issues">期刊管理</button>
                 <button data-view="authors" data-permission="canListAuthors">作者管理</button>
                 <button data-view="users" data-permission="canManageUsers">人员权限</button>
@@ -53,7 +53,7 @@
             <div class="metric-grid">
                 <div class="metric"><span>候选稿件</span><strong id="metric-submissions">0</strong></div>
                 <div class="metric"><span>待确认修改</span><strong id="metric-pending-edits">0</strong></div>
-                <div class="metric"><span>已组刊</span><strong id="metric-unassigned-manuscripts">0</strong></div>
+                <div class="metric"><span>待审核草稿</span><strong id="metric-unassigned-manuscripts">0</strong></div>
                 <div class="metric"><span>已发布维护</span><strong id="metric-issue-drafts">0</strong></div>
             </div>
 
@@ -182,118 +182,171 @@
 
             <section class="view" id="view-reviews">
                 <div class="workspace-grid review-grid">
-                    <section class="panel">
+                    <section class="panel review-queue-panel">
                         <h2>待审核期刊</h2>
                         <div id="review-issue-list" class="compact-list"></div>
                     </section>
+                    <section class="panel editor-panel review-task-detail" id="review-task-detail">
+                        <div class="panel-head">
+                            <h2>审核详情</h2>
+                            <div class="toolbar">
+                                <button id="review-preview-issue-button">整期预览</button>
+                                <button id="run-lint-button" data-permission="canRunLint">内容检查</button>
+                            </div>
+                        </div>
+                        <section class="review-focus-panel" aria-labelledby="review-task-title">
+                            <span class="section-title">当前任务</span>
+                            <h3 id="review-task-title">未选择待审核期刊</h3>
+                            <p id="review-task-description">从左侧选择一份待审核草稿后，查看整期状态、运行内容检查并给出审核结论。</p>
+                            <div class="workflow-markers" id="review-task-markers"></div>
+                        </section>
+                        <div class="detail-facts review-task-facts" id="review-task-facts"></div>
+                        <textarea id="issue-review-comment" class="short-textarea" placeholder="整期审核意见（内部可见）"></textarea>
+                        <div class="toolbar review-action-toolbar">
+                            <button id="approve-issue-button" data-permission="canReviewIssueDraft">整期通过</button>
+                            <button id="changes-issue-button" data-permission="canReviewIssueDraft">整期退回</button>
+                        </div>
+                        <section class="review-detail-grid" aria-label="审核辅助信息">
+                            <article class="detail-card detail-card-list">
+                                <div class="section-title">审核记录</div>
+                                <div id="review-issue-history" class="compact-list compact-scroll"></div>
+                            </article>
+                            <article class="detail-card detail-card-list">
+                                <div class="section-title">内容检查</div>
+                                <pre id="lint-output" class="log-output compact-scroll"></pre>
+                            </article>
+                        </section>
+                        <p class="status-line" id="review-status"></p>
+                    </section>
                 </div>
-                <section class="panel">
-                    <div class="panel-head">
-                        <h2>内容检查</h2>
-                        <button id="run-lint-button" data-permission="canRunLint">运行</button>
-                    </div>
-                    <pre id="lint-output" class="log-output"></pre>
-                </section>
             </section>
 
             <section class="view" id="view-issues">
-                <div class="workspace-grid issue-grid">
-                    <section class="panel">
-                        <h2>期刊列表</h2>
-                        <div id="admin-issue-list" class="compact-list"></div>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-head">
-                            <h2>期刊信息</h2>
-                            <div class="toolbar">
-                                <button id="create-volume-button" data-permission="canManageVolumes">新建卷期</button>
-                                <button id="update-volume-button" data-permission="canManageVolumes">更新 radar</button>
-                            </div>
+                <section class="issue-workspace" id="issue-workspace-drafts" aria-labelledby="issue-workspace-drafts-title">
+                    <div class="workspace-section-head">
+                        <div>
+                            <span class="section-title">组稿上线</span>
+                            <h2 id="issue-workspace-drafts-title">组稿草稿</h2>
                         </div>
-                        <div class="form-grid">
-                            <label><span>卷期</span><input id="volume-id" placeholder="003"></label>
-                        </div>
-                        <textarea id="volume-radar" class="short-textarea" spellcheck="false"></textarea>
-                        <div id="volume-list" class="compact-list compact-list-mini"></div>
-                        <p class="status-line" id="volume-status"></p>
-                    </section>
-                </div>
-
-                <div class="workspace-grid wide-left">
-                    <section class="panel">
-                        <h2>期刊草稿</h2>
-                        <div id="issue-draft-list" class="compact-list"></div>
-                        <h2 class="rail-title">可加入稿件</h2>
-                        <div id="issue-available-manuscript-list" class="compact-list compact-list-mini"></div>
-                    </section>
-                    <section class="panel editor-panel">
-                        <div class="panel-head">
-                            <h2>草稿编排</h2>
-                        </div>
-                        <section class="workflow-panel issue-flow-panel" aria-labelledby="issue-flow-title">
-                            <div class="workflow-summary issue-flow-summary">
-                                <div>
-                                    <span class="section-title">当前阶段</span>
-                                    <h3 id="issue-flow-title">未选择草稿</h3>
-                                    <p id="issue-flow-description">从左侧选择一个期刊草稿后查看流程位置和可执行动作。</p>
-                                    <div class="workflow-markers" id="issue-flow-markers"></div>
+                    </div>
+                    <div class="workspace-grid issue-draft-grid">
+                        <section class="panel issue-rail-panel">
+                            <h2>选择卷期</h2>
+                            <div id="admin-issue-list" class="compact-list"></div>
+                            <h2 class="rail-title">期刊草稿</h2>
+                            <div id="issue-draft-list" class="compact-list compact-list-mini"></div>
+                            <h2 class="rail-title">可加入稿件</h2>
+                            <div id="issue-available-manuscript-list" class="compact-list compact-list-mini"></div>
+                            <details class="advanced-fields" id="issue-manual-add-panel">
+                                <summary>手动加入稿件</summary>
+                                <div class="form-grid">
+                                    <label><span>稿件 ID</span><input id="issue-add-manuscript-id"></label>
+                                    <label><span>发布目录名</span><input id="issue-add-folder"></label>
                                 </div>
-                                <div class="workflow-actions issue-flow-actions" id="issue-flow-actions">
-                                    <button id="preview-issue-button">预览草稿</button>
-                                    <button id="create-issue-draft-button" data-permission="canManageIssueDrafts">新建草稿</button>
-                                    <button id="save-issue-draft-button" data-permission="canManageIssueDrafts">保存草稿</button>
-                                    <button id="request-issue-review-button" data-permission="canManageIssueDrafts">提交整期审核</button>
-                                    <button id="approve-issue-button" data-permission="canReviewIssueDraft">整期通过</button>
-                                    <button id="changes-issue-button" data-permission="canReviewIssueDraft">整期退回</button>
-                                    <button id="publish-issue-button" data-permission="canPublish">发布整期</button>
-                                </div>
-                            </div>
-                            <ol class="workflow-steps issue-flow-steps" id="issue-flow-steps" aria-label="整期草稿流程"></ol>
+                            </details>
                         </section>
-                        <div class="form-grid">
-                            <label><span>卷期</span><input id="issue-vol" placeholder="003"></label>
-                            <label><span>标题</span><input id="issue-title"></label>
-                            <label><span>加入稿件 ID</span><input id="issue-add-manuscript-id"></label>
-                            <label><span>发布目录名</span><input id="issue-add-folder"></label>
-                        </div>
-                        <textarea id="issue-review-comment" class="short-textarea" placeholder="整期审核意见（内部可见）"></textarea>
-                        <div class="toolbar">
-                            <button id="add-manuscript-to-issue-button" data-permission="canManageIssueDrafts">加入草稿</button>
-                            <button id="remove-manuscript-from-issue-button" data-permission="canManageIssueDrafts">移出选中稿件</button>
-                        </div>
-                        <textarea id="issue-radar" spellcheck="false"></textarea>
-                        <div id="issue-manuscript-list" class="compact-list"></div>
-                        <div id="issue-review-history" class="compact-list"></div>
-                        <p class="status-line" id="issue-status"></p>
-                    </section>
-                </div>
+                        <section class="panel editor-panel issue-draft-workbench">
+                            <div class="panel-head">
+                                <h2>草稿编排</h2>
+                            </div>
+                            <section class="workflow-panel issue-flow-panel" aria-labelledby="issue-flow-title">
+                                <div class="workflow-summary issue-flow-summary">
+                                    <div>
+                                        <span class="section-title">当前阶段</span>
+                                        <h3 id="issue-flow-title">未选择草稿</h3>
+                                        <p id="issue-flow-description">从左侧选择一个期刊草稿后查看流程位置和可执行动作。</p>
+                                        <div class="workflow-markers" id="issue-flow-markers"></div>
+                                    </div>
+                                    <div class="workflow-actions issue-flow-actions" id="issue-flow-actions">
+                                        <button id="preview-issue-button">预览草稿</button>
+                                        <button id="create-issue-draft-button" data-permission="canManageIssueDrafts">新建草稿</button>
+                                        <button id="save-issue-draft-button" data-permission="canManageIssueDrafts">保存草稿</button>
+                                        <button id="request-issue-review-button" data-permission="canManageIssueDrafts">提交整期审核</button>
+                                        <button id="publish-issue-button" data-permission="canPublish">发布整期</button>
+                                    </div>
+                                </div>
+                                <ol class="workflow-steps issue-flow-steps" id="issue-flow-steps" aria-label="整期草稿流程"></ol>
+                            </section>
+                            <div class="form-grid">
+                                <label><span>卷期</span><input id="issue-vol" placeholder="003"></label>
+                                <label><span>标题</span><input id="issue-title"></label>
+                            </div>
+                            <div class="toolbar">
+                                <button id="add-manuscript-to-issue-button" data-permission="canManageIssueDrafts">加入选中稿件</button>
+                                <button id="remove-manuscript-from-issue-button" data-permission="canManageIssueDrafts">移出选中稿件</button>
+                            </div>
+                            <textarea id="issue-radar" spellcheck="false"></textarea>
+                            <div id="issue-manuscript-list" class="compact-list"></div>
+                            <div id="issue-review-history" class="compact-list"></div>
+                            <p class="status-line" id="issue-status"></p>
+                        </section>
+                    </div>
+                </section>
 
-                <div class="workspace-grid wide-left">
-                    <section class="panel">
-                        <h2>本期已发布</h2>
-                        <div id="published-list" class="compact-list"></div>
-                        <h2>本期已下线</h2>
-                        <div id="unpublished-list" class="compact-list"></div>
-                        <div class="toolbar"><button id="refresh-published-button" data-permission="canEditPublished">刷新</button></div>
-                    </section>
-                    <section class="panel">
-                        <h2>发布后维护</h2>
-                        <textarea id="published-editor" class="short-textarea" spellcheck="false"></textarea>
-                        <input id="published-files-input" type="file" multiple webkitdirectory>
-                        <input id="published-delete-files" placeholder="删除资源路径，逗号分隔">
-                        <div class="toolbar">
-                            <button id="preview-published-button">预览</button>
-                            <button id="save-published-button" data-permission="canEditPublished">保存</button>
-                            <button id="unpublish-button" data-permission="canUnpublish">下线</button>
-                            <button id="restore-button" data-permission="canUnpublish">恢复</button>
-                            <button id="rollback-button" data-permission="canRollbackPublished">回滚</button>
+                <section class="issue-workspace" id="issue-workspace-maintenance" aria-labelledby="issue-workspace-maintenance-title">
+                    <div class="workspace-section-head">
+                        <div>
+                            <span class="section-title">发布治理</span>
+                            <h2 id="issue-workspace-maintenance-title">内容维护</h2>
                         </div>
-                        <div id="published-files" class="file-list"></div>
-                        <h2>历史快照</h2>
-                        <div id="published-history-list" class="compact-list"></div>
-                        <p class="status-line" id="published-status"></p>
-                    </section>
-                </div>
+                    </div>
+                    <div class="workspace-grid wide-left">
+                        <section class="panel">
+                            <h2>本期已发布</h2>
+                            <div id="published-list" class="compact-list"></div>
+                            <h2 class="rail-title">本期已下线</h2>
+                            <div id="unpublished-list" class="compact-list"></div>
+                            <div class="toolbar"><button id="refresh-published-button" data-permission="canEditPublished">刷新</button></div>
+                        </section>
+                        <section class="panel maintenance-editor">
+                            <h2>发布后维护</h2>
+                            <textarea id="published-editor" class="short-textarea" spellcheck="false"></textarea>
+                            <input id="published-files-input" type="file" multiple webkitdirectory>
+                            <input id="published-delete-files" placeholder="删除资源路径，逗号分隔">
+                            <div class="toolbar">
+                                <button id="preview-published-button">预览</button>
+                                <button id="check-published-content-button" data-check-scope="site" data-permission="canRunLint">全站巡检</button>
+                                <button id="save-published-button" data-permission="canEditPublished">保存</button>
+                                <button id="unpublish-button" data-permission="canUnpublish">下线</button>
+                                <button id="restore-button" data-permission="canUnpublish">恢复</button>
+                                <button id="rollback-button" data-permission="canRollbackPublished">回滚</button>
+                            </div>
+                            <div id="published-files" class="file-list"></div>
+                            <h2>历史快照</h2>
+                            <div id="published-history-list" class="compact-list"></div>
+                            <p class="status-line" id="published-status"></p>
+                        </section>
+                    </div>
+                </section>
+
+                <section class="issue-workspace" id="issue-workspace-settings" aria-labelledby="issue-workspace-settings-title">
+                    <div class="workspace-section-head">
+                        <div>
+                            <span class="section-title">低频设置</span>
+                            <h2 id="issue-workspace-settings-title">卷期设置</h2>
+                        </div>
+                    </div>
+                    <div class="workspace-grid issue-grid">
+                        <section class="panel">
+                            <div class="panel-head">
+                                <h2>期刊信息</h2>
+                                <div class="toolbar">
+                                    <button id="create-volume-button" data-permission="canManageVolumes">新建卷期</button>
+                                    <button id="update-volume-button" data-permission="canManageVolumes">更新 radar</button>
+                                </div>
+                            </div>
+                            <div class="form-grid">
+                                <label><span>卷期</span><input id="volume-id" placeholder="003"></label>
+                            </div>
+                            <textarea id="volume-radar" class="short-textarea" spellcheck="false"></textarea>
+                            <p class="status-line" id="volume-status"></p>
+                        </section>
+                        <section class="panel">
+                            <h2>卷期索引</h2>
+                            <div id="volume-list" class="compact-list compact-list-mini"></div>
+                        </section>
+                    </div>
+                </section>
             </section>
 
             <section class="view" id="view-authors">

@@ -62,6 +62,7 @@ const state = {
     selectedSubmission: null,
     selectedManuscript: null,
     selectedIssueDraft: null,
+    selectedReviewIssueDraft: null,
     selectedIssueVol: '',
     selectedIssueManuscriptId: '',
     selectedIssueAvailableManuscriptId: '',
@@ -77,7 +78,8 @@ const state = {
     selectionTokens: {
         submission: 0,
         manuscript: 0,
-        issueDraft: 0
+        issueDraft: 0,
+        reviewIssueDraft: 0
     }
 };
 
@@ -144,8 +146,8 @@ const SUBMISSION_STATUS_LABELS = {
 const VIEW_TITLES = {
     submissions: ['投稿初审', '预览投稿、接收入池或复制投稿链接'],
     manuscripts: ['稿件池', '管理候选稿件资产、修改链接与组刊去向'],
-    reviews: ['审核任务', '集中查看待审核期刊与内容检查'],
-    issues: ['期刊管理', '按卷期编排、预览、发布和维护文章'],
+    reviews: ['审核任务', '处理待审核整期期刊草稿'],
+    issues: ['期刊管理', '按卷期管理组稿草稿、发布上线与内容维护'],
     authors: ['作者管理', '作者入库、修改、头像与合并'],
     users: ['人员权限', '维护后台用户和角色'],
     audit: ['操作日志', '查看关键后台操作记录']
@@ -464,6 +466,10 @@ function selectedIssueDraftId() {
     return state.selectedIssueDraft?.meta?.issueDraftId;
 }
 
+function selectedReviewIssueDraftId() {
+    return state.selectedReviewIssueDraft?.meta?.issueDraftId;
+}
+
 function selectedAdminIssue() {
     return state.issues.find(issue => issue.vol === state.selectedIssueVol) || null;
 }
@@ -690,10 +696,14 @@ function renderManuscriptDetailCards(detail) {
 
 function renderMetrics() {
     const counts = state.manuscriptCounts || {};
+    const reviewDraftCount = state.issueDrafts.filter(issue => issue.status === 'issue_review_requested').length;
+    const publishedMaintenanceCount = state.issues.reduce((sum, issue) => (
+        sum + Number(issue.counts?.published || 0) + Number(issue.counts?.unpublished || 0)
+    ), 0);
     $('metric-submissions').textContent = counts.candidate ?? 0;
     $('metric-pending-edits').textContent = counts.pendingReview ?? 0;
-    $('metric-unassigned-manuscripts').textContent = counts.scheduled ?? 0;
-    $('metric-issue-drafts').textContent = counts.publishedEditing ?? 0;
+    $('metric-unassigned-manuscripts').textContent = reviewDraftCount;
+    $('metric-issue-drafts').textContent = publishedMaintenanceCount;
 }
 
 function renderManuscriptScopeTabs() {
@@ -774,18 +784,63 @@ function renderReviewTaskLists() {
     const reviewIssues = state.issueDrafts.filter(issue => issue.status === 'issue_review_requested');
     reviewIssues.forEach(issue => {
         issueList.appendChild(compactItem({
-            active: selectedIssueDraftId() === issue.issueDraftId,
+            active: selectedReviewIssueDraftId() === issue.issueDraftId,
             pill: labelFrom(ISSUE_STATUS_LABELS, issue.status),
             title: issue.title || `vol-${issue.vol}`,
             subtitle: `vol-${issue.vol} · ${(issue.manuscripts || []).length} 篇稿件`,
-            onClick: async () => {
-                state.selectedIssueVol = issue.vol;
-                await selectIssueDraft(issue.issueDraftId);
-                selectView('issues');
-            }
+            onClick: () => selectReviewIssueDraft(issue.issueDraftId)
         }));
     });
     if (!reviewIssues.length) issueList.innerHTML = '<div class="compact-item"><small>暂无待审期刊</small></div>';
+}
+
+function selectedReviewTask() {
+    return state.selectedReviewIssueDraft?.meta?.status === 'issue_review_requested'
+        ? state.selectedReviewIssueDraft
+        : null;
+}
+
+function renderReviewTaskDetail() {
+    const detail = selectedReviewTask();
+    const title = $('review-task-title');
+    const description = $('review-task-description');
+    const markers = $('review-task-markers');
+    const facts = $('review-task-facts');
+    const history = $('review-issue-history');
+    if (!title || !description || !markers || !facts || !history) return;
+
+    if (!detail) {
+        title.textContent = '未选择待审核期刊';
+        description.textContent = '从左侧选择一份待审核草稿后，查看整期状态、运行内容检查并给出审核结论。';
+        renderWorkflowMarkers(markers, []);
+        renderFactGrid(facts, [
+            { label: '卷期', value: '-' },
+            { label: '稿件数', value: '-' },
+            { label: '状态', value: '-' },
+            { label: '更新时间', value: '-' }
+        ]);
+        renderReviewHistory(history, []);
+        return;
+    }
+
+    const meta = detail.meta || {};
+    const manuscriptCount = (meta.manuscripts || []).length;
+    title.textContent = meta.title || `vol-${meta.vol}`;
+    description.textContent = '这份草稿已进入整期技术审核。审核通过后，发布动作回到期刊管理的组稿草稿工作区。';
+    renderWorkflowMarkers(markers, [
+        { label: '审核', value: labelFrom(ISSUE_STATUS_LABELS, meta.status), tone: 'warning' },
+        { label: '卷期', value: `vol-${meta.vol || '-'}`, tone: 'info' },
+        { label: '稿件', value: `${manuscriptCount} 篇`, tone: manuscriptCount ? 'success' : 'muted' }
+    ]);
+    renderFactGrid(facts, [
+        { label: '草稿 ID', value: meta.issueDraftId || '-' },
+        { label: '卷期', value: meta.vol || '-' },
+        { label: '稿件数', value: `${manuscriptCount} 篇` },
+        { label: '状态', value: labelFrom(ISSUE_STATUS_LABELS, meta.status) },
+        { label: '创建时间', value: formatDateTime(meta.createdAt) },
+        { label: '更新时间', value: formatDateTime(meta.updatedAt) }
+    ]);
+    renderReviewHistory(history, detail.review?.history || []);
 }
 
 function renderAdminIssueList() {
@@ -848,7 +903,7 @@ function renderIssueAvailableManuscriptList() {
     const list = $('issue-available-manuscript-list');
     if (!list) return;
     list.innerHTML = '';
-    if (!selectedIssueDraftId() || ['published', 'archived'].includes(state.selectedIssueDraft?.meta?.status)) {
+    if (!selectedIssueDraftId() || !['editing', 'changes_requested'].includes(state.selectedIssueDraft?.meta?.status)) {
         list.innerHTML = '<div class="compact-item"><small>先选择可编辑期刊草稿</small></div>';
         return;
     }
@@ -1018,6 +1073,7 @@ function renderAllLists() {
     renderSubmissionList();
     renderManuscriptList();
     renderReviewTaskLists();
+    renderReviewTaskDetail();
     renderAdminIssueList();
     renderIssueDraftList();
     renderIssueAvailableManuscriptList();
@@ -1032,6 +1088,8 @@ function syncActionState() {
     const manuscriptEditStatus = manuscriptLifecycle.editStatus || 'idle';
     const scheduledIssueDraftId = manuscriptLifecycle.scheduledIssueDraftId;
     const issueStatus = state.selectedIssueDraft?.meta?.status;
+    const reviewIssueStatus = state.selectedReviewIssueDraft?.meta?.status;
+    const issueDraftEditable = ['editing', 'changes_requested'].includes(issueStatus);
     $('preview-submission-button').disabled = !selectedSubmissionId();
     $('accept-submission-button').disabled = !selectedSubmissionId() || !state.permissions.canEditDraft || ['accepted', 'published'].includes(submissionStatus);
     $('issue-status-link-button').disabled = !selectedSubmissionId() || !state.permissions.canIssueStatusLink;
@@ -1057,24 +1115,26 @@ function syncActionState() {
     $('delete-manuscript-button').disabled = $('delete-manuscript-button').hidden;
     $('create-issue-draft-button').hidden = !state.permissions.canManageIssueDrafts;
     $('create-issue-draft-button').disabled = !state.permissions.canManageIssueDrafts;
-    $('save-issue-draft-button').hidden = !selectedIssueDraftId() || !state.permissions.canManageIssueDrafts || ['published', 'archived'].includes(issueStatus);
+    $('save-issue-draft-button').hidden = !selectedIssueDraftId() || !state.permissions.canManageIssueDrafts || !issueDraftEditable;
     $('save-issue-draft-button').disabled = $('save-issue-draft-button').hidden;
-    $('add-manuscript-to-issue-button').disabled = !selectedIssueDraftId() || !state.permissions.canManageIssueDrafts || ['published', 'archived'].includes(issueStatus);
-    $('remove-manuscript-from-issue-button').disabled = !selectedIssueDraftId() || !state.selectedIssueManuscriptId || !state.permissions.canManageIssueDrafts || ['published', 'archived'].includes(issueStatus);
-    $('request-issue-review-button').hidden = !selectedIssueDraftId() || !state.permissions.canManageIssueDrafts || !['editing', 'changes_requested'].includes(issueStatus);
+    $('add-manuscript-to-issue-button').disabled = !selectedIssueDraftId() || !state.permissions.canManageIssueDrafts || !issueDraftEditable;
+    $('remove-manuscript-from-issue-button').disabled = !selectedIssueDraftId() || !state.selectedIssueManuscriptId || !state.permissions.canManageIssueDrafts || !issueDraftEditable;
+    $('request-issue-review-button').hidden = !selectedIssueDraftId() || !state.permissions.canManageIssueDrafts || !issueDraftEditable;
     $('request-issue-review-button').disabled = $('request-issue-review-button').hidden;
-    $('approve-issue-button').hidden = !selectedIssueDraftId() || !state.permissions.canReviewIssueDraft || issueStatus !== 'issue_review_requested';
+    $('approve-issue-button').hidden = !selectedReviewIssueDraftId() || !state.permissions.canReviewIssueDraft || reviewIssueStatus !== 'issue_review_requested';
     $('approve-issue-button').disabled = $('approve-issue-button').hidden;
-    $('changes-issue-button').hidden = !selectedIssueDraftId() || !state.permissions.canReviewIssueDraft || issueStatus !== 'issue_review_requested';
+    $('changes-issue-button').hidden = !selectedReviewIssueDraftId() || !state.permissions.canReviewIssueDraft || reviewIssueStatus !== 'issue_review_requested';
     $('changes-issue-button').disabled = $('changes-issue-button').hidden;
     $('preview-issue-button').hidden = !selectedIssueDraftId();
     $('preview-issue-button').disabled = !selectedIssueDraftId();
+    $('review-preview-issue-button').disabled = !selectedReviewTask();
     $('publish-issue-button').hidden = !selectedIssueDraftId() || !state.permissions.canPublish || issueStatus !== 'approved';
     $('publish-issue-button').disabled = $('publish-issue-button').hidden;
     $('rollback-button').disabled = !state.selectedPublished || !state.selectedPublishedSnapshotId || !state.permissions.canRollbackPublished;
     $('restore-button').disabled = !state.selectedUnpublished || !state.permissions.canUnpublish;
     $('unpublish-button').disabled = !state.selectedPublished || !state.permissions.canUnpublish;
     $('preview-published-button').disabled = !state.selectedPublished;
+    $('check-published-content-button').disabled = !state.selectedPublished || !state.permissions.canRunLint;
     $('save-published-button').disabled = !state.selectedPublished || !state.permissions.canEditPublished;
 }
 
@@ -1117,6 +1177,12 @@ async function refreshWorkbench() {
         state.issues = issues.issues || [];
         state.published = state.issues.flatMap(issue => issue.publishedArticles || []);
         state.unpublished = state.issues.flatMap(issue => issue.unpublishedArticles || []);
+        if (
+            selectedReviewIssueDraftId() &&
+            !state.issueDrafts.some(issue => issue.issueDraftId === selectedReviewIssueDraftId() && issue.status === 'issue_review_requested')
+        ) {
+            state.selectedReviewIssueDraft = null;
+        }
         if (state.selectedIssueVol && !state.issues.some(issue => issue.vol === state.selectedIssueVol)) {
             state.selectedIssueVol = '';
         }
@@ -1161,6 +1227,16 @@ async function selectIssueDraft(issueDraftId) {
     $('issue-add-folder').value = '';
     renderAllLists();
     renderIssueDraftDetail();
+}
+
+async function selectReviewIssueDraft(issueDraftId) {
+    const token = ++state.selectionTokens.reviewIssueDraft;
+    const detail = await getIssueDraft(issueDraftId);
+    if (token !== state.selectionTokens.reviewIssueDraft) return;
+    state.selectedReviewIssueDraft = detail;
+    renderAllLists();
+    renderReviewTaskDetail();
+    syncActionState();
 }
 
 function selectAdminIssue(vol) {
@@ -1224,6 +1300,7 @@ function goToIssuePlanningForSelectedManuscript() {
     state.selectedIssueAvailableManuscriptId = manuscriptId;
     renderIssueAvailableManuscriptList();
     syncActionState();
+    $('issue-workspace-drafts')?.scrollIntoView({ block: 'start' });
     setStatus(
         'issue-status',
         selectedIssueDraftId()
@@ -1237,6 +1314,7 @@ async function openScheduledIssueForSelectedManuscript() {
     if (!issueDraftId) return;
     await selectIssueDraft(issueDraftId);
     selectView('issues');
+    $('issue-workspace-drafts')?.scrollIntoView({ block: 'start' });
     setStatus('issue-status', '已定位到这篇稿件所在的期刊草稿');
 }
 
@@ -1507,36 +1585,63 @@ function bindIssueDraftFlow() {
             setStatus('issue-status', error.message, 'error');
         }
     });
-    async function submitIssueReview(action) {
+    async function submitIssueReview(action, { statusId = 'issue-status', source = 'issue' } = {}) {
         try {
-            if (!selectedIssueDraftId()) return;
-            state.selectedIssueDraft = await reviewIssueDraft(
-                selectedIssueDraftId(),
+            const issueDraftId = source === 'review'
+                ? selectedReviewIssueDraftId()
+                : selectedIssueDraftId();
+            if (!issueDraftId) return;
+            const comment = action === 'request_review'
+                ? ''
+                : $('issue-review-comment').value.trim();
+            const result = await reviewIssueDraft(
+                issueDraftId,
                 action,
-                $('issue-review-comment').value.trim(),
+                comment,
                 'internal'
             );
-            $('issue-review-comment').value = '';
-            setStatus('issue-status', '期刊草稿状态已更新', 'ok');
+            if (state.selectedIssueDraft?.meta?.issueDraftId === issueDraftId) {
+                state.selectedIssueDraft = result;
+            }
+            if (source === 'review') {
+                state.selectedReviewIssueDraft = result.meta?.status === 'issue_review_requested' ? result : null;
+            } else {
+                state.selectedIssueDraft = result;
+            }
+            if (action !== 'request_review') {
+                $('issue-review-comment').value = '';
+            }
+            const statusMessage = {
+                request_review: '已提交整期审核',
+                approve: '整期审核已通过',
+                request_changes: '整期审核已退回'
+            }[action] || '期刊草稿状态已更新';
+            setStatus(statusId, statusMessage, 'ok');
             await refreshWorkbench();
-            renderIssueDraftDetail();
+            if (source === 'review') {
+                renderReviewTaskDetail();
+            } else {
+                renderIssueDraftDetail();
+            }
         } catch (error) {
-            setStatus('issue-status', error.message, 'error');
+            setStatus(statusId, error.message, 'error');
         }
     }
-    $('request-issue-review-button').addEventListener('click', () => submitIssueReview('request_review'));
-    $('approve-issue-button').addEventListener('click', () => submitIssueReview('approve'));
-    $('changes-issue-button').addEventListener('click', () => submitIssueReview('request_changes'));
-    $('preview-issue-button').addEventListener('click', async () => {
+    async function openIssueDraftPreview(statusId = 'issue-status', issueDraftId = selectedIssueDraftId()) {
         try {
-            if (!selectedIssueDraftId()) return;
-            const url = `/admin/issue-drafts/${encodeURIComponent(selectedIssueDraftId())}/preview-page`;
+            if (!issueDraftId) return;
+            const url = `/admin/issue-drafts/${encodeURIComponent(issueDraftId)}/preview-page`;
             window.open(url, '_blank', 'noopener');
-            setStatus('issue-status', '已打开整期读者页预览', 'ok');
+            setStatus(statusId, '已打开整期读者页预览', 'ok');
         } catch (error) {
-            setStatus('issue-status', error.message, 'error');
+            setStatus(statusId, error.message, 'error');
         }
-    });
+    }
+    $('request-issue-review-button').addEventListener('click', () => submitIssueReview('request_review', { statusId: 'issue-status' }));
+    $('approve-issue-button').addEventListener('click', () => submitIssueReview('approve', { statusId: 'review-status', source: 'review' }));
+    $('changes-issue-button').addEventListener('click', () => submitIssueReview('request_changes', { statusId: 'review-status', source: 'review' }));
+    $('preview-issue-button').addEventListener('click', () => openIssueDraftPreview('issue-status'));
+    $('review-preview-issue-button').addEventListener('click', () => openIssueDraftPreview('review-status', selectedReviewIssueDraftId()));
     $('publish-issue-button').addEventListener('click', async () => {
         try {
             if (!selectedIssueDraftId()) return;
@@ -1587,6 +1692,20 @@ function bindLintFlow() {
             ].filter(Boolean).join('\n\n');
         } catch (error) {
             $('lint-output').textContent = error.message;
+        }
+    });
+    $('check-published-content-button').addEventListener('click', async () => {
+        try {
+            if (!state.selectedPublished) return;
+            setStatus('published-status', '全站巡检中...');
+            const result = await runLint();
+            setStatus(
+                'published-status',
+                `${result.ok ? '全站巡检通过' : '全站巡检失败'} · ${result.summary?.errorCount || 0} 个错误 · ${result.summary?.warningCount || 0} 个警告`,
+                result.ok ? 'ok' : 'error'
+            );
+        } catch (error) {
+            setStatus('published-status', error.message, 'error');
         }
     });
 }
